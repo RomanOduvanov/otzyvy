@@ -1,41 +1,64 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>Моё звание</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Моё звание</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*{margin:0;box-sizing:border-box}html,body{background:transparent;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.g{display:grid;grid-template-columns:1.55fr 1fr;gap:14px}
-.c{background:#161616;border-radius:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:22px;display:grid;grid-template-columns:clamp(80px,18vw,130px) 1fr;gap:20px;align-items:center;min-height:250px}
-.aw{width:100%;max-width:130px;aspect-ratio:1;background:center/cover;-webkit-mask:radial-gradient(closest-side,#000 62%,transparent);mask:radial-gradient(closest-side,#000 62%,transparent)}
-.l{font-size:13px;color:rgba(255,255,255,.55)}.r{font-size:30px;font-weight:500;letter-spacing:-.03em;line-height:1.1;margin:2px 0}
-.n{display:flex;gap:20px;margin:10px 0;flex-wrap:wrap}.n div{font-size:12px;color:rgba(255,255,255,.55)}.n b{display:block;font-size:24px;font-weight:500;color:#fff}.n small{font-size:14px;color:rgba(255,255,255,.55)}
+<style>*{margin:0;box-sizing:border-box}html,body{background:transparent;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.g{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;align-items:stretch}
+.c{background:#161616;border-radius:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:24px;display:grid;grid-template-columns:clamp(84px,17vw,140px) 1fr;gap:22px;align-items:center}
+.aw{width:100%;aspect-ratio:1;background:center/cover;-webkit-mask:radial-gradient(closest-side,#000 62%,transparent);mask:radial-gradient(closest-side,#000 62%,transparent)}
+.l{font-size:13px;color:rgba(255,255,255,.55)}.r{font-size:32px;font-weight:500;letter-spacing:-.03em;line-height:1.08;margin:3px 0 0}
+.n{display:flex;gap:22px;margin:14px 0;flex-wrap:wrap}.n div{font-size:12px;color:rgba(255,255,255,.55)}.n b{display:block;font-size:26px;font-weight:500;color:#fff;letter-spacing:-.02em}.n small{font-size:14px;color:rgba(255,255,255,.55)}
 .bar{height:5px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#9657e8,#d77fff)}
-.nx{font-size:13px;color:rgba(255,255,255,.55);margin-top:8px}.nx b{color:#d77fff;font-weight:500}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
-select{background:#0c0c0c;color:#fff;border:0;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);padding:9px 10px;font:500 13px inherit;font-family:inherit;max-width:230px}
-a.b{display:inline-flex;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;font-size:14px;border-radius:10px;padding:10px 14px;text-decoration:none}
-.x{background:linear-gradient(115deg,#6724ad,#9657e8 60%,#c38bff);border-radius:26px;padding:22px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);min-height:250px}
-.x .t{font-size:23px;font-weight:500;letter-spacing:-.02em}.x p{font-size:14px;line-height:1.45;color:rgba(255,255,255,.88);margin-top:6px}
-.tm{display:flex;gap:8px}.tm div{background:rgba(0,1,6,.35);border-radius:12px;padding:8px 12px;font-size:12px;color:rgba(255,255,255,.75)}.tm b{display:block;font-size:21px;font-weight:500;color:#fff}
+.nx{font-size:13px;color:rgba(255,255,255,.6);margin-top:8px}.nx b{color:#d77fff;font-weight:500}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.acc{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.65);background:rgba(255,255,255,.06);border-radius:99px;padding:7px 12px}.acc b{color:#fff;font-weight:600}.acc i{width:8px;height:8px;border-radius:50%;background:#c38bff}
+a.b{display:inline-flex;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;font-size:14px;border-radius:10px;padding:11px 16px;text-decoration:none}
 .md{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.md span{font-size:12px;padding:5px 10px;border-radius:99px;background:rgba(195,139,255,.16);color:#d77fff}
-@media(max-width:560px){.g{grid-template-columns:1fr}.c{grid-template-columns:90px 1fr;gap:14px;padding:18px}.aw{width:90px}.r{font-size:24px}.x{min-height:0}}
-</style></head><body><div class="g"><div class="c" id="me"></div><div class="x" id="x2"></div></div>
+.x2{background:linear-gradient(115deg,#6724ad,#9657e8 60%,#c38bff);border-radius:26px;padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.x2-t{font-size:24px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
+.x2-p{font-size:14px;line-height:1.5;color:rgba(255,255,255,.86);margin-top:8px}.x2-p b{color:#fff;font-weight:600}
+.x2-c{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.7);font-weight:600;margin-bottom:8px}
+.x2-tm{display:inline-flex;align-items:flex-start;gap:6px;background:rgba(0,1,6,.32);border-radius:16px;padding:12px 18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.x2-tm .g{display:flex;flex-direction:column;align-items:center;min-width:46px}
+.x2-tm b{font-size:32px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.x2-tm span{font-size:11px;color:rgba(255,255,255,.6);margin-top:6px}
+.x2-tm i{font-style:normal;font-size:28px;line-height:1;color:rgba(255,255,255,.5)}
+
+@media(max-width:560px){.g{grid-template-columns:1fr}.c{padding:18px;gap:14px}.r{font-size:26px}}
+</style></head><body><div class="g"><div class="c" id="me"></div><div class="x2" id="x2"></div></div>
 <script>
-const A='../awards/',PAGE='./';const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));const fmt=n=>Number(n).toLocaleString('ru-RU');
-let me=null;try{me=localStorage.getItem('rt-me-name')}catch(e){}
-fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(D=>{
- function draw(){const r=D.rows.find(x=>x.name===me)||null;const el=document.getElementById('me');
-  const opts='<option value="">— выбери себя —</option>'+D.rows.map(x=>`<option${r&&x===r?' selected':''}>${esc(x.name)}</option>`).join('');
-  if(!r){el.innerHTML=`<div class="aw" style="background-image:url(${A}r6.jpg)"></div><div><div class="l">Карьерная лестница потока</div><div class="r">Узнай своё звание</div><div class="nx">Выбери себя в списке один раз — дальше карточка будет показывать твои баллы, место и путь до следующего звания.</div><div class="row"><select id="s">${opts}</select><a class="b" href="${PAGE}" target="_blank">Весь рейтинг →</a></div></div>`}
-  else{const k=D.ranks.findIndex(x=>x[0]===r.rank),nx=D.ranks[k+1],lo=D.ranks[k][1],hi=nx?nx[1]:lo,pc=nx?Math.min(100,Math.round(100*(r.pts-lo)/(hi-lo))):100;
-   el.innerHTML=`<div class="aw" style="background-image:url(${A}${D.ranks[k][2]}.jpg)"></div><div><div class="l">Твоё звание · ${esc(D.ranks[k][3])}</div><div class="r">${esc(r.rank)}</div>
-   <div class="n"><div><b>${fmt(r.pts)}</b>баллов</div><div><b>${r.place}<small> из ${D.n}</small></b>место</div><div><b>${r.lessons}</b>уроков</div><div><b>${r.hw}</b>домашек</div></div>
-   <div class="bar"><i style="width:${pc}%"></i></div><div class="nx">${nx?`До звания <b>${esc(nx[0])}</b> — ещё ${fmt(Math.max(0,hi-r.pts))} баллов`:'Ты на вершине лестницы'}</div>
-   ${r.medals.length?'<div class="md">'+r.medals.map(m=>'<span>'+esc(m)+'</span>').join('')+'</div>':''}
-   <div class="row"><a class="b" href="${PAGE}" target="_blank">Весь рейтинг →</a><select id="s">${opts}</select></div></div>`}
-  document.getElementById('s').onchange=e=>{me=e.target.value;try{localStorage.setItem('rt-me-name',me)}catch(_){}draw()}}
- draw();
- const X=D.x2,xe=document.getElementById('x2');
- xe.innerHTML=`<div><div class="t">${esc(X?X.title:'x2 за скорость')}</div><p>${esc(X?X.text:'Первые 48 часов после открытия модуля — x2 за уроки и анкеты, 72 часа — x2 за домашки.')}</p></div><div class="tm" id="tm"></div>`;
- if(X){const tick=()=>{const ms=new Date(X.until)-new Date(),h=Math.max(0,Math.floor(ms/36e5)),m=Math.max(0,Math.floor(ms%36e5/6e4));document.getElementById('tm').innerHTML=`<div><b>${h}</b>час.</div><div><b>${m}</b>мин.</div><div><b>×2</b>к баллам</div>`};tick();setInterval(tick,30000)}
+/* общий модуль: карточка x2 и утилиты (встраивается в embed.html и rating_template.html) */
+const FS={
+ esc:s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
+ fmt:n=>Number(n).toLocaleString('ru-RU'),
+ M:['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],
+ day(d){return d.getDate()+' '+FS.M[d.getMonth()]+' в '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')},
+ uid(){const m=(location.hash||'').match(/u=(\d+)/);return m?m[1]:null},
+ async hash(u){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('gc2:'+u));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,16)},
+ access(a){if(a==='inf')return'Доступ к курсу <b>бессрочный</b>';if(!a)return'';const d=new Date(a+'T23:59:59'),n=Math.ceil((d-new Date())/864e5);return n>0?'До конца доступа <b>'+n+' '+FS.pl(n,['день','дня','дней'])+'</b>':'Доступ к курсу <b>закончился</b>'},
+ pl(n,f){n=Math.abs(n)%100;const n1=n%10;return n>10&&n<20?f[2]:n1>1&&n1<5?f[1]:n1==1?f[0]:f[2]},
+ x2(el,X){
+  if(!X){el.innerHTML='<div class="x2-t">Двойные баллы за скорость</div><p class="x2-p">Как только откроется новый модуль, уроки и анкеты 48 часов приносят x2 баллов, а домашка — 72 часа.</p>';return}
+  const op=new Date(X.opens),lu=new Date(X.lessons_until),hu=new Date(X.hw_until),mod=FS.esc(X.module),desc=X.desc?' — '+FS.esc(X.desc):'';
+  const draw=()=>{const now=new Date();let title,text,target,label;
+   if(now<op){title='Скоро двойные баллы';text=`<b>${FS.day(op)}</b> откроется <b>${mod}</b>${desc}. С этого момента 48 часов каждый урок и анкета дают <b>x2 баллов</b>, а домашка — x2 целых 72 часа. Кто проходит быстрее — быстрее растёт по карьерной лестнице.`;target=op;label='до старта x2'}
+   else if(now<lu){title='Сейчас идёт x2';text=`Открыт <b>${mod}</b>${desc}. Уроки и анкеты дают <b>x2 баллов</b> до ${FS.day(lu)}, домашки — до ${FS.day(hu)}. Успей забрать двойные баллы.`;target=lu;label='до конца x2 за уроки'}
+   else if(now<hu){title='Последний шанс x2';text=`Двойные баллы за уроки <b>${mod}</b> закончились, но за домашку x2 ещё действует — до ${FS.day(hu)}.`;target=hu;label='до конца x2 за домашку'}
+   else{el.innerHTML='<div class="x2-t">Двойные баллы за скорость</div><p class="x2-p">Следующий x2 начнётся с открытием нового модуля.</p>';return}
+   const ms=Math.max(0,target-now),h=Math.floor(ms/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3),p=v=>String(v).padStart(2,'0');
+   el.innerHTML=`<div><div class="x2-t">${title}</div><p class="x2-p">${text}</p></div><div class="x2-tw"><div class="x2-c">${label}</div><div class="x2-tm"><div class="g"><b>${p(h)}</b><span>часы</span></div><i>:</i><div class="g"><b>${p(m)}</b><span>минуты</span></div><i>:</i><div class="g"><b>${p(s)}</b><span>секунды</span></div></div></div>`};
+  draw();setInterval(draw,1000)}
+};
+
+const A='../awards/',RATING='https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152';const {esc,fmt}=FS;
+fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{
+ const u=FS.uid();let r=null;if(u){const h=await FS.hash(u);r=D.rows.find(x=>x.h===h)||null}
+ const el=document.getElementById('me');
+ if(!r){el.innerHTML=`<div class="aw" style="background-image:url(${A}r6.jpg)"></div><div><div class="l">Карьерная лестница потока</div><div class="r">От Новичка до Дизайнера-миллионера</div><div class="nx">Баллы за уроки, анкеты и домашки, x2 за скорость. Твоё место появится после ближайшего обновления рейтинга — он пересчитывается утром и вечером.</div><div class="row"><a class="b" href="${RATING}" target="_top">Рейтинг потока →</a></div></div>`}
+ else{const k=D.ranks.findIndex(x=>x[0]===r.rank),nx=D.ranks[k+1],lo=D.ranks[k][1],hi=nx?nx[1]:lo,pc=nx?Math.min(100,Math.round(100*(r.pts-lo)/(hi-lo))):100,ac=FS.access(r.acc);
+  el.innerHTML=`<div class="aw" style="background-image:url(${A}${D.ranks[k][2]}.jpg)"></div><div><div class="l">Твоё звание · награда — ${esc(D.ranks[k][3])}</div><div class="r">${esc(r.rank)}</div>
+  <div class="n"><div><b>${r.place}<small> из ${D.n}</small></b>место в потоке</div><div><b>${fmt(r.pts)}</b>баллов</div><div><b>+${fmt(r.week)}</b>за неделю</div></div>
+  <div class="bar"><i style="width:${pc}%"></i></div><div class="nx">${nx?`До звания <b>${esc(nx[0])}</b> — ещё ${fmt(Math.max(0,hi-r.pts))} баллов`:'Ты на вершине лестницы'}</div>
+  ${r.medals.length?'<div class="md">'+r.medals.map(m=>'<span>'+esc(m)+'</span>').join('')+'</div>':''}
+  <div class="row"><a class="b" href="${RATING}" target="_top">Весь рейтинг →</a>${ac?`<span class="acc"><i></i>${ac}</span>`:''}</div></div>`}
+ FS.x2(document.getElementById('x2'),D.x2);
 });
 </script></body></html>
