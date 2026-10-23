@@ -166,3 +166,72 @@ html body .lt-form .f-btn{border-radius:12px!important}
 .answer-date,.answer_wrapper a.answer-date{color:var(--fs-ink3)!important}
 .public-level-block,.public-level-block *{color:var(--fs-ink3)!important}
 .user-default-profile-image{filter:invert(1) brightness(.6)}
+
+/* ── список тренингов и модулей ── */
+.xdget-header,h3.xdget-block,.xdget-lessonSchedule h3{font-size:28px!important;font-weight:500!important;letter-spacing:-.02em;color:#fff!important}
+.stream-table{display:block!important;width:100%!important;background:transparent!important;border:0!important}
+.stream-table>tbody{display:flex!important;flex-wrap:wrap;gap:20px;align-items:stretch}
+.stream-table tr.training-row{display:block;height:auto!important;flex:1 1 300px;max-width:calc(50% - 10px);position:static!important;background:transparent!important;border:0!important}
+.stream-table tr.training-row>td{display:block;padding:0!important;border:0!important;background:transparent!important}
+.stream-table tr.training-row td>a{display:flex;flex-direction:column;background:var(--fs-s1)!important;border-radius:24px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--fs-hair);padding:22px 24px!important;text-decoration:none!important;transition:box-shadow .15s,transform .15s}
+.stream-table tr.training-row td>a:hover{box-shadow:inset 0 0 0 1px rgba(195,139,255,.5);transform:translateY(-2px)}
+.stream-table tr.training-row td>a::before{content:"";display:block;margin:-22px -24px 18px;aspect-ratio:3/2;background:linear-gradient(180deg,#120a22,#000106) center/cover no-repeat}
+.stream-table tr.training-row:not([data-training-image^="//"]) td>a::before{display:none}
+.stream-title{display:block;font-size:20px!important;font-weight:500!important;letter-spacing:-.01em;line-height:1.25;color:#fff!important}
+.stream-table tr.training-row td>a b,.stream-table tr.training-row td>a div{color:var(--fs-ink2)!important;font-weight:400!important;font-size:14px;margin-top:6px}
+.stream-table .progress,.training-row .progress{margin:14px 0 0!important}
+.training-row.disabled td>a,.training-row.no-access td>a{opacity:.5}
+.stream-table tr[data-training-id="935917159"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m00.jpg)}
+.stream-table tr[data-training-id="935917160"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m01.jpg)}
+.stream-table tr[data-training-id="935917165"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m02.jpg)}
+.stream-table tr[data-training-id="935917169"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m03.jpg)}
+.stream-table tr[data-training-id="935917170"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m04.jpg)}
+.stream-table tr[data-training-id="935917173"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m05.jpg)}
+.stream-table tr[data-training-id="935917189"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/amazon.jpg)}
+.stream-table tr[data-training-id="935917174"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m06.jpg)}
+.stream-table tr[data-training-id="935917184"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m07.jpg)}
+.stream-table tr[data-training-id="935917186"] td>a::before{background-image:url(https://romanoduvanov.github.io/otzyvy/gc/covers32/m08.jpg)}
+
+/* ── актуальные события ── */
+.schedule-block,.bg-block{background:var(--fs-s1)!important;border-radius:24px!important;box-shadow:inset 0 0 0 1px var(--fs-hair);padding:20px 22px!important;color:var(--fs-ink2)!important}
+.schedule-block .day-label{display:block;color:#fff!important;font-weight:600!important;margin:6px 0 10px}
+.schedule-block .record{display:flex;gap:14px;padding:10px 0;border-top:1px solid var(--fs-hair)}
+.schedule-block .time{color:var(--fs-acc)!important;font-weight:600;flex:none;width:46px}
+.schedule-block .event{color:var(--fs-ink3)!important;font-size:13px}
+.schedule-block .event a{color:#fff!important;font-weight:500;font-size:15px}
+
+/* ── список уроков ── */
+ul.lesson-list{padding:0!important;background:transparent!important;display:flex;flex-direction:column;gap:10px}
+ul.lesson-list>li{list-style:none;background:transparent!important;border:0!important;margin:0!important;padding:0!important}
+ul.lesson-list>li>a.item-a,ul.lesson-list>li>a{display:flex!important;align-items:center;gap:16px;background:var(--fs-s1)!important;border-radius:20px!important;box-shadow:inset 0 0 0 1px var(--fs-hair);padding:18px 22px!important;border:0!important;text-decoration:none!important;transition:box-shadow .15s}
+ul.lesson-list>li>a:hover{box-shadow:inset 0 0 0 1px rgba(195,139,255,.5)}
+ul.lesson-list .state-icon-block{flex:none;width:44px;height:44px;border-radius:50%;background:var(--fs-s2)!important;display:flex!important;align-items:center;justify-content:center;color:#fff!important;border:0!important;margin:0!important}
+ul.lesson-list .state-icon-block *{color:#fff!important}
+ul.lesson-list li.user-state-accomplished .state-icon-block,ul.lesson-list li.lesson-list_watched .state-icon-block{background:var(--fs-l400)!important}
+ul.lesson-list li.user-state-accomplished .state-icon-block *,ul.lesson-list li.lesson-list_watched .state-icon-block *{color:#1a0b2e!important}
+ul.lesson-list .info{flex:1;background:transparent!important}
+ul.lesson-list .info table{width:100%;background:transparent!important}
+ul.lesson-list .link.title,ul.lesson-list .title{font-size:19px!important;font-weight:500!important;color:#fff!important;letter-spacing:-.01em}
+ul.lesson-list .user-state-label,ul.lesson-list .lesson-date{font-size:13px!important;color:var(--fs-ink3)!important;background:transparent!important;padding:0!important;margin-bottom:4px}
+ul.lesson-list .lesson-list__video-watched{display:inline-block;margin-left:10px;padding:4px 10px;border-radius:99px;background:rgba(195,139,255,.16)!important;color:var(--fs-acc)!important;font:600 11px var(--fs-font)!important;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle}
+ul.lesson-list .pull-right{color:var(--fs-ink3)!important;font-size:12px}
+ul.lesson-list li.user-state-not_reached>a,ul.lesson-list li.user-state-blocked>a{opacity:.55}
+ul.lesson-list .user-state-bg{background-color:var(--fs-s1)!important}
+
+/* ── вкладки (админ) и меню страниц ── */
+.page-menu{border-bottom:1px solid var(--fs-hair)!important;background:transparent!important}
+.page-menu>li>a{color:var(--fs-ink2)!important;background:transparent!important;border:0!important;border-radius:12px 12px 0 0!important}
+.page-menu>li.active>a,.page-menu>li>a:hover{color:#fff!important;background:rgba(255,255,255,.08)!important}
+.stream-table+*,.xdget-trainingList .text-muted{color:var(--fs-ink3)!important}
+html body .stream-table tr.training-row,html body .stream-table tr.training-row>td{height:auto!important;min-height:0!important;max-height:none!important}
+html body ul.lesson-list .state-icon-block{flex:0 0 44px!important;width:44px!important;height:44px!important;align-self:center;border:0!important;border-right:0!important;padding:0!important;box-shadow:none!important}
+html body ul.lesson-list .state-icon-block .glyphicon{display:none}
+html body ul.lesson-list .state-icon-block::after{content:"▶";font-size:13px;color:#fff;padding-left:2px}
+html body ul.lesson-list li.lesson-list_watched .state-icon-block::after,html body ul.lesson-list li.user-state-accomplished .state-icon-block::after{content:"✓";font-size:18px;font-weight:700;color:#1a0b2e;padding:0}
+html body ul.lesson-list li.user-state-not_reached .state-icon-block::after,html body ul.lesson-list li.user-state-blocked .state-icon-block::after{content:"🔒";font-size:15px;filter:grayscale(1)}
+html body ul.lesson-list .info{border:0!important;border-left:0!important;padding:0!important}
+h3 a,h4 a,.h3 a{color:#fff!important}
+html body .page-menu>li.active>a,html body .page-menu>li.active>a:hover,html body .page-menu>li.active>a:focus,html body .nav-pills>li.active>a{background:rgba(255,255,255,.1)!important;color:#fff!important}
+html body .page-menu>li>a,html body .nav-pills>li>a{color:var(--fs-ink2)!important}
+html body ul.lesson-list .state-icon-block{height:44px!important;max-height:44px!important;min-height:44px!important;aspect-ratio:1/1;line-height:44px!important}
+html body .page-menu>li,html body .page-menu>li.active{background:transparent!important;border:0!important}
