@@ -1,31 +1,56 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Моё звание</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Моё место в потоке</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
 <style>*{margin:0;box-sizing:border-box}html,body{background:transparent;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.g{display:grid;grid-template-columns:1.5fr 1fr;gap:14px;align-items:stretch}
-.c{background:#161616;border-radius:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:24px;display:grid;grid-template-columns:clamp(84px,17vw,140px) 1fr;gap:22px;align-items:center}
-.aw{width:100%;aspect-ratio:1;background:center/cover;-webkit-mask:radial-gradient(closest-side,#000 62%,transparent);mask:radial-gradient(closest-side,#000 62%,transparent)}
-.l{font-size:13px;color:rgba(255,255,255,.55)}.r{font-size:32px;font-weight:500;letter-spacing:-.03em;line-height:1.08;margin:3px 0 0}
-.n{display:flex;gap:22px;margin:14px 0;flex-wrap:wrap}.n div{font-size:12px;color:rgba(255,255,255,.55)}.n b{display:block;font-size:26px;font-weight:500;color:#fff;letter-spacing:-.02em}.n small{font-size:14px;color:rgba(255,255,255,.55)}
-.bar{height:5px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#9657e8,#d77fff)}
-.nx{font-size:13px;color:rgba(255,255,255,.6);margin-top:8px}.nx b{color:#d77fff;font-weight:500}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
-.acc{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.65);background:rgba(255,255,255,.06);border-radius:99px;padding:7px 12px}.acc b{color:#fff;font-weight:600}.acc i{width:8px;height:8px;border-radius:50%;background:#c38bff}
-a.b{display:inline-flex;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;font-size:14px;border-radius:10px;padding:11px 16px;text-decoration:none}
-.md{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.md span{font-size:12px;padding:5px 10px;border-radius:99px;background:rgba(195,139,255,.16);color:#d77fff}
-.x2{background:linear-gradient(115deg,#6724ad,#9657e8 60%,#c38bff);border-radius:26px;padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.g{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:stretch}
+.tc{margin-top:16px}
+/* общие стили карточек рейтинга (вставляются вместо комментария FS_CSS) */
+.mc{background:#161616;border-radius:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);padding:24px;display:flex;flex-direction:column;gap:18px}
+.mc-top{display:grid;grid-template-columns:76px 1fr auto;gap:16px;align-items:center}
+.mc-aw{width:76px;aspect-ratio:1;background:center/cover;-webkit-mask:radial-gradient(closest-side,#000 64%,transparent);mask:radial-gradient(closest-side,#000 64%,transparent)}
+.mc-l{font-size:13px;color:rgba(255,255,255,.5)}
+.mc-r{font-size:30px;font-weight:500;letter-spacing:-.03em;line-height:1.08;margin-top:2px}
+.mc-pos{text-align:right}.mc-pv{font-size:40px;font-weight:500;letter-spacing:-.04em;line-height:1;margin-top:4px;font-variant-numeric:tabular-nums}.mc-pv small{font-size:16px;color:rgba(255,255,255,.5);letter-spacing:0;font-weight:400}
+.mc-st{display:grid;grid-template-columns:repeat(3,1fr);border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.mc-st div{padding:12px 16px}.mc-st div+div{box-shadow:inset 1px 0 0 rgba(255,255,255,.06)}
+.mc-st b{display:block;font-size:22px;font-weight:500;letter-spacing:-.02em}.mc-st span{font-size:12px;color:rgba(255,255,255,.5)}
+.mc-pl{display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px}
+.mc-bar{height:6px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}.mc-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#9657e8,#d77fff)}
+.mc-nx{font-size:14px;color:rgba(255,255,255,.62);margin-top:10px;line-height:1.45}.mc-nx b{color:#d77fff;font-weight:500}
+.mc-md{display:flex;flex-wrap:wrap;gap:6px}.mc-md span{font-size:12px;padding:5px 10px;border-radius:99px;background:rgba(195,139,255,.14);color:#d77fff}
+.mc-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:auto;padding:13px 18px;border-radius:12px;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;font-size:15px;text-decoration:none;transition:filter .15s,transform .15s}
+.mc-btn:hover{filter:brightness(1.04);transform:translateY(-1px)}.mc-btn i{font-style:normal;transition:transform .15s}.mc-btn:hover i{transform:translateX(3px)}
+/* тариф */
+.tc{background:#161616;border-radius:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);padding:18px 22px;display:flex;align-items:center;gap:14px 36px;flex-wrap:wrap}
+.tc-i{min-width:140px}.tc-v{font-size:20px;font-weight:500;letter-spacing:-.02em;margin-top:3px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tc-v small{font-size:13px;color:rgba(255,255,255,.45);font-weight:400;letter-spacing:0}
+.tc-v em{font-style:normal;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#d77fff;padding:3px 8px;border-radius:99px;background:rgba(195,139,255,.14);align-self:center}
+.tc-n{margin-left:auto;font-size:14px;color:rgba(255,255,255,.55)}
+.tc-b{margin-left:auto;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border-radius:12px;color:#fff;font-weight:600;font-size:14px;text-decoration:none;background:rgba(195,139,255,.12);box-shadow:inset 0 0 0 1px rgba(195,139,255,.4);transition:background .15s}
+.tc-b:hover{background:rgba(195,139,255,.22)}.tc-b i{font-style:normal;transition:transform .15s}.tc-b:hover i{transform:translateX(3px)}
+/* x2 */
+.x2{background:linear-gradient(115deg,#6724ad,#9657e8 60%,#c38bff);border-radius:26px;padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:16px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .x2-t{font-size:24px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
-.x2-p{font-size:14px;line-height:1.5;color:rgba(255,255,255,.86);margin-top:8px}.x2-p b{color:#fff;font-weight:600}
-.x2-c{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.7);font-weight:600;margin-bottom:8px}
-.x2-tm{display:inline-flex;align-items:flex-start;gap:6px;background:rgba(0,1,6,.32);border-radius:16px;padding:12px 18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
-.x2-tm .g{display:flex;flex-direction:column;align-items:center;min-width:46px}
-.x2-tm b{font-size:32px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
-.x2-tm span{font-size:11px;color:rgba(255,255,255,.6);margin-top:6px}
-.x2-tm i{font-style:normal;font-size:28px;line-height:1;color:rgba(255,255,255,.5)}
+.x2-p{font-size:14px;line-height:1.5;color:rgba(255,255,255,.88);margin-top:8px}.x2-p b{color:#fff;font-weight:600}
+.x2-f{margin-top:10px}
+.x2-u{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:6px}
+.x2-u li{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:14px;padding:8px 12px;border-radius:10px;background:rgba(0,1,6,.18)}
+.x2-u li span{color:rgba(255,255,255,.8)}.x2-u li b{font-weight:600;text-align:right}
+.x2-a{color:#fff;font-weight:600;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.6);transition:text-decoration-color .15s}
+.x2-a:hover{text-decoration-color:#fff;text-decoration-thickness:2px}
+.x2-c{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.7);font-weight:600;margin-bottom:6px}
+.x2-tm{display:inline-flex;align-items:flex-start;gap:4px;background:rgba(0,1,6,.32);border-radius:14px;padding:8px 14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.x2-tm .g{display:flex;flex-direction:column;align-items:center;min-width:40px}
+.x2-tm b{font-size:26px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.05}
+.x2-tm span{font-size:10px;color:rgba(255,255,255,.6);margin-top:2px}
+.x2-tm i{font-style:normal;font-size:20px;line-height:26px;color:rgba(255,255,255,.45)}
+@media(max-width:560px){.mc{padding:18px}.mc-top{grid-template-columns:56px 1fr auto;gap:12px}.mc-aw{width:56px}.mc-r{font-size:24px}.mc-pv{font-size:30px}
+.mc-st b{font-size:18px}.mc-st div{padding:10px 12px}.tc{padding:16px 18px}.tc-b,.tc-n{margin-left:0;width:100%;justify-content:center}}
 
-@media(max-width:720px){.g{grid-template-columns:1fr}.c{padding:18px;gap:14px}.r{font-size:26px}}
-</style></head><body><div class="g"><div class="c" id="me"></div><div class="x2" id="x2"></div></div>
+@media(max-width:720px){.g{grid-template-columns:1fr}}
+</style></head><body><div class="g"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div><div class="tc" id="tc"></div>
 <script>
-/* общий модуль: карточка x2 и утилиты (встраивается в embed.html и rating_template.html) */
+/* общий модуль страниц рейтинга: утилиты, карточка ученика, карточка x2, плашка тарифа.
+   gamify.py вставляет этот файл в rating_template.html и embed_template.html вместо комментария FS_JS */
 const FS={
  esc:s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
  fmt:n=>Number(n).toLocaleString('ru-RU'),
@@ -33,32 +58,54 @@ const FS={
  day(d){return d.getDate()+' '+FS.M[d.getMonth()]+' в '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')},
  uid(){const m=(location.hash||'').match(/u=(\d+)/);return m?m[1]:null},
  async hash(u){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('gc2:'+u));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,16)},
- access(a){if(a==='inf')return'Доступ к курсу <b>бессрочный</b>';if(!a)return'';const d=new Date(a+'T23:59:59'),n=Math.ceil((d-new Date())/864e5);return n>0?'До конца доступа <b>'+n+' '+FS.pl(n,['день','дня','дней'])+'</b>':'Доступ к курсу <b>закончился</b>'},
  pl(n,f){n=Math.abs(n)%100;const n1=n%10;return n>10&&n<20?f[2]:n1>1&&n1<5?f[1]:n1==1?f[0]:f[2]},
- x2(el,X){
-  if(!X){el.innerHTML='<div class="x2-t">Двойные баллы за скорость</div><p class="x2-p">Как только откроется новый модуль, уроки и анкеты 48 часов приносят x2 баллов, а домашка — 72 часа.</p>';return}
-  const op=new Date(X.opens),lu=new Date(X.lessons_until),hu=new Date(X.hw_until),mod=FS.esc(X.module),desc=X.desc?' — '+FS.esc(X.desc):'';
-  const draw=()=>{const now=new Date();let title,text,target,label;
-   if(now<op){title='Скоро двойные баллы';text=`<b>${FS.day(op)}</b> откроется <b>${mod}</b>${desc}. С этого момента 48 часов каждый урок и анкета дают <b>x2 баллов</b>, а домашка — x2 целых 72 часа. Кто проходит быстрее — быстрее растёт по карьерной лестнице.`;target=op;label='до старта x2'}
-   else if(now<lu){title='Сейчас идёт x2';text=`Открыт <b>${mod}</b>${desc}. Уроки и анкеты дают <b>x2 баллов</b> до ${FS.day(lu)}, домашки — до ${FS.day(hu)}. Успей забрать двойные баллы.`;target=lu;label='до конца x2 за уроки'}
-   else if(now<hu){title='Последний шанс x2';text=`Двойные баллы за уроки <b>${mod}</b> закончились, но за домашку x2 ещё действует — до ${FS.day(hu)}.`;target=hu;label='до конца x2 за домашку'}
-   else{el.innerHTML='<div class="x2-t">Двойные баллы за скорость</div><p class="x2-p">Следующий x2 начнётся с открытием нового модуля.</p>';return}
+ SUPPORT:'https://t.me/zabota_oduvanov',
+ TOP_TARIFF:'Премиум Амазон',
+ /* срок доступа: [значение, подпись] */
+ access(a){if(a==='inf')return['Бессрочный','навсегда в кабинете'];if(!a)return null;const d=new Date(a+'T23:59:59'),n=Math.ceil((d-new Date())/864e5);
+  return n>0?[n+' '+FS.pl(n,['день','дня','дней']),'до '+d.getDate()+' '+FS.M[d.getMonth()]]:['Закончился','продли доступ в поддержке']},
+ /* карточка ученика. o: {awards, link (url рейтинга или null), target} */
+ me(el,D,r,o){const A=o.awards,esc=FS.esc,fmt=FS.fmt;
+  if(!r){el.innerHTML=`<div class="mc-top"><div class="mc-aw" style="background-image:url(${A}r1.jpg)"></div><div class="mc-id"><div class="mc-l">Карьерная лестница</div><div class="mc-r">Скоро здесь будет твоё место</div></div></div>
+   <p class="mc-nx">Баллы начисляются за уроки, анкеты и домашки. Рейтинг пересчитывается утром и вечером — после первого урока ты появишься в нём.</p>${o.link?`<a class="mc-btn" href="${o.link}" target="${o.target||'_top'}">Открыть рейтинг потока <i>→</i></a>`:''}`;return}
+  const i=D.ranks.findIndex(x=>x[0]===r.rank),cur=D.ranks[i],nx=D.ranks[i+1],lo=cur[1],hi=nx?nx[1]:lo,pc=nx?Math.max(3,Math.min(100,Math.round(100*(r.pts-lo)/(hi-lo)))):100;
+  el.innerHTML=`<div class="mc-top"><div class="mc-aw" style="background-image:url(${A}${cur[2]}.jpg)"></div>
+   <div class="mc-id"><div class="mc-l">Твоё звание</div><div class="mc-r">${esc(r.rank)}</div></div>
+   <div class="mc-pos"><div class="mc-l">Место в потоке</div><div class="mc-pv">${r.place}<small> из ${D.n}</small></div></div></div>
+   <div class="mc-st"><div><b>${fmt(r.pts)}</b><span>${FS.pl(r.pts,['балл','балла','баллов'])}</span></div><div><b>+${fmt(r.week)}</b><span>за неделю</span></div><div><b>${r.lessons}</b><span>${FS.pl(r.lessons,['урок','урока','уроков'])}</span></div></div>
+   <div class="mc-pr"><div class="mc-pl"><span>${esc(cur[0])}</span><span>${nx?esc(nx[0])+' · '+fmt(hi):'вершина'}</span></div><div class="mc-bar"><i style="width:${pc}%"></i></div>
+   <div class="mc-nx">${nx?`Ещё <b>${fmt(Math.max(0,hi-r.pts))} ${FS.pl(hi-r.pts,['балл','балла','баллов'])}</b> до звания «${esc(nx[0])}»${nx[0]==='Дизайнер-миллионер'?' и 80% заданий в срок x2':''}`:'Ты на вершине карьерной лестницы'}</div></div>
+   ${r.medals.length?'<div class="mc-md">'+r.medals.map(m=>'<span>'+esc(m)+'</span>').join('')+'</div>':''}
+   ${o.link?`<a class="mc-btn" href="${o.link}" target="${o.target||'_top'}">Открыть рейтинг потока <i>→</i></a>`:''}`},
+ /* плашка тарифа и доступа */
+ tariff(el,r){if(!r||(!r.tar&&!r.acc)){el.style.display='none';return}const a=FS.access(r.acc),top=r.tar===FS.TOP_TARIFF;
+  el.innerHTML=`<div class="tc-i"><div class="mc-l">Твой тариф</div><div class="tc-v">${FS.esc(r.tar||'—')}${top?'<em>максимальный</em>':''}</div></div>
+   ${a?`<div class="tc-i"><div class="mc-l">Доступ к курсу</div><div class="tc-v">${a[0]}<small>${a[1]}</small></div></div>`:''}
+   ${top?`<div class="tc-n">У тебя открыты все модули, включая Amazon</div>`:`<a class="tc-b" href="${FS.SUPPORT}" target="_blank" rel="noopener">Повысить тариф <i>→</i></a>`}`},
+ /* карточка x2. link — куда ведёт «карьерная лестница» */
+ x2(el,X,link,target){
+  const lad=`<a class="x2-a" href="${link}" target="${target||'_self'}">карьерной лестнице</a>`;
+  const rules=(l,h)=>`<ul class="x2-u"><li><span>Уроки и анкеты</span><b>x2 ${l}</b></li><li><span>Домашки</span><b>x2 ${h}</b></li></ul>`;
+  if(!X){el.innerHTML=`<div><div class="x2-t">Двойные баллы за скорость</div>${rules('первые 48 часов','первые 72 часа')}<p class="x2-p">Отсчёт начинается с открытия модуля. Больше баллов — быстрее растёшь по ${lad}.</p></div>`;return}
+  const op=new Date(X.opens),lu=new Date(X.lessons_until),hu=new Date(X.hw_until),mod=FS.esc(X.module);
+  const draw=()=>{const now=new Date();let title,lead,list,target,label;
+   if(now<op){title='Скоро двойные баллы';lead=`<b>${FS.day(op)}</b> откроется ${mod}. Успей в первые часы:`;list=rules('первые 48 часов','первые 72 часа');target=op;label='до старта x2'}
+   else if(now<lu){title='Идут двойные баллы';lead=`Открыт ${mod}. Забирай x2:`;list=rules('до '+FS.day(lu),'до '+FS.day(hu));target=lu;label='до конца x2 за уроки'}
+   else if(now<hu){title='Последний шанс на x2';lead=`x2 за уроки ${mod} закончился, за домашку ещё действует:`;list=`<ul class="x2-u"><li><span>Домашки</span><b>x2 до ${FS.day(hu)}</b></li></ul>`;target=hu;label='до конца x2 за домашку'}
+   else{el.innerHTML=`<div><div class="x2-t">Двойные баллы за скорость</div><p class="x2-p">Следующий x2 начнётся с открытием нового модуля. Больше баллов — быстрее растёшь по ${lad}.</p></div>`;clearInterval(el._t);return}
    const ms=Math.max(0,target-now),h=Math.floor(ms/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3),p=v=>String(v).padStart(2,'0');
-   el.innerHTML=`<div><div class="x2-t">${title}</div><p class="x2-p">${text}</p></div><div class="x2-tw"><div class="x2-c">${label}</div><div class="x2-tm"><div class="g"><b>${p(h)}</b><span>часы</span></div><i>:</i><div class="g"><b>${p(m)}</b><span>минуты</span></div><i>:</i><div class="g"><b>${p(s)}</b><span>секунды</span></div></div></div>`};
-  draw();setInterval(draw,1000)}
+   if(el._ph!==label){el._ph=label;el.innerHTML=`<div><div class="x2-t">${title}</div><p class="x2-p">${lead}</p>${list}<p class="x2-p x2-f">Больше баллов — быстрее растёшь по ${lad}.</p></div>
+   <div class="x2-tw"><div class="x2-c">${label}</div><div class="x2-tm"><div class="g"><b data-k="h"></b><span>часы</span></div><i>:</i><div class="g"><b data-k="m"></b><span>минуты</span></div><i>:</i><div class="g"><b data-k="s"></b><span>секунды</span></div></div></div>`}
+   const v={h:p(h),m:p(m),s:p(s)};el.querySelectorAll('[data-k]').forEach(b=>{if(b.textContent!==v[b.dataset.k])b.textContent=v[b.dataset.k]})};
+  draw();clearInterval(el._t);el._t=setInterval(draw,1000)}
 };
 
-const A='../awards/',RATING='https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152';const {esc,fmt}=FS;
+const A='../awards/',RATING='https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152';
 fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{
  const u=FS.uid();let r=null;if(u){const h=await FS.hash(u);r=D.rows.find(x=>x.h===h)||null}
- const el=document.getElementById('me');
- if(!r){el.innerHTML=`<div class="aw" style="background-image:url(${A}r6.jpg)"></div><div><div class="l">Карьерная лестница потока</div><div class="r">От Новичка до Дизайнера-миллионера</div><div class="nx">Баллы за уроки, анкеты и домашки, x2 за скорость. Твоё место появится после ближайшего обновления рейтинга — он пересчитывается утром и вечером.</div><div class="row"><a class="b" href="${RATING}" target="_top">Рейтинг потока →</a></div></div>`}
- else{const k=D.ranks.findIndex(x=>x[0]===r.rank),nx=D.ranks[k+1],lo=D.ranks[k][1],hi=nx?nx[1]:lo,pc=nx?Math.min(100,Math.round(100*(r.pts-lo)/(hi-lo))):100,ac=FS.access(r.acc);
-  el.innerHTML=`<div class="aw" style="background-image:url(${A}${D.ranks[k][2]}.jpg)"></div><div><div class="l">Твоё звание · награда — ${esc(D.ranks[k][3])}</div><div class="r">${esc(r.rank)}</div>
-  <div class="n"><div><b>${r.place}<small> из ${D.n}</small></b>место в потоке</div><div><b>${fmt(r.pts)}</b>баллов</div><div><b>+${fmt(r.week)}</b>за неделю</div></div>
-  <div class="bar"><i style="width:${pc}%"></i></div><div class="nx">${nx?`До звания <b>${esc(nx[0])}</b> — ещё ${fmt(Math.max(0,hi-r.pts))} баллов`:'Ты на вершине лестницы'}</div>
-  ${r.medals.length?'<div class="md">'+r.medals.map(m=>'<span>'+esc(m)+'</span>').join('')+'</div>':''}
-  <div class="row"><a class="b" href="${RATING}" target="_top">Весь рейтинг →</a>${ac?`<span class="acc"><i></i>${ac}</span>`:''}</div></div>`}
- FS.x2(document.getElementById('x2'),D.x2);
+ FS.me(document.getElementById('me'),D,r,{awards:A,link:RATING,target:'_top'});
+ FS.tariff(document.getElementById('tc'),r);
+ FS.x2(document.getElementById('x2'),D.x2,RATING,'_top');
+ const post=()=>{try{parent.postMessage({fsEmbedHeight:document.documentElement.scrollHeight},'*')}catch(e){}};post();addEventListener('resize',post);
 });
 </script></body></html>
