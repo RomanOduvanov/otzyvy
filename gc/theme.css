@@ -283,3 +283,11 @@ html body .stream-table tr.training-row[data-training-image^="//"] .stream-title
 html body .stream-table tr.training-row[data-training-image^="//"] td>a div{margin-top:0!important}
 html body .notice-widget.redesigned-notice-widget,html body .redesign-notice,html body [class*="notice-redesign"]{display:none!important}
 html body .top-notification:has(.rd-custom-notice-btn){display:none!important}
+/* \431 \430 \43D \43D \435 \440  \440 \435 \439 \442 \438 \43D \433 \430  \43D \430  \441 \442 \440 \430 \43D \438 \446 \435  \43F \43E \442 \43E \43A \430  */
+html body a[href*="reyting-7993b0"]{flex-wrap:wrap!important;gap:16px 22px!important;transition:filter .15s}
+html body a[href*="reyting-7993b0"]:hover{filter:brightness(1.06)}
+html body a[href*="reyting-7993b0"]>span:first-of-type{flex:1 1 240px!important}
+@media(max-width:600px){html body a[href*="reyting-7993b0"]{padding:18px!important}html body a[href*="reyting-7993b0"] img{width:64px!important;height:64px!important}html body a[href*="reyting-7993b0"]>span:last-of-type{width:100%;text-align:center}}
+/* \441 \43F \438 \441 \43A \438  \438  \43C \43E \434 \430 \43B \43A \438  \440 \435 \434 \430 \43A \442 \43E \440 \430  */
+.list-group-item{background:var(--fs-s1)!important;color:#fff!important;border-color:var(--fs-hair)!important}
+.list-group-item:hover{background:rgba(255,255,255,.08)!important}
