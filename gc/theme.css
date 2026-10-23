@@ -242,3 +242,24 @@ html body ul.lesson-list .item-main-td{padding:0!important}
 html body .btn-blue,html body a.btn[style*="background"],html body .create-funnel-btn,html body [class*="funnel"] .btn{background:rgba(255,255,255,.11)!important;color:#fff!important;border:0!important}
 html body ul.lesson-list li:has(.lesson-list__video-watched) .state-icon-block{background:var(--fs-l400)!important}
 html body ul.lesson-list li:has(.lesson-list__video-watched) .state-icon-block::after{content:"\2713 ";font-size:18px;font-weight:700;color:#1a0b2e;padding:0}
+
+/* \2500 \2500  \434 \43E \43C \430 \448 \43A \430 : \443 \440 \43E \432 \43D \438  (\434 \43E \43F . \43F \43E \43B \44F -\447 \435 \43A \431 \43E \43A \441 \44B ) \43A \430 \43A  \43F \43B \438 \442 \43A \438  \2500 \2500  */
+html body .answer-form .addfield-type-checkbox{position:relative;display:inline-flex;align-items:center;gap:12px;margin:12px 10px 0 0!important;padding:16px 22px 16px 52px!important;border-radius:14px;background:var(--fs-s0);box-shadow:inset 0 0 0 1px var(--fs-line);min-width:200px;cursor:pointer;transition:background .15s,box-shadow .15s}
+html body .answer-form .addfield-type-checkbox label{margin:0!important;font:500 16px var(--fs-font)!important;color:#fff!important;cursor:pointer}
+html body .answer-form .addfield-type-checkbox input[type=checkbox]{position:absolute;inset:0;width:100%!important;height:100%!important;margin:0!important;opacity:0;cursor:pointer;z-index:2}
+html body .answer-form .addfield-type-checkbox::before{content:"";position:absolute;left:20px;top:50%;width:20px;height:20px;margin-top:-10px;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.35)}
+html body .answer-form .addfield-type-checkbox:has(input:checked){background:linear-gradient(180deg,#fef8ff,#fccbff);box-shadow:none}
+html body .answer-form .addfield-type-checkbox:has(input:checked) label{color:#602364!important}
+html body .answer-form .addfield-type-checkbox:has(input:checked)::before{background:radial-gradient(circle,#602364 0 4px,transparent 4.5px);box-shadow:inset 0 0 0 1.5px #602364}
+html body .answer-form .addfield-type-checkbox:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+html body .lesson-mission-text{padding:0 0 18px!important;color:rgba(255,255,255,.8)!important;font-size:17px!important;line-height:1.55}
+html body .lesson-mission-text b{color:#fff}
+html body .answer-form .btn{background:var(--fs-btn)!important;color:var(--fs-btn-ink)!important;border-radius:12px!important;padding:14px 26px!important}
+html body .answer-form .btn-save-draft{background:rgba(255,255,255,.11)!important;color:#fff!important;box-shadow:none!important}
+html body .answer-form>div[style*="float"]{display:none}
+html body .answer-form .uploadifive-button,html body .answer-form .uploadify-button{background:rgba(255,255,255,.11)!important;border:0!important;border-radius:12px!important;color:#fff!important;font:500 14px var(--fs-font)!important}
+html body .lt-lesson-mission-block h3{font-size:30px!important;font-weight:500!important;letter-spacing:-.02em;margin:24px 0 14px!important}
+html body .answer-form .btn-send-answer{display:block!important;margin:20px 0 10px!important}
+html body .answer-form .answer-form-inner{margin-left:0!important}
+html body .answer-form textarea{width:100%!important;min-height:120px;padding:14px 16px!important}
+html body .lesson-mission-text{border:0!important}
