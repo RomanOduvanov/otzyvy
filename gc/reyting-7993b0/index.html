@@ -87,7 +87,7 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 <div class="top-l">AI-креатор с 0 до PRO · поток 2.0</div>
 <h1>Карьерная лестница <span>потока</span></h1>
 <div class="upd" id="upd"></div>
-<div class="grid"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div><div class="tc" id="tc"></div>
+<div class="grid"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div>
 <h2 id="ranks">Звания <span>и награды</span></h2><div class="ladder" id="ladder"></div>
 <h2>Медали <span>за подвиги</span></h2><div class="medals" id="medals"></div>
 <h2>Рейтинг <span>потока</span></h2>
@@ -156,7 +156,7 @@ let me=null;try{me=localStorage.getItem('rt-me-name')}catch(e){}
 let auto=null;
 function rankIdx(r){return D.ranks.findIndex(x=>x[0]===r.rank)}
 function renderMe(){const r=auto||D.rows.find(x=>x.name===me)||null;const el=document.getElementById('me');
- FS.me(el,D,r,{awards:A,link:null});FS.tariff(document.getElementById('tc'),auto);
+ FS.me(el,D,r,{awards:A,link:null});
  if(!auto){const opts='<option value="">— выбери себя —</option>'+D.rows.map(x=>`<option${r&&x===r?' selected':''}>${esc(x.name)}</option>`).join('');
   el.insertAdjacentHTML('beforeend',`<div class="pick">${r?'Это не ты?':'Найди себя:'} <select id="sel">${opts}</select></div>`);
   document.getElementById('sel').onchange=e=>{me=e.target.value;try{localStorage.setItem('rt-me-name',me)}catch(_){}renderAll()}}
