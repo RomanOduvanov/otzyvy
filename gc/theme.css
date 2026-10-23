@@ -1,0 +1,168 @@
+/* Фиолетовый стиль · тема кабинета GetCourse (Claude, 2026-10-23). Откат: «Настройки аккаунта» → Тема оформления аккаунта → «Не выбрана». */
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap");
+:root{--fs-bg:#000106;--fs-s0:#0c0c0c;--fs-s1:#161616;--fs-s2:#3e3e3e;--fs-ink:#fff;--fs-ink2:rgba(255,255,255,.55);--fs-ink3:rgba(255,255,255,.44);--fs-acc:#d77fff;--fs-l400:#c38bff;--fs-v500:#9657e8;--fs-hair:rgba(255,255,255,.06);--fs-line:rgba(255,255,255,.1);--fs-font:"Inter Tight",Inter,system-ui,-apple-system,sans-serif;
+ --fs-btn:linear-gradient(180deg,#fef8ff,#fccbff);--fs-btn-ink:#602364;--fs-btn-sh:inset 0 0 0 1px rgba(255,255,255,.6),0 16px 48px -12px rgba(252,203,255,.35)}
+
+/* ── база ── */
+html{background:var(--fs-bg)!important}
+body{background:transparent!important;color:var(--fs-ink)!important}
+body,body p,body li,body td,body th,body label,body input,body textarea,body select,body button,body h1,body h2,body h3,body h4,body h5,body .btn,body .f-text,body .text{font-family:var(--fs-font)!important}
+body{-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+ background:radial-gradient(60% 18% at 55% 100%,rgba(252,203,255,.28),transparent 100%),
+ radial-gradient(85% 42% at 55% 100%,rgba(150,87,232,.55),rgba(96,0,255,.3) 40%,rgba(28,8,56,.25) 70%,transparent 100%),var(--fs-bg)}
+body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(90deg,var(--fs-hair) 1px,transparent 1px);background-size:calc(100%/6) 100%;background-position:calc(100%/12) 0;-webkit-mask:linear-gradient(180deg,#000,transparent 75%);mask:linear-gradient(180deg,#000,transparent 75%)}
+.gc-main-content,.standard-page-content,.account-page-content,.container,.container-fluid,.lite-page,.block-set,.lt-block,.lt-block-wrapper,.lite-block-live-wrapper,.row-section,.gc-both-main-content,.page-content,.content-wrapper,.main-page-block,#gcContent{background:transparent!important;color:var(--fs-ink)!important}
+a{color:var(--fs-l400)}a:hover,a:focus{color:var(--fs-acc)}
+h1 a,.h1 a,.page-header a,h2 a{color:inherit!important}
+hr,.page-header{border-color:var(--fs-hair)!important}
+.text-muted,.help-block,small,.small{color:var(--fs-ink3)!important}
+::selection{background:rgba(195,139,255,.35)}
+
+/* ── шапка страницы ── */
+.standard-logo,.gc-account-logo{display:none!important}
+.breadcrumb{background:transparent!important;padding:0!important;margin:8px 0 14px!important;font-size:14px}
+.breadcrumb,.breadcrumb a,.breadcrumb>li+li:before{color:var(--fs-ink3)!important}
+.breadcrumb a:hover{color:var(--fs-ink)!important}
+.page-header{border:0!important;margin:0 0 24px!important;padding:0!important}
+.page-header h1,.page-header h2,h1,.h1{font-weight:500!important;letter-spacing:-.03em!important;line-height:1.06!important;color:var(--fs-ink)!important}
+.page-header h1{font-size:48px!important}
+h2,h3,h4,.h2,.h3{font-weight:500!important;letter-spacing:-.02em;color:var(--fs-ink)!important}
+
+/* ── боковое меню ── */
+.main-menu,.main-menu__inner,.main-menu__body,.main-menu__footer,.gc-account-leftbar,.leftbar{background:var(--fs-s0)!important;box-shadow:inset -1px 0 0 var(--fs-hair)!important;border:0!important}
+.main-menu-item__header,.main-menu-item a,.main-menu-item{color:var(--fs-ink2)!important}
+.main-menu-item__icon,.main-menu-item__icon *{color:var(--fs-ink2)!important;fill:currentColor}
+.main-menu-item:hover .main-menu-item__header,.main-menu-item.active .main-menu-item__header,.main-menu-item.selected .main-menu-item__header{background:rgba(255,255,255,.08)!important;color:#fff!important;border-radius:14px}
+.main-menu-item.active .main-menu-item__icon,.main-menu-item.selected .main-menu-item__icon{color:var(--fs-l400)!important}
+.main-menu-item__badge,.menu-badge{background:var(--fs-l400)!important;color:#1a0b2e!important}
+.tooltip__dropdown,.dropdown-menu,.popover{background:var(--fs-s1)!important;color:var(--fs-ink)!important;border:0!important;box-shadow:inset 0 0 0 1px var(--fs-hair),0 24px 64px rgba(0,0,0,.6)!important;border-radius:16px!important}
+.dropdown-menu>li>a{color:var(--fs-ink)!important}.dropdown-menu>li>a:hover{background:rgba(255,255,255,.08)!important}
+
+/* ── кнопки ── */
+.btn{background:rgba(255,255,255,.11);color:#fff;border-radius:12px!important;font-weight:600!important;border:0!important;transition:filter .15s,background .15s;text-shadow:none!important}
+.btn-primary,.btn-success,.btn-info,.btn-send-answer,.f-btn,.btn-lg.btn-primary,.lt-form .f-btn,button[type=submit].btn{background:var(--fs-btn)!important;color:var(--fs-btn-ink)!important;box-shadow:var(--fs-btn-sh)!important}
+.btn-primary:hover,.btn-success:hover,.btn-send-answer:hover,.f-btn:hover{filter:brightness(1.04)}
+.btn-default,.btn-link.btn-save-draft,.btn-secondary,.btn-warning{background:rgba(255,255,255,.11)!important;color:#fff!important;box-shadow:none!important}
+.btn-link{color:var(--fs-l400)!important}
+.btn-lg{min-height:52px;padding:14px 28px!important;font-size:16px!important}
+
+/* ── поля ── */
+.form-control,input[type=text],input[type=email],input[type=tel],input[type=number],input[type=password],textarea,select,.select2-container .select2-selection,.emoji-wysiwyg-editor,.new-comment-textarea{background:var(--fs-s0)!important;color:var(--fs-ink)!important;border:0!important;border-radius:14px!important;box-shadow:inset 0 0 0 1px var(--fs-line)!important;font-family:var(--fs-font)!important}
+.form-control:focus,textarea:focus,input:focus{box-shadow:inset 0 0 0 1px rgba(195,139,255,.7)!important;outline:0!important}
+.form-control::placeholder,textarea::placeholder,input::placeholder{color:var(--fs-ink3)!important}
+.select2-dropdown,.select2-results__option{background:var(--fs-s1)!important;color:var(--fs-ink)!important;border-color:var(--fs-hair)!important}
+.select2-results__option--highlighted{background:rgba(195,139,255,.25)!important}
+.control-label,.field-label,label{color:var(--fs-ink)!important;font-weight:500!important}
+input[type=checkbox],input[type=radio]{accent-color:var(--fs-l400)}
+
+/* ── карточки (общие) ── */
+.panel,.well,.modal-content,.block-box,.answer_wrapper,.lesson-header-block,.training-feedback-container,.bonus-block,.timecodes-block,.lt-lesson-mission-block .lesson-mission-wrapper,.alert,.table-responsive{border-radius:28px!important}
+.panel,.well,.modal-content,.panel-body,.panel-heading,.panel-footer{background:var(--fs-s1)!important;color:var(--fs-ink)!important;border:0!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important}
+.alert{background:var(--fs-s1)!important;color:var(--fs-ink)!important;border:0!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important}
+.alert-warning,.alert-info{box-shadow:inset 0 0 0 1px rgba(195,139,255,.35)!important}
+.table,.table>tbody>tr>td,.table>thead>tr>th{background:transparent!important;color:var(--fs-ink)!important;border-color:var(--fs-hair)!important}
+.table-striped>tbody>tr:nth-of-type(odd){background:rgba(255,255,255,.02)!important}
+.modal-backdrop.in{opacity:.75!important;background:#000!important}
+
+/* ── урок: шапка ── */
+.lesson-header-block{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;padding:36px 32px 28px!important;margin-bottom:28px!important}
+.lesson-header-block .header-view{background:transparent!important}
+.lesson-title-value,.lesson-header-block h1,.lesson-header-block h2{font-size:52px!important;font-weight:500!important;letter-spacing:-.035em!important;line-height:1.05!important;color:#fff!important}
+.lesson-description-value{color:var(--fs-ink2)!important;font-size:18px}
+.lesson-navigation{margin-top:22px!important;color:var(--fs-ink2)!important;font-size:14px}
+.lesson-navigation a{color:var(--fs-ink)!important;font-weight:500}
+.lesson-navigation a:hover{color:var(--fs-acc)!important}
+.user-state-label{color:var(--fs-ink3)!important;background:transparent!important}
+
+/* ── урок: видео и текст ── */
+.lt-video .vhi-root,.lt-video iframe,.lt-video video,.video-js,.lt-video .block-box{border-radius:24px!important;overflow:hidden}
+.lt-lesson-text,.f-text,.lesson-text,.lt-lesson-text p{color:rgba(255,255,255,.78)!important;font-size:18px;line-height:1.6}
+.lt-lesson-text b,.lt-lesson-text strong,.f-text b,.f-text strong{color:#fff!important}
+
+/* ── материалы и ссылки (bonus-block / timecodes) ── */
+html body .bonus-block,html body .timecodes-block{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;padding:28px 30px!important;margin:16px auto!important;font-family:var(--fs-font)!important;color:var(--fs-ink)!important}
+html body .bonus-label{display:inline-block;font:600 12px/1 var(--fs-font)!important;letter-spacing:.1em;text-transform:uppercase;color:#fff!important;padding:8px 14px;border-radius:99px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);margin-bottom:16px!important}
+html body .bonus-title,html body .bonus-block h3{font-family:var(--fs-font)!important;font-size:21px!important;font-weight:500!important;letter-spacing:-.01em;line-height:1.35!important;color:#fff!important;margin:0 0 8px!important}
+html body .bonus-description{color:var(--fs-ink2)!important;font-size:15px!important}
+html body .bonus-button,html body .bonus-block a.bonus-button{display:inline-flex!important;align-items:center;gap:10px;margin:10px 10px 4px 0;padding:14px 24px!important;border-radius:12px!important;background:var(--fs-btn)!important;color:var(--fs-btn-ink)!important;font:600 16px var(--fs-font)!important;box-shadow:var(--fs-btn-sh)!important;text-decoration:none!important}
+html body .bonus-button::after{content:"→";font-weight:500}
+html body .bonus-button:hover{filter:brightness(1.04);background:var(--fs-btn)!important}
+html body .timecodes-plaque{background:var(--fs-l400)!important;color:#1a0b2e!important;font:600 12px var(--fs-font)!important;letter-spacing:.1em;border-radius:99px!important}
+html body .timecode-item{color:var(--fs-ink2)!important;font-family:var(--fs-font)!important}
+html body .timecode-time,html body .timecode-item a{color:var(--fs-acc)!important;font-weight:600}
+html body .timecode-description{color:var(--fs-ink)!important}
+
+/* ── оценка урока ── */
+.training-feedback-widget .training-feedback-wrapper{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;border:0!important;border-radius:28px!important;padding:28px 30px!important;color:#fff!important}
+.training-feedback-widget .training-feedback-container{background:transparent!important;box-shadow:none!important;border:0!important;padding:0!important;border-radius:0!important}
+.training-feedback-widget .star-rating-widget{font-size:30px}
+.training-feedback-widget>h3{margin:8px 0 14px!important}
+.training-feedback-widget h3,.training-feedback-widget h4,.lt-lesson-feedback-block h3{font-size:24px!important;font-weight:500!important}
+.star-rating-widget .filled-stars,.filled-stars .fa-star,.star-rating-widget .fa-star.active{color:var(--fs-l400)!important;-webkit-text-stroke:0!important;text-shadow:none!important}
+.star-rating-widget .empty-stars,.empty-stars .fa-star{color:rgba(255,255,255,.18)!important}
+
+/* ── домашка ── */
+.lt-lesson-mission-block .lesson-mission-wrapper,.lesson-send-answer-block,.answer-form{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;border-radius:28px!important;padding:28px 30px!important;border:0!important;color:var(--fs-ink)!important}
+.lesson-send-answer-block .answer-form,.answer-form .answer-form-inner{background:transparent!important;box-shadow:none!important;padding:0!important}
+.lesson-answers-title,.self-answers h3,.other-answers h3{font-size:28px!important;font-weight:500!important;letter-spacing:-.02em;color:#fff!important;margin:36px 0 16px!important}
+.answer_wrapper,.user-answer{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;border:0!important;padding:22px 24px!important;margin-bottom:12px!important;color:var(--fs-ink)!important}
+.answer-content,.answer-main-content,.answer-main-content *{color:rgba(255,255,255,.82)!important}
+.answer-date,.user-related-data,.text-muted.answer-date{color:var(--fs-ink3)!important}
+.answer-status-label,.answer-status .label{border-radius:99px!important;padding:5px 12px!important;font:600 12px var(--fs-font)!important;letter-spacing:.04em}
+.status-accepted .answer-status-label,.label-success{background:var(--fs-l400)!important;color:#1a0b2e!important}
+.status-declined .answer-status-label,.label-danger{background:rgba(255,110,140,.18)!important;color:#ff9db3!important}
+.status-new .answer-status-label,.label-default,.label-warning,.label-info{background:rgba(255,255,255,.11)!important;color:#fff!important}
+.user-profile-link,.user-profile-link .text{color:#fff!important;font-weight:600}
+.user-profile-image,.user-image{border-radius:50%!important}
+
+/* ── комментарии ── */
+.comments-tree,.comment-list,.gc-comment-form,.comment-form-wrapper{background:transparent!important;color:var(--fs-ink)!important}
+.comments-tree .comment,.comment-text{color:rgba(255,255,255,.82)!important}
+.b-like,.b-notifications-subscribe,.like_users_list{color:var(--fs-ink3)!important}
+
+/* ── анкеты обратной связи (форма в уроке) ── */
+.lt-form-survey .block-box,.lt-form .block-box{background:var(--fs-s1)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;border-radius:28px!important;padding:40px 36px!important;color:var(--fs-ink)!important;float:none!important;margin:0 auto!important}
+.lt-form .lt-form-inner,.lt-form form{background:transparent!important;border:0!important;box-shadow:none!important}
+.lt-form .f-header,.lt-form .f-header p,.lt-form .f-header *{font-family:var(--fs-font)!important;font-weight:500!important;font-size:34px!important;line-height:1.1!important;letter-spacing:-.03em!important;color:#fff!important;text-align:left!important}
+.lt-form .field-wrapper{margin-bottom:22px!important}
+.lt-form .field-label,.lt-form .label-value{color:#fff!important;font-size:17px!important;font-weight:500!important;line-height:1.4}
+.lt-form .required-sign{color:var(--fs-acc)!important}
+.lt-form .field-description-block{color:var(--fs-ink2)!important}
+.lt-form .type-select select,.lt-form select.form-control{height:52px!important}
+.lt-form .radio label,.lt-form .checkbox label{display:flex;align-items:center;gap:10px;background:var(--fs-s0);border-radius:14px;padding:12px 16px!important;margin:0 0 8px!important;box-shadow:inset 0 0 0 1px var(--fs-line);font-weight:400!important;color:#fff!important;cursor:pointer}
+.lt-form .radio label:has(input:checked),.lt-form .checkbox label:has(input:checked){box-shadow:inset 0 0 0 1px rgba(195,139,255,.6);background:linear-gradient(180deg,rgba(150,87,232,.18),rgba(150,87,232,.06))}
+.lt-form .part-button{margin-top:10px!important}
+.lt-form .f-btn{width:100%!important;height:60px!important;font-size:17px!important}
+.global-confirm-checkbox-block,.global-confirm-checkbox-block .checkbox-text{color:var(--fs-ink2)!important;font-size:13px}
+.form-result-block{color:#fff!important}
+
+/* ── чат-кнопки, модалки, всякое ── */
+.feedback-modal,.feedback-form{background:var(--fs-s1)!important;color:#fff!important}
+.talks-widget-button,.help-widget-button{filter:saturate(.2) brightness(.9)}
+.gc-right-drawer{background:var(--fs-s1)!important;color:#fff!important}
+.nav-tabs{border-color:var(--fs-hair)!important}.nav-tabs>li>a{color:var(--fs-ink2)!important;border:0!important;border-radius:12px 12px 0 0!important}
+.nav-tabs>li.active>a,.nav-tabs>li.active>a:hover{background:rgba(255,255,255,.08)!important;color:#fff!important}
+.pagination>li>a,.pagination>li>span{background:var(--fs-s1)!important;color:#fff!important;border-color:var(--fs-hair)!important}
+.pagination>.active>a{background:var(--fs-l400)!important;color:#1a0b2e!important}
+.progress{background:rgba(255,255,255,.1)!important;border-radius:99px!important;box-shadow:none!important;height:6px!important}
+.progress-bar{background:linear-gradient(90deg,var(--fs-v500),var(--fs-acc))!important;box-shadow:none!important}
+.label-primary{background:var(--fs-l400)!important;color:#1a0b2e!important}
+
+/* ── анкеты: кнопки-варианты (свой JS в уроке: label.bordered = выбран) ── */
+html body .lt-form .field-input-block{display:flex!important;flex-wrap:wrap!important;gap:8px!important}
+html body .lt-form .field-input-block label{margin:0!important;padding:12px 18px!important;background:var(--fs-s0)!important;border:0!important;border-radius:12px!important;box-shadow:inset 0 0 0 1px var(--fs-line)!important;color:#fff!important;font:500 16px var(--fs-font)!important;transition:box-shadow .15s,background .15s;min-width:48px;text-align:center;justify-content:center}
+html body .lt-form .field-input-block label:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)!important}
+html body .lt-form .field-input-block label.bordered,html body .lt-form .field-input-block label:has(input:checked){background:linear-gradient(180deg,#fef8ff,#fccbff)!important;color:var(--fs-btn-ink)!important;box-shadow:none!important}
+html body .lt-form .label-value,html body .lt-form .f-header,html body .lt-form input[type=text],html body .lt-form .f-btn,html body button.btn-next,html body .btn-next button,html body button.btn-prev{font-family:var(--fs-font)!important}
+html body .lt-form input[type=text]{width:100%!important;height:52px;padding:0 16px!important}
+html body button.btn-next,html body .btn-next button{background:var(--fs-btn)!important;color:var(--fs-btn-ink)!important;box-shadow:var(--fs-btn-sh)!important;border-radius:12px!important;padding:14px 28px!important;font-weight:600!important}
+html body button.btn-prev{background:rgba(255,255,255,.11)!important;color:#fff!important;border-radius:12px!important;box-shadow:none!important;padding:14px 24px!important}
+html body .lt-form .progress-bar{background:linear-gradient(90deg,var(--fs-v500),var(--fs-acc))!important}
+html body .lt-form .f-btn{border-radius:12px!important}
+/* ответы учеников */
+.answer-content,.answer-main-content,.answer_wrapper .answer-content .main{background:var(--fs-s0)!important;border-radius:14px!important;padding:14px 16px!important}
+.answer_wrapper .answer-content .main,.answer-main-content .main{padding:0!important;background:transparent!important}
+.answer-date,.answer_wrapper a.answer-date{color:var(--fs-ink3)!important}
+.public-level-block,.public-level-block *{color:var(--fs-ink3)!important}
+.user-default-profile-image{filter:invert(1) brightness(.6)}
