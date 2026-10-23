@@ -271,4 +271,9 @@ html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sor
 html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-lessonSchedule h3{margin-bottom:18px!important}
 html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-header{margin-bottom:18px!important}
 html body .top-menu,html body #gcAccountRedesignedUserMenu .top-menu{background:var(--fs-s0)!important}
+html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-lessonSchedule .schedule-block,html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-lessonSchedule .bg-block{display:none!important}
+html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-html iframe.fs-embed{height:290px!important;width:100%!important;border:0!important}
+html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-html iframe.fs-sched{height:330px!important;width:100%!important;border:0!important}
+@media(max-width:900px){html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body .xdget-html iframe.fs-embed{height:640px!important}}
+html:not(:has(.standard-page-actions,.grid-view,.kv-grid-container,.dynagrid-sortable-header)) body a.fs-support:hover{box-shadow:inset 0 0 0 1px rgba(195,139,255,.5)!important}
 
