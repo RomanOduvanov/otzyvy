@@ -263,3 +263,23 @@ html body .answer-form .btn-send-answer{display:block!important;margin:20px 0 10
 html body .answer-form .answer-form-inner{margin-left:0!important}
 html body .answer-form textarea{width:100%!important;min-height:120px;padding:14px 16px!important}
 html body .lesson-mission-text{border:0!important}
+
+/* \2500 \2500  v3: \438 \43A \43E \43D \43A \438  \431 \43E \43A \43E \432 \43E \433 \43E  \43C \435 \43D \44E  (svg \447 \451 \440 \43D \44B \435  \2192  \431 \435 \43B \44B \435 ) \2500 \2500  */
+
+html body .main-menu .main-menu-item__icon svg,html body .main-menu .main-menu-item__icon img{filter:invert(1);opacity:.7}
+html body .main-menu .main-menu-item__icon svg[stroke],html body .main-menu .main-menu-item__icon svg *{transition:none}
+html body .main-menu .main-menu-item[data-active="true"] .main-menu-item__icon svg,html body .main-menu .main-menu-item:hover .main-menu-item__icon svg{opacity:1}
+html body .main-menu .rd-user-thumbnail img{filter:none;opacity:1;border-radius:50%}
+html body .main-menu .main-menu-item__header{border-radius:14px}
+html body .main-menu .main-menu-item[data-active="true"] .main-menu-item__header{background:rgba(255,255,255,.1)!important}
+
+/* \2500 \2500  v3: \43A \430 \440 \442 \43E \447 \43A \438  \43C \43E \434 \443 \43B \435 \439 : \43E \431 \43B \43E \436 \43A \430  \441 \432 \435 \440 \445 \443 , \431 \435 \437  \434 \443 \431 \43B \44F  \43D \430 \437 \432 \430 \43D \438 \44F  \2500 \2500  */
+html body .stream-table>tbody{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+html body .stream-table tr.training-row{max-width:none!important;flex:none!important}
+html body .stream-table tr.training-row td>a{position:relative!important;display:block!important;padding:20px 22px!important;overflow:hidden}
+html body .stream-table tr.training-row[data-training-image^="//"] td>a{padding-top:calc(66.667% + 16px)!important}
+html body .stream-table tr.training-row td>a::before{position:absolute!important;top:0;left:0;right:0;margin:0!important;width:100%;aspect-ratio:3/2;height:auto}
+html body .stream-table tr.training-row[data-training-image^="//"] .stream-title{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+html body .stream-table tr.training-row[data-training-image^="//"] td>a div{margin-top:0!important}
+html body .notice-widget.redesigned-notice-widget,html body .redesign-notice,html body [class*="notice-redesign"]{display:none!important}
+html body .top-notification:has(.rd-custom-notice-btn){display:none!important}
