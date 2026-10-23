@@ -1,0 +1,3 @@
+(function(){function run(){var p=document.querySelector('.lite-page');if(!p||document.querySelector('.fs-brand'))return;
+var b=document.createElement('div');b.className='fs-brand';b.innerHTML='<img src="https://romanoduvanov.github.io/otzyvy/avatar.jpg" alt=""><div><b>Роман Одуванов</b><span>Онлайн-школа · AI-креатор с 0 до PRO</span></div>';p.parentNode.insertBefore(b,p);
+var t=document.createElement('div');t.className='fs-trust';t.innerHTML='Безопасная оплата через GetCourse · <a href="https://getcourse.ru/qualityreestr~231141b34c82aa95e48810a9d1b33a79" target="_blank" rel="noopener">Знак качества GetCourse</a>';p.parentNode.insertBefore(t,p.nextSibling);}if(document.readyState!=='loading')run();else document.addEventListener('DOMContentLoaded',run);})();

@@ -1,0 +1,56 @@
+/* Фиолетовый стиль — страницы оплаты GetCourse. v1 2026-10-23 */
+:root{--fs-bg:#000106;--fs-s0:#0c0c0c;--fs-s1:#161616;--fs-ink:#fff;--fs-ink2:rgba(255,255,255,.55);--fs-ink3:rgba(255,255,255,.44);--fs-accent:#d77fff;--fs-l50:#fef8ff;--fs-l200:#fccbff;--fs-l400:#c38bff;--fs-plum:#602364;--fs-v500:#9657e8;--fs-ve:#6000ff;--fs-v900:#1c0838;--fs-hair:rgba(255,255,255,.06);--fs-font:"Inter Tight",Inter,system-ui,-apple-system,sans-serif}
+html,body{background:var(--fs-bg)!important;color:var(--fs-ink)!important;font-family:var(--fs-font)!important;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;position:relative;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+ background:radial-gradient(70% 22% at 50% 100%,rgba(252,203,255,.55) 0%,transparent 100%),
+ radial-gradient(95% 50% at 50% 100%,rgba(150,87,232,.85) 0%,rgba(96,0,255,.55) 38%,rgba(28,8,56,.45) 70%,transparent 100%)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.9;
+ background-image:linear-gradient(90deg,var(--fs-hair) 1px,transparent 1px);background-size:calc(100%/6) 100%;background-position:calc(100%/12) 0;
+ -webkit-mask:linear-gradient(180deg,#000 0%,rgba(0,0,0,.6) 55%,transparent 85%);mask:linear-gradient(180deg,#000 0%,rgba(0,0,0,.6) 55%,transparent 85%)}
+.gc-main-content,.lite-page,.lt-block,.lt-block-wrapper{background:transparent!important;position:relative;z-index:1}
+.lt-block .lt-block-wrapper{padding-top:24px!important;padding-bottom:64px!important}
+.lt-form .block-box{float:none!important;margin:0 auto!important;max-width:560px!important;width:100%!important;background:var(--fs-s1)!important;border-radius:28px!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;padding:40px 36px!important;color:var(--fs-ink)!important}
+.lt-form .builder-item{margin-bottom:16px!important}
+.lt-form .part-header{text-align:left!important;margin-bottom:28px!important}
+.lt-form .f-header,.lt-form .f-header p{font-family:var(--fs-font)!important;font-weight:500!important;font-size:32px!important;line-height:1.08!important;letter-spacing:-.03em!important;color:var(--fs-ink)!important;margin:0!important}
+.lt-form .f-header::after{content:"Выберите вариант оплаты и оставьте контакты — доступ придёт на почту";display:block;margin-top:10px;font-size:16px;line-height:1.4;letter-spacing:0;font-weight:400;color:var(--fs-ink2)}
+.lt-form .form-position{display:flex!important;align-items:center;gap:14px;width:100%;margin:0 0 10px!important;padding:18px 20px!important;background:var(--fs-s0)!important;border-radius:18px!important;box-shadow:inset 0 0 0 1px var(--fs-hair);cursor:pointer;transition:box-shadow .15s,background .15s;color:var(--fs-ink)!important}
+.lt-form .form-position:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.lt-form .form-position:has(input:checked){background:linear-gradient(180deg,rgba(150,87,232,.16),rgba(150,87,232,.06))!important;box-shadow:inset 0 0 0 1px rgba(195,139,255,.55)}
+.lt-form .form-position>div{float:none!important}
+.lt-form .form-position-checker{flex:none;display:flex}
+.lt-form .form-position-title{flex:1;min-width:0}
+.lt-form .form-position-title,.lt-form .form-position-price{line-height:1.35!important}
+.lt-form .offer-title{font-size:16px;line-height:1.35;font-weight:500;color:var(--fs-ink)!important}
+.lt-form .form-position-price{margin-left:auto;text-align:right;white-space:nowrap}
+.lt-form .final-price{font-size:18px;font-weight:600;letter-spacing:-.01em;color:var(--fs-ink)!important}
+.lt-form .form-position:has(input:checked) .final-price{color:var(--fs-accent)!important}
+.lt-form .form-position-input{-webkit-appearance:none;appearance:none;width:22px!important;height:22px!important;margin:0!important;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3);background:transparent;cursor:pointer}
+.lt-form .form-position-input:checked{background:radial-gradient(circle,var(--fs-bg) 0 4px,var(--fs-l400) 4.5px)!important;box-shadow:none}
+.lt-form .f-input,.lt-form input[type=text],.lt-form input[type=email],.lt-form input[type=tel]{height:56px!important;width:100%!important;background:var(--fs-s0)!important;color:var(--fs-ink)!important;border:0!important;border-radius:14px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;padding:0 18px!important;font:400 16px var(--fs-font)!important}
+.lt-form .f-input::placeholder{color:var(--fs-ink3)!important}
+.lt-form .f-input:focus{outline:0!important;box-shadow:inset 0 0 0 1px rgba(195,139,255,.7)!important}
+.lt-form .part-button{margin-top:24px!important}
+.lt-form .f-btn{width:100%!important;height:64px!important;border:0!important;border-radius:14px!important;background:linear-gradient(180deg,var(--fs-l50),var(--fs-l200))!important;color:var(--fs-plum)!important;font:600 18px var(--fs-font)!important;letter-spacing:-.01em;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6),0 16px 48px -12px rgba(252,203,255,.35)!important;text-shadow:none!important}
+.lt-form .f-btn[disabled]{opacity:.55}
+.lt-form .f-btn:not([disabled]):hover{filter:brightness(1.03)}
+.lt-form form.lt-form-inner,.lt-form .lt-form-inner{background:transparent!important;border:0!important;padding:0!important;box-shadow:none!important}
+.lt-form .form-position::before,.lt-form .form-position::after{display:none!important}
+.lt-form .form-position-title{flex:1 1 auto!important;width:auto!important;max-width:none!important}
+.lt-form .form-position-price,.lt-form .form-position-checker{flex:none!important;width:auto!important}
+.global-confirm-checkbox-block{margin-top:18px!important;display:flex;flex-direction:column;gap:10px;color:var(--fs-ink2)!important;font:400 13px/1.45 var(--fs-font)!important;text-align:left!important}
+.global-confirm-checkbox-block label{display:flex!important;gap:10px;align-items:flex-start;font-weight:400!important;margin:0!important;cursor:pointer}
+.global-confirm-checkbox-block .checkbox-text{color:var(--fs-ink2)!important}
+.global-confirm-checkbox-block a{color:var(--fs-ink)!important;text-decoration:none!important;border-bottom:1px solid rgba(255,255,255,.3)}
+.global-confirm-checkbox-block input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:18px;height:18px;margin:0!important;border-radius:6px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3);cursor:pointer}
+.global-confirm-checkbox-block input[type=checkbox]:checked{background:var(--fs-l400) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'><path d='M4.5 9.5l3 3 6-7' fill='none' stroke='%23000106' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/14px no-repeat;box-shadow:none}
+.fs-brand{position:relative;z-index:1;max-width:560px;margin:56px auto 20px;padding:0 16px;display:flex;align-items:center;gap:14px;font-family:var(--fs-font);color:var(--fs-ink)}
+.fs-brand img{width:48px;height:48px;border-radius:50%;object-fit:cover}
+.fs-brand b{display:block;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.fs-brand span{display:block;font-size:14px;color:var(--fs-ink2)}
+.fs-trust{position:relative;z-index:1;max-width:560px;margin:-40px auto 64px;padding:0 16px;display:block;font:400 13px var(--fs-font);color:var(--fs-ink2);text-align:center}
+.fs-trust a{color:var(--fs-ink)!important;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.3)}
+.cookies-notification{background:var(--fs-s1)!important;color:var(--fs-ink2)!important;box-shadow:inset 0 0 0 1px var(--fs-hair)!important;font-family:var(--fs-font)!important}
+.cookies-notification__actions__button{background:rgba(255,255,255,.11)!important;color:#fff!important;border:0!important;border-radius:10px!important}
+@media (max-width:600px){.lt-form .block-box{padding:28px 20px!important;border-radius:24px!important}.lt-form .f-header,.lt-form .f-header p{font-size:26px!important}.fs-brand{margin-top:28px}.lt-block .lt-block-wrapper{padding-left:12px;padding-right:12px}}
