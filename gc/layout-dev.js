@@ -256,7 +256,7 @@
       var shFile = function () { return new File([shImgs[shFmt]], shName(), { type: 'image/jpeg' }) };
       var SHT = 'Мой прогресс на курсе «AI-креатор» в OduvanovSchool';
       var shGo = function () { if (!shImgs[shFmt]) return; var fl = shFile();
-        if (navigator.canShare && navigator.canShare({ files: [fl] })) navigator.share({ files: [fl], text: SHT }).catch(function () {});
+        if (navigator.canShare && navigator.canShare({ files: [fl] })) navigator.share({ files: [fl] }).catch(function () {});
         else { shDl(); shNote('Картинка сохранена — прикрепи её в Telegram, WhatsApp или в сторис') } };
       var shDl = function () { var b = shImgs[shFmt]; if (!b) return; var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = shName(); document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove() }, 1500) };
       var shCp = function () { var b0 = shImgs[shFmt]; if (!b0) return; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': createImageBitmap(b0).then(function (b) { var cv = document.createElement('canvas'); cv.width = b.width; cv.height = b.height; cv.getContext('2d').drawImage(b, 0, 0); return new Promise(function (ok) { cv.toBlob(ok, 'image/png') }) }) })]).then(function () { shNote('Скопировано — вставь картинку в чат (Ctrl/⌘ + V)') }, function () { shDl() }) } catch (e) { shDl() } };
