@@ -1,0 +1,83 @@
+/* ===== v28: страница входа / регистрации / восстановления пароля ===== */
+body:has(.xdget-loginSystemPage) .gc-account-logo,body:has(.xdget-loginSystemPage) .empty-breadcrumbs,body:has(.xdget-loginSystemPage) .breadcrumbs{display:none!important}
+body:has(.xdget-loginSystemPage) .main-page-block{min-height:100vh;display:flex!important;align-items:center;justify-content:center;padding:48px 16px!important;box-sizing:border-box}
+body:has(.xdget-loginSystemPage) .main-page-container{width:100%!important;max-width:440px!important;padding:0!important;margin:0 auto!important}
+body:has(.xdget-loginSystemPage) .gc-main-content{padding:0!important}
+.xdget-loginSystemPage,.xdget-loginSystemPage .page-full-block,.xdget-loginSystemPage .area-PAGE{width:100%!important;max-width:none!important;padding:0!important;margin:0!important;float:none!important;background:none!important}
+
+/* бренд над карточкой */
+.fs-lg-brand{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 0 28px;color:#fff;text-decoration:none!important;animation:fsLgIn .6s cubic-bezier(.2,.8,.2,1) both}
+.fs-lg-brand svg{width:40px;height:40px;fill:#fff;flex:none}
+.fs-lg-brand svg .a{fill:#c9a2ff}
+.fs-lg-brand span{font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1;color:#fff}
+.fs-lg-brand span b{font-weight:500;color:#c9a2ff}
+
+/* карточка */
+.xdget-loginUserForm{width:100%!important;max-width:none!important;margin:0!important;padding:36px 32px 30px!important;box-sizing:border-box;border:0!important;border-radius:28px!important;background:rgba(22,22,22,.72)!important;-webkit-backdrop-filter:blur(24px) saturate(140%);backdrop-filter:blur(24px) saturate(140%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 40px 120px -40px rgba(139,69,230,.45)!important;animation:fsLgIn .6s cubic-bezier(.2,.8,.2,1) .06s both}
+@keyframes fsLgIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.xdget-loginUserForm .state-form{background:none!important;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}
+form.state-login>.login-form,form.state-register>.register-form{display:flex!important;flex-direction:column}
+.xdget-loginUserForm .state-form>*{float:none!important;margin-left:0!important;margin-right:0!important}
+
+/* заголовок и подзаголовок */
+.xdget-loginUserForm h2,.xdget-loginUserForm .xdget-header{order:1;margin:0!important;padding:0!important;font-size:30px!important;font-weight:500!important;letter-spacing:-.03em;line-height:1.15!important;color:#fff!important;text-align:left}
+.xdget-loginUserForm .fs-lg-sub{order:2;margin:10px 0 24px;font-size:15px;line-height:1.5;color:rgba(255,255,255,.55);text-wrap:pretty}
+.xdget-loginUserForm .xdget-formField:not(.xdget-socialUserFormField){order:3;margin:0 0 12px!important}
+.xdget-loginUserForm .global-confirm-checkbox-block{order:4}
+.xdget-loginUserForm .form-buttons{order:5}
+.xdget-loginUserForm .btn-register,.xdget-loginUserForm .btn-login{order:7}
+
+/* поля */
+.xdget-loginUserForm .field-label{display:none!important}
+.xdget-loginUserForm .form-control,.xdget-loginUserForm input[type=text],.xdget-loginUserForm input[type=password],.xdget-loginUserForm input[type=email],.xdget-loginUserForm input[type=tel]{display:block;width:100%!important;height:54px!important;padding:0 18px!important;border:0!important;border-radius:16px!important;outline:0!important;background:rgba(255,255,255,.06)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;font:500 16px "Inter Tight",Inter,sans-serif!important;color:#fff!important;-webkit-text-fill-color:#fff;caret-color:#c9a2ff;transition:box-shadow .2s,background .2s}
+.xdget-loginUserForm .form-control::placeholder{color:rgba(255,255,255,.36)!important;-webkit-text-fill-color:rgba(255,255,255,.36)}
+.xdget-loginUserForm .form-control:hover{background:rgba(255,255,255,.08)!important}
+.xdget-loginUserForm .form-control:focus{background:rgba(255,255,255,.08)!important;box-shadow:inset 0 0 0 1.5px #c38bff,0 0 0 5px rgba(195,139,255,.14)!important}
+.xdget-loginUserForm .form-control[disabled]{opacity:.7}
+.xdget-loginUserForm input:-webkit-autofill,.xdget-loginUserForm input:-webkit-autofill:hover,.xdget-loginUserForm input:-webkit-autofill:focus{-webkit-text-fill-color:#fff!important;-webkit-box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 0 0 100px #262428!important;transition:background-color 9999s}
+.xdget-loginUserForm .field-description-block,.xdget-loginUserForm .error-message,.xdget-loginUserForm .help-block{margin-top:6px;font-size:13px;color:#ff9c9c!important}
+.xdget-loginUserForm .has-error .form-control,.xdget-loginUserForm .form-control.error{box-shadow:inset 0 0 0 1.5px rgba(255,120,120,.7)!important}
+
+/* согласие с офертой */
+.xdget-loginUserForm .global-confirm-checkbox-block{margin:4px 0 4px!important;font-size:13px;line-height:1.45;color:rgba(255,255,255,.55)}
+.xdget-loginUserForm .global-confirm-checkbox-block label{display:flex;gap:10px;align-items:flex-start;font-weight:400!important;cursor:pointer;color:rgba(255,255,255,.55)!important}
+.xdget-loginUserForm .global-confirm-checkbox-block input{margin:2px 0 0!important;accent-color:#c38bff;width:16px;height:16px;flex:none}
+.xdget-loginUserForm .global-confirm-checkbox-block a{color:#d7b6ff!important}
+
+/* кнопки */
+.xdget-loginUserForm .form-buttons{display:flex!important;flex-direction:column;align-items:stretch;gap:0;margin:8px 0 0!important;padding:0!important}
+.xdget-loginUserForm .form-buttons::before,.xdget-loginUserForm .form-buttons::after{display:none!important}
+.xdget-loginUserForm .form-buttons>.xdget-col{width:100%!important;padding:0!important;float:none!important}
+.xdget-loginUserForm .btn-success,.xdget-loginUserForm .btn-primary,.xdget-loginUserForm .btn-enter{display:flex!important;align-items:center;justify-content:center;width:100%!important;height:54px!important;margin:6px 0 0!important;padding:0 20px!important;border:0!important;border-radius:16px!important;font:600 16px "Inter Tight",Inter,sans-serif!important;letter-spacing:-.01em;color:#602364!important;background:linear-gradient(180deg,#fef8ff,#fccbff)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6),0 16px 48px -12px rgba(252,203,255,.35)!important;text-shadow:none!important;transition:transform .15s,box-shadow .2s,filter .2s}
+.xdget-loginUserForm .btn-success:hover,.xdget-loginUserForm .btn-primary:hover{filter:brightness(1.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 18px 54px -10px rgba(252,203,255,.5)!important}
+.xdget-loginUserForm .btn-success:active,.xdget-loginUserForm .btn-primary:active{transform:scale(.985)}
+.xdget-loginUserForm .btn-link{float:none!important;display:inline-flex!important;align-items:center;justify-content:center;width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:6px 4px!important;border:0!important;background:none!important;box-shadow:none!important;font:500 14px "Inter Tight",Inter,sans-serif!important;color:rgba(255,255,255,.6)!important;text-decoration:none!important;transition:color .15s}
+.xdget-loginUserForm .btn-link:hover{color:#fff!important}
+.xdget-loginUserForm .btn-remind{align-self:center;margin-top:14px!important}
+.xdget-loginUserForm .btn-register,.xdget-loginUserForm .btn-login{align-self:center;margin-top:18px!important;padding-top:18px!important;width:100%!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)!important;border-radius:0!important;color:rgba(255,255,255,.6)!important}
+.xdget-loginUserForm .btn-register .fs-lg-q,.xdget-loginUserForm .btn-login .fs-lg-q{color:rgba(255,255,255,.45);margin-right:6px;font-weight:400}
+.xdget-loginUserForm .btn-register b,.xdget-loginUserForm .btn-login b{color:#d7b6ff;font-weight:600}
+
+/* вход через соцсети */
+.xdget-loginUserForm .xdget-socialUserFormField{order:6;float:none!important;width:100%!important;margin:22px 0 0!important;padding:0!important;text-align:center!important}
+.xdget-loginUserForm .xdget-socialUserFormField>div{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.xdget-loginUserForm .xdget-socialUserFormField>div::before{content:"или войти через";flex:1 0 100%;margin-bottom:6px;font-size:13px;color:rgba(255,255,255,.4)}
+.xdget-loginUserForm .btn-social-icon{width:46px!important;height:46px!important;margin:0!important;padding:0!important;display:inline-grid!important;place-items:center;border:0!important;border-radius:14px!important;background:rgba(255,255,255,.06)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;color:#fff!important;transition:background .15s,transform .15s}
+.xdget-loginUserForm .btn-social-icon:hover{background:rgba(255,255,255,.12)!important;transform:translateY(-1px)}
+.xdget-loginUserForm .btn-social-icon img{width:22px;height:22px;border-radius:6px}
+.xdget-loginUserForm .btn-social-icon .fa{font-size:19px!important;line-height:1!important;position:static!important;width:auto!important;border:0!important}
+.xdget-loginUserForm .btn-yandex_id{background:rgba(255,255,255,.06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%23fc3f1d'/%3E%3Cpath fill='%23fff' d='M13.3 6.5h-1c-1.9 0-2.9 1-2.9 2.4 0 1.6.7 2.4 2.1 3.3l1.2.8-3.4 5h-2.5l3-4.6C8 12.3 7 11 7 9.1 7 6.6 8.7 5 12.3 5h3.1v13.7h-2.1z'/%3E%3C/svg%3E") center/22px no-repeat!important}
+.xdget-loginUserForm .btn-yandex_id i{display:none}
+
+/* «вы уже вошли» */
+.xdget-loginUserForm .logined-form .html-content{margin:12px 0 18px;font-size:15px;color:rgba(255,255,255,.55)}
+.xdget-loginUserForm .logined-form .html-content br{display:none}
+.xdget-loginUserForm .logined-form .form-buttons{flex-direction:column}
+.xdget-loginUserForm .logined-form .btn-logout{align-self:center;margin-top:14px!important}
+
+/* под карточкой */
+.xdget-loginSystemPage .text-center .xdget-html{padding-top:22px!important}
+.xdget-loginSystemPage .text-center .html-content a{font-size:14px;color:rgba(255,255,255,.45)!important;text-decoration:none!important;transition:color .15s}
+.xdget-loginSystemPage .text-center .html-content a:hover{color:#fff!important}
+
+@media (max-width:520px){.xdget-loginUserForm{padding:28px 20px 24px!important;border-radius:24px!important}.xdget-loginUserForm h2,.xdget-loginUserForm .xdget-header{font-size:26px!important}.fs-lg-brand span{font-size:22px}.fs-lg-brand svg{width:34px;height:34px}}
