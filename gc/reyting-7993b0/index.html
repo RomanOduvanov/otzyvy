@@ -415,9 +415,9 @@ FS.shareCard=async function(D,r,o){
   font(400,Math.round(30*s));['Наведи камеру на QR — расскажем,','как попасть на обучение'].forEach((t,j)=>T(t,X,Y+QB*.78+j*40*s,'rgba(255,255,255,.85)'))};
 
  /* раскладки */
- if(FMT==='story'){const M=80,w=W-2*M;light(540,2230,868,560);header(M,72,w);hero(M,200,w,240,104);stats(M,500,w,2,196,92);progress(M,924,w,176);ach(M,1116,w,252,1);cta(M,1448,w,252,72)}
+ if(FMT==='story'){const M=80,w=W-2*M;light(540,2230,868,560);header(M,72,w);hero(M,200,w,240,104);stats(M,500,w,2,196,92);progress(M,924,w,176);ach(M,1116,w,296,1);cta(M,1492,w,252,72)}
  else if(FMT==='post'){const M=64,w=W-2*M;light(540,1400,900,470);header(M,52,w);hero(M,136,w,176,84);stats(M,340,w,4,150,60,1);progress(M,506,w,106,1);ach(M,628,w,184,0,1);cta(M,844,w,180,56)}
- else{const M=96,cw=(W-2*M-48)/2,RX=M+cw+48;light(960,1560,1500,620);header(M,72,W-2*M);hero(M,180,cw,260,104);stats(M,488,cw,2,220,92);progress(RX,180,cw,160);ach(RX,356,cw,252,1);cta(RX,684,cw,260,68)}
+ else{const M=96,cw=(W-2*M-48)/2,RX=M+cw+48;light(960,1560,1500,620);header(M,72,W-2*M);hero(M,180,cw,260,104);stats(M,488,cw,2,220,92);progress(RX,180,cw,160);ach(RX,356,cw,270,1);cta(RX,684,cw,260,68)}
 
  /* зерно ~6% */
  const nz=x.getImageData(0,0,W,H),d=nz.data;for(let k=0;k<d.length;k+=4){const v=(Math.random()-.5)*14;d[k]+=v;d[k+1]+=v;d[k+2]+=v}x.putImageData(nz,0,0);
