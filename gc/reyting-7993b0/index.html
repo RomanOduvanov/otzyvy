@@ -141,6 +141,24 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 .pf-st{grid-template-columns:repeat(3,1fr)}.pf-st div:nth-child(4){box-shadow:none}.pf-lad{grid-template-columns:repeat(3,1fr)}.pf-ach{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){.vip,.fire,.crown,.pf-aw,.pf-a.got::after{animation:none!important}}
 
+/* появление профиля */
+@keyframes pfIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pfPop{0%{opacity:0;transform:scale(.85)}70%{transform:scale(1.04)}100%{opacity:1;transform:none}}
+@keyframes pfBar{from{width:0}}
+.pf>*{animation:pfIn .55s cubic-bezier(.2,.8,.2,1) both}
+.pf>*:nth-child(1){animation-delay:.02s}.pf>*:nth-child(2){animation-delay:.1s}.pf>*:nth-child(3){animation-delay:.16s}.pf>*:nth-child(4){animation-delay:.22s}.pf>*:nth-child(5){animation-delay:.26s}.pf>*:nth-child(6){animation-delay:.3s}.pf>*:nth-child(7){animation-delay:.34s}
+.pf-aw{animation:pfPop .6s cubic-bezier(.2,.8,.2,1) .05s both}
+.pf-place{animation:pfPop .5s cubic-bezier(.2,.8,.2,1) .45s both}
+.pf-c{animation:pfPop .4s ease .25s both}.pf-c:nth-child(2){animation-delay:.32s}.pf-c:nth-child(3){animation-delay:.39s}.pf-c:nth-child(4){animation-delay:.46s}
+.pf-bar i{animation:pfBar 1.1s cubic-bezier(.2,.8,.2,1) .35s both}
+.pf-rg{animation:pfPop .45s ease both}
+.pf-a{animation:pfIn .5s cubic-bezier(.2,.8,.2,1) both}
+.pf-rg:nth-child(1){animation-delay:0.35s}.pf-rg:nth-child(2){animation-delay:0.40s}.pf-rg:nth-child(3){animation-delay:0.45s}.pf-rg:nth-child(4){animation-delay:0.50s}.pf-rg:nth-child(5){animation-delay:0.55s}.pf-rg:nth-child(6){animation-delay:0.60s}
+.pf-a:nth-child(1){animation-delay:0.45s}.pf-a:nth-child(2){animation-delay:0.50s}.pf-a:nth-child(3){animation-delay:0.55s}.pf-a:nth-child(4){animation-delay:0.60s}.pf-a:nth-child(5){animation-delay:0.65s}.pf-a:nth-child(6){animation-delay:0.70s}.pf-a:nth-child(7){animation-delay:0.75s}.pf-a:nth-child(8){animation-delay:0.80s}.pf-a:nth-child(9){animation-delay:0.85s}
+@keyframes pfInDim{from{opacity:0;transform:translateY(14px)}to{opacity:.4;transform:none}}
+.pf-rg:not(.got){animation-name:pfInDim}
+@media(prefers-reduced-motion:reduce){.pf>*,.pf-aw,.pf-place,.pf-c,.pf-bar i,.pf-rg,.pf-a{animation:none!important}}
+
 @media(max-width:860px){.grid .mc,.grid .x2{padding:20px}}
 
 .th button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--ink3);font-size:12px;border-radius:7px;padding:3px 6px;margin:-3px -6px;transition:color .15s,background .15s;user-select:none;white-space:nowrap}
@@ -245,7 +263,11 @@ const FS={
   <div class="pf-lad">${D.ranks.map((x,j)=>`<div class="pf-rg${j<=i?' got':''}${j===i?' cur':''}" title="${esc(x[0])} · ${fmt(x[1])}"><i style="background-image:url(${A}${x[2]}.jpg)"></i><span>${esc(x[0])}</span></div>`).join('')}</div>
   <div class="pf-h2">Достижения <small>${got} из ${FS.ACH.length}</small></div>
   <div class="pf-ach">${FS.ACH.slice().sort((a,b)=>b[2](r,S)-a[2](r,S)).map(a=>{const g=a[2](r,S);return `<div class="pf-a${g?' got':''}"><div class="pf-ai">${ic(a[3])}${g?'':'<em>'+ic('M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z')+'</em>'}</div><b>${esc(a[0])}</b><span>${g?'получено':esc(a[1])}</span></div>`}).join('')}</div></div>`;
-  FS.nbsp(el)},
+  FS.nbsp(el);FS.count(el)},
+ /* плавный счётчик чисел в профиле */
+ count(el){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;el.querySelectorAll('.pf-st b,.pf-pv').forEach((b,k)=>{const n=b.firstChild;if(!n||n.nodeType!==3)return;const m=n.nodeValue.match(/^([+]?)([\d\s\u00a0]+)(%?)$/);if(!m)return;
+  const to=parseInt(m[2].replace(/\D/g,''),10);if(!to)return;const t0=performance.now()+120+k*70,d=900;n.nodeValue=m[1]+'0'+m[3];
+  const step=t=>{const p=Math.min(1,Math.max(0,(t-t0)/d)),e=1-Math.pow(1-p,3);n.nodeValue=m[1]+FS.fmt(Math.round(to*e))+m[3];if(p<1)requestAnimationFrame(step)};requestAnimationFrame(step)})},
  STAR:'<svg class="vip" viewBox="0 0 24 24" aria-label="Премиум Amazon"><defs><linearGradient id="vgp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3c6ff"/><stop offset=".5" stop-color="#c38bff"/><stop offset="1" stop-color="#8b45e6"/></linearGradient></defs><path fill="url(#vgp)" d="M12 2.2l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>',
  SUPPORT:'https://t.me/zabota_oduvanov',
  TOP_TARIFF:'Премиум Амазон',
