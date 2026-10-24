@@ -4,7 +4,7 @@
 (function () {
   try { sessionStorage.removeItem('fsNoticeOff') } catch (e) {}
   /* короткая заставка (рисует тема с первого кадра): снимаем, когда страница загрузилась, но не раньше 0.6 с от начала загрузки и не позже 3 с */
-  (function () { var R = document.documentElement, done = false, go = function () { if (done) return; done = true; R.classList.add('fs-ready') };
+  (function () { var R = document.documentElement, done = false, go = function () { if (done) return; done = true; R.classList.add('fs-ready'); setTimeout(function () { R.classList.add('fs-done') }, 450) };
     var at = function () { setTimeout(go, Math.max(0, 600 - (window.performance && performance.now ? performance.now() : 600))) };
     if (document.readyState === 'complete') at(); else { window.addEventListener('load', at); document.addEventListener('DOMContentLoaded', function () { setTimeout(go, 2200) }) }
     setTimeout(go, 3000); window.addEventListener('pageshow', function (e) { if (e.persisted) go() }); window.FS_READY = go })();
