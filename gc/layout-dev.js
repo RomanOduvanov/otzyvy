@@ -9,6 +9,9 @@
   document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.notice-top-panel .close-link'); if (!c) return;
     var p = c.closest('.notice-top-panel'), t = p.textContent.replace(/\s+/g, ' ').trim();
     [].forEach.call(document.querySelectorAll('.notice-top-panel'), function (el) { if (el.textContent.replace(/\s+/g, ' ').trim() === t) el.style.setProperty('display', 'none', 'important') }) }, true);
+  /* высота виджета «Актуальные события + кейсы» в списке тренингов */
+  window.addEventListener('message', function (e) { if (e.origin !== 'https://romanoduvanov.github.io' || !e.data || !e.data.fsSchedH) return;
+    [].forEach.call(document.querySelectorAll('iframe.fs-sched'), function (f) { f.style.setProperty('height', Math.ceil(e.data.fsSchedH) + 'px', 'important') }) });
   if (!/^\/(pl\/)?teach\/control\/schedule/.test(location.pathname)) return;
   var ROOT = 935917158, SKIP = {935952152: 1};
   var MON = {'янв':0,'фев':1,'мар':2,'апр':3,'мая':4,'май':4,'июн':5,'июл':6,'авг':7,'сен':8,'окт':9,'ноя':10,'дек':11};

@@ -86,7 +86,7 @@ const FS={
  tariff(el,r){if(!r||(!r.tar&&!r.acc)){el.style.display='none';return}const a=FS.access(r.acc),top=r.tar===FS.TOP_TARIFF;
   el.innerHTML=`<div class="tc-i"><div class="mc-l">Твой тариф</div><div class="tc-v">${FS.esc(r.tar||'—')}${top?'<em>максимальный</em>':''}</div></div>
    ${a?`<div class="tc-i"><div class="mc-l">Доступ к курсу</div><div class="tc-v">${a[0]}<small>${a[1]}</small></div></div>`:''}
-   ${top?`<div class="tc-n">У тебя открыты все модули, включая Amazon</div>`:`<a class="tc-b" href="${FS.SUPPORT}" target="_blank" rel="noopener">Повысить тариф <i>→</i></a>`}`},
+   ${top?`<span class="tc-b off" aria-disabled="true" title="У тебя открыты все модули, включая Amazon">Максимальный тариф <i>✓</i></span>`:`<a class="tc-b" href="${FS.SUPPORT}" target="_blank" rel="noopener">Повысить тариф <i>→</i></a>`}`},
  /* карточка x2. link — куда ведёт «карьерная лестница» */
  x2(el,X,link,target){
   const lad=`<a class="x2-a" href="${link}" target="${target||'_self'}">карьерной лестнице</a>`;
