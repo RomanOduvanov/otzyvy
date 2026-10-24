@@ -87,6 +87,21 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 .mc-st b{font-size:18px}.mc-st div{padding:10px 12px}.tc{padding:16px 18px}.tc-b,.tc-n{margin-left:0;width:100%;justify-content:center}}
 
 @media(max-width:860px){.grid .mc,.grid .x2{padding:20px}}
+
+.th button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--ink3);font-size:12px;border-radius:7px;padding:3px 6px;margin:-3px -6px;transition:color .15s,background .15s;user-select:none;white-space:nowrap}
+.th button:hover{color:#fff;background:rgba(255,255,255,.06)}.th button.r{justify-self:end}
+.th button::after{content:"";width:8px;height:8px;opacity:0;transition:opacity .15s,transform .15s;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/8px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/8px no-repeat}
+.th button:hover::after{opacity:.5}.th button.on{color:#d77fff}.th button.on::after{opacity:1}.th button.on.asc::after{transform:rotate(180deg)}
+.vip{width:17px;height:17px;flex:none;margin-left:-4px;filter:drop-shadow(0 0 6px rgba(195,139,255,.65));animation:vipPulse 2.8s ease-in-out infinite}
+@keyframes vipPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(195,139,255,.5));transform:scale(1)}50%{filter:drop-shadow(0 0 10px rgba(215,127,255,.95));transform:scale(1.08)}}
+.tr.vipr .nm img{box-shadow:0 0 0 2px #0f0f0f,0 0 0 3.5px #c38bff,0 0 14px rgba(195,139,255,.55)}
+.tf.t4{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:5px;padding:5px 11px 5px 9px;color:#fff!important;font-weight:600;background:linear-gradient(110deg,#6724ad,#9657e8 45%,#d77fff)!important;box-shadow:0 0 0 1px rgba(243,198,255,.45) inset,0 4px 16px rgba(150,87,232,.45)}
+.tf.t4::before{content:"★";font-size:11px;color:#fde7ff;text-shadow:0 0 6px rgba(255,255,255,.8)}
+.tf.t4::after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:45%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-20deg);animation:vipShine 3.4s ease-in-out infinite}
+@keyframes vipShine{0%,60%{left:-60%}100%{left:130%}}
+.tf.t3{background:rgba(195,139,255,.14)!important;color:#d9b8ff!important}
+@media(prefers-reduced-motion:reduce){.vip,.tf.t4::after{animation:none}}
+@media(max-width:860px){.th#th{display:flex!important;flex-wrap:wrap;gap:6px;padding:12px 14px}.th#th button{margin:0;padding:7px 11px;border-radius:99px;background:rgba(255,255,255,.05)}.th#th button[data-k=place]{display:none}.th#th button.on{background:rgba(195,139,255,.16)}.tr .tf.t4{display:none!important}.nm{min-width:0;white-space:nowrap}}
 </style></head><body><div class="w">
 <div class="top-l">AI-креатор с 0 до PRO · поток 2.0</div>
 <h1>Карьерная лестница <span>потока</span></h1>
@@ -96,7 +111,7 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 <h2>Медали <span>за подвиги</span></h2><div class="medals" id="medals"></div>
 <h2>Рейтинг <span>потока</span></h2>
 <div class="search"><input id="q" placeholder="Найди себя по имени"></div>
-<div class="card tbl"><div class="th"><div>#</div><div>Ученик</div><div>Звание</div><div>Тариф</div><div>Уроки</div><div>Домашки</div><div>В срок x2</div><div style="text-align:right">Баллы</div></div><div id="rows"></div></div>
+<div class="card tbl"><div class="th" id="th"><button data-k="place">#</button><button data-k="name">Ученик</button><button data-k="rank">Звание</button><button data-k="tar">Тариф</button><button data-k="lessons">Уроки</button><button data-k="hw">Домашки</button><button data-k="ontime">В срок x2</button><button data-k="pts" class="r">Баллы</button></div><div id="rows"></div></div>
 <h2>Как зарабатывать <span>баллы</span></h2>
 <div class="rules"><div class="card rl"><b>10</b><span>за каждый пройденный урок</span></div><div class="card rl"><b>15</b><span>за анкету обратной связи</span></div><div class="card rl"><b>20 · 40 · 70</b><span>за домашку: лёгкий, средний, максимальный уровень — после «Принято» куратором</span></div><div class="card rl"><b>×2</b><span>уроки и анкеты в первые 48 часов после открытия модуля, домашки — в первые 72 часа</span></div></div>
 <div class="foot">Рейтинг обновляется утром и вечером. Дизайнер-миллионер — только при 2500 баллах и 80% заданий, сделанных в срок x2.</div>
@@ -160,7 +175,12 @@ const D={"ah": ["613e3904804de0de"], "schedule": [{"name": "Модуль 00 — 
 document.getElementById('upd').textContent='Обновлено '+D.updated+' · '+D.n+' учеников';
 const MED=[['Ранняя пташка','уроки модуля в срок x2'],['Голос потока','8+ анкет обратной связи'],['Максималист','3 домашки на максимальном уровне'],['Первый в потоке','первым сдал принятую домашку']];
 let me=null;try{me=localStorage.getItem('rt-me-name')}catch(e){}
-let auto=null,adm=null;const ids={};const TF=['','','Премиум','Премиум Амазон'];
+let auto=null,adm=null;let SK='place',SD=1;
+const RI=x=>D.ranks.findIndex(r=>r[0]===x.rank),TI=x=>x.tar==='Премиум Амазон'?2:x.tar?1:0;
+const KV={place:x=>-x.place,name:x=>x.name,rank:x=>RI(x)*1e5+x.pts,tar:x=>TI(x)*1e5+x.pts,lessons:x=>x.lessons,hw:x=>x.hw,ontime:x=>x.ontime,pts:x=>x.pts};
+function sorted(){const f=KV[SK];return D.rows.slice().sort((a,b)=>{const va=f(a),vb=f(b);let c=typeof va==='string'?va.localeCompare(vb,'ru'):vb-va;if(SK==='name')c=va.localeCompare(vb,'ru');return (c||a.place-b.place)*SD})}
+function syncTh(){document.querySelectorAll('#th button').forEach(b=>{const on=b.dataset.k===SK&&!(SK==='place'&&SD===1);b.classList.toggle('on',on);b.classList.toggle('asc',on&&SD===-1);b.title=b.dataset.k==='name'?'Сортировать по алфавиту':'Сортировать: лучшие сверху / снизу'})}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('#th button');if(!b)return;const k=b.dataset.k;if(SK===k)SD=-SD;else{SK=k;SD=1}renderAll();syncTh()});const ids={};const TF=['','','Премиум','Премиум Амазон'];
 function tfc(x){const i=TF.indexOf(x.tar);return x.tar?`<div class="tf t${i+1}">${esc(x.tar.replace('Амазон','Amazon'))}</div>`:'<div class="tf">—</div>'}
 function nmh(x){const n=esc(x.name);return adm&&ids[x.h]?`<a href="https://oduvanovroman.getcourse.ru/user/control/user/update/id/${ids[x.h]}" target="_blank" title="Профиль в GetCourse">${n}</a>`:n}
 function rankIdx(r){return D.ranks.findIndex(x=>x[0]===r.rank)}
@@ -174,7 +194,7 @@ function renderAll(){const r=renderMe();
  document.getElementById('ladder').innerHTML=D.ranks.map((x,i)=>`<div class="card rk${!r||rankIdx(r)>=i?' got':''}${r&&rankIdx(r)===i?' cur':''}"><div class="im" style="background-image:url(${A}${x[2]}.jpg)"></div><div class="rn">${x[0]}</div><div class="rp">${fmt(x[1])} баллов${i===5?' + скорость':''}</div></div>`).join('');
  document.getElementById('medals').innerHTML=MED.map(m=>`<div class="md${r&&r.medals.includes(m[0])?'':' off'}"><i></i>${m[0]} <small>${m[1]}</small></div>`).join('');
  const q=(document.getElementById('q').value||'').toLowerCase();
- document.getElementById('rows').innerHTML=D.rows.filter(x=>!q||x.name.toLowerCase().includes(q)).map(x=>`<div class="tr p${x.place}${r&&x===r?' me':''}"><div class="pl">${x.place}</div><div class="nm"><img src="${A}${x.img}.jpg" alt="">${nmh(x)}${r&&x===r?' · ты':''}</div><div class="st c">${esc(x.rank)}</div>${tfc(x)}<div class="c">${x.lessons}</div><div class="c">${x.hw}</div><div class="c acc2">${x.ontime}%</div><div class="pt">${fmt(x.pts)}</div></div>`).join('')}
+ document.getElementById('rows').innerHTML=sorted().filter(x=>!q||x.name.toLowerCase().includes(q)).map(x=>`<div class="tr p${x.place}${r&&x===r?' me':''}${x.tar==='Премиум Амазон'?' vipr':''}"><div class="pl">${x.place}</div><div class="nm"><img src="${A}${x.img}.jpg" alt="">${nmh(x)}${x.tar==='Премиум Амазон'?'<svg class="vip" viewBox="0 0 24 24" aria-label="Премиум Amazon"><defs><linearGradient id="vg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3c6ff"/><stop offset=".5" stop-color="#c38bff"/><stop offset="1" stop-color="#8b45e6"/></linearGradient></defs><path fill="url(#vg)" d="M12 2.2l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>':''}${r&&x===r?' · ты':''}</div><div class="st c">${esc(x.rank)}</div>${tfc(x)}<div class="c">${x.lessons}</div><div class="c">${x.hw}</div><div class="c acc2">${x.ontime}%</div><div class="pt">${fmt(x.pts)}</div></div>`).join('')}
 document.getElementById('q').oninput=renderAll;
 FS.x2(document.getElementById('x2'),D.x2,'#ranks','_self');FS.nbsp(document.getElementById('x2'));
 const u=FS.uid();
