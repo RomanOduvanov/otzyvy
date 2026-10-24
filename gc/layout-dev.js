@@ -2,6 +2,9 @@
    Работает только на /teach/control/schedule; уроки берутся из тренинга самого ученика, поэтому
    видны только доступные ему модули. */
 (function () {
+  /* уведомления GetCourse: помечаем тип (письмо / остальное) для иконки — на всех страницах */
+  var nt = 0, ni = setInterval(function () { [].forEach.call(document.querySelectorAll('.notice-top-panel:not([data-fs-kind])'), function (el) {
+    el.setAttribute('data-fs-kind', /почт|e-?mail/i.test(el.textContent) ? 'email' : 'info') }); if (++nt > 40) clearInterval(ni) }, 500);
   if (!/^\/(pl\/)?teach\/control\/schedule/.test(location.pathname)) return;
   var ROOT = 935917158, SKIP = {935952152: 1};
   var MON = {'янв':0,'фев':1,'мар':2,'апр':3,'мая':4,'май':4,'июн':5,'июл':6,'авг':7,'сен':8,'окт':9,'ноя':10,'дек':11};
