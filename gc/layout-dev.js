@@ -2,13 +2,12 @@
    Работает только на /teach/control/schedule; уроки берутся из тренинга самого ученика, поэтому
    видны только доступные ему модули. */
 (function () {
+  try { sessionStorage.removeItem('fsNoticeOff') } catch (e) {}
   /* уведомления GetCourse: помечаем тип (письмо / остальное) для иконки — на всех страницах */
   var nt = 0, ni = setInterval(function () { [].forEach.call(document.querySelectorAll('.notice-top-panel:not([data-fs-kind])'), function (el) {
-    el.setAttribute('data-fs-kind', /почт|e-?mail/i.test(el.textContent) ? 'email' : 'info');
-    try { if ((JSON.parse(sessionStorage.getItem('fsNoticeOff') || '[]')).indexOf(el.textContent.replace(/\s+/g, ' ').trim()) >= 0) el.style.setProperty('display', 'none', 'important') } catch (e) {} }); if (++nt > 40) clearInterval(ni) }, 500);
+    el.setAttribute('data-fs-kind', /почт|e-?mail/i.test(el.textContent) ? 'email' : 'info'); }); if (++nt > 40) clearInterval(ni) }, 500);
   document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.notice-top-panel .close-link'); if (!c) return;
     var p = c.closest('.notice-top-panel'), t = p.textContent.replace(/\s+/g, ' ').trim();
-    try { var off = JSON.parse(sessionStorage.getItem('fsNoticeOff') || '[]'); if (off.indexOf(t) < 0) off.push(t); sessionStorage.setItem('fsNoticeOff', JSON.stringify(off)) } catch (e2) {}
     [].forEach.call(document.querySelectorAll('.notice-top-panel'), function (el) { if (el.textContent.replace(/\s+/g, ' ').trim() === t) el.style.setProperty('display', 'none', 'important') }) }, true);
   if (!/^\/(pl\/)?teach\/control\/schedule/.test(location.pathname)) return;
   var ROOT = 935917158, SKIP = {935952152: 1};
