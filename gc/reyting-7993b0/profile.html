@@ -237,71 +237,80 @@ const FS={
    const v={h:p(h),m:p(m),s:p(s)};el.querySelectorAll('[data-k]').forEach(b=>{if(b.textContent!==v[b.dataset.k])b.textContent=v[b.dataset.k]})};
   draw();clearInterval(el._t);el._t=setInterval(draw,1000)}
 };
-/* карточка «Поделиться результатом»: 1080×1920 (формат сторис), рисуется на canvas → PNG.
-   o: {awards:'../awards/', brand:'../brand/', ava: url фото ученика или null, flow:'AI-креатор · поток 2.0'} */
+/* карточка «Поделиться результатом» в фиолетовом стиле экосистемы: 1080×1920 (сторис) → PNG.
+   Нейтральные поверхности, цвет — только свет снизу и акцент; без неона, теней у карточек и градиентов на буквах.
+   o: {awards:'../awards/', brand:'../brand/', ava: url фото или null, flow} */
 FS.shareCard=async function(D,r,o){
- const W=1080,H=1920,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+ const W=1080,H=1920,M=80,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
  const S=FS.status(D),tp=S.top[r.h],hot=S.hot[r.h],vip=r.tar===FS.TOP_TARIFF,fmt=FS.fmt;
- const i=D.ranks.findIndex(z=>z[0]===r.rank),cur=D.ranks[i],nx=D.ranks[i+1],lo=cur[1],hi=nx?nx[1]:lo,pc=nx?Math.max(.03,Math.min(1,(r.pts-lo)/(hi-lo))):1;
- const F='"Inter Tight",Inter,system-ui,sans-serif',font=(w,s)=>x.font=w+' '+s+'px '+F;
- try{await Promise.all(['400','500','600','700'].map(w=>document.fonts.load(w+' 40px "Inter Tight"')))}catch(e){}
+ const i=D.ranks.findIndex(z=>z[0]===r.rank),cur=D.ranks[i],nx=D.ranks[i+1],lo=cur[1],hi=nx?nx[1]:lo,pc=nx?Math.max(.02,Math.min(1,(r.pts-lo)/(hi-lo))):1;
+ const F='"Inter Tight",Inter,system-ui,sans-serif',font=(w,s)=>{x.font=w+' '+s+'px '+F;try{x.letterSpacing=(s>=48?-.03*s:s<=24?.02*s:-.01*s)+'px'}catch(e){}};
+ try{await Promise.all(['400','500','600'].map(w=>document.fonts.load(w+' 40px "Inter Tight"')))}catch(e){}
  const img=src=>new Promise(ok=>{if(!src)return ok(null);const m=new Image();m.crossOrigin='anonymous';m.onload=()=>ok(m);m.onerror=()=>ok(null);m.src=src});
  const rr=(X,Y,w,h,R)=>{x.beginPath();x.roundRect?x.roundRect(X,Y,w,h,R):(x.moveTo(X+R,Y),x.arcTo(X+w,Y,X+w,Y+h,R),x.arcTo(X+w,Y+h,X,Y+h,R),x.arcTo(X,Y+h,X,Y,R),x.arcTo(X,Y,X+w,Y,R),x.closePath())};
- const card=(X,Y,w,h,R=48)=>{rr(X,Y,w,h,R);x.fillStyle='#141416';x.fill();x.strokeStyle='rgba(255,255,255,.08)';x.lineWidth=2;x.stroke()};
- const tw=t=>x.measureText(t).width;
- const fit=(t,w,s,wt)=>{font(wt,s);while(tw(t)>w&&s>30){s-=2;font(wt,s)}return s};
- const wrap=(t,X,Y,w,lh,max=3)=>{const ws=t.split(' ');let line='',n=0;for(let k=0;k<ws.length;k++){const tt=line?line+' '+ws[k]:ws[k];if(tw(tt)>w&&line){x.fillText(line,X,Y+n*lh);n++;line=ws[k];if(n>=max-1){line=ws.slice(k).join(' ');break}}else line=tt}x.fillText(line,X,Y+n*lh);return n+1};
- const mark=(X,Y,s,fg='#fff',ac='#c9a2ff')=>{const u=s/64;[[0,0],[0,1],[1,0],[1,2],[2,0],[2,1],[2,2],[0,2]].forEach(([a,b])=>{rr(X+b*22*u,Y+a*22*u,20*u,20*u,4*u);x.fillStyle=(a===0&&b===2)?ac:fg;x.fill()})};
+ const card=(X,Y,w,h,R=40)=>{rr(X,Y,w,h,R);x.fillStyle='#161616';x.fill();rr(X+.5,Y+.5,w-1,h-1,R);x.strokeStyle='rgba(255,255,255,.06)';x.lineWidth=1;x.stroke()};
+ const tw=t=>x.measureText(t).width,T=(t,X,Y,col)=>{x.fillStyle=col;x.fillText(t,X,Y)};
+ const W2='rgba(255,255,255,.55)',W3='rgba(255,255,255,.44)',ACC='#d77fff';
+ const mark=(X,Y,s)=>{const u=s/64;[[0,0],[0,1],[1,0],[1,2],[2,0],[2,1],[2,2],[0,2]].forEach(([a,b])=>{rr(X+b*22*u,Y+a*22*u,20*u,20*u,4*u);x.fillStyle=(a===0&&b===2)?'#c9a2ff':'#fff';x.fill()})};
+ const chip=(t,X,Y,kind)=>{font(600,22);const w=tw(t)+40;rr(X,Y,w,48,24);if(kind==='lil'){x.fillStyle='#c38bff';x.fill();T(t,X+20,Y+25,'#1a0b2e')}else{rr(X+.5,Y+.5,w-1,47,24);x.strokeStyle='rgba(255,255,255,.3)';x.lineWidth=1;x.stroke();T(t,X+20,Y+25,'#fff')}return w};
  const [ph,rk,qr]=await Promise.all([img(o.ava),img(o.awards+cur[2]+'.jpg'),img(o.brand+'qr-care.svg')]);
+ x.textBaseline='middle';
 
- /* фон */
- x.fillStyle='#09090b';x.fillRect(0,0,W,H);
- let g=x.createRadialGradient(540,2080,0,540,2080,1150);g.addColorStop(0,'rgba(139,69,230,.75)');g.addColorStop(.45,'rgba(139,69,230,.22)');g.addColorStop(1,'rgba(139,69,230,0)');x.fillStyle=g;x.fillRect(0,0,W,H);
- g=x.createRadialGradient(140,120,0,140,120,760);g.addColorStop(0,'rgba(201,162,255,.16)');g.addColorStop(1,'rgba(201,162,255,0)');x.fillStyle=g;x.fillRect(0,0,W,H);
- x.strokeStyle='rgba(255,255,255,.035)';x.lineWidth=2;for(let k=180;k<W;k+=180){x.beginPath();x.moveTo(k,0);x.lineTo(k,H);x.stroke()}
+ /* фон: чистый чёрный, вертикальные световые линии сверху, один источник света снизу */
+ x.fillStyle='#000106';x.fillRect(0,0,W,H);
+ for(let k=1;k<6;k++){const X=k*W/6,g=x.createLinearGradient(0,0,0,900);g.addColorStop(0,'rgba(255,255,255,.06)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(X,0,1,900)}
+ x.save();x.translate(540,2230);x.scale(1.55,1);const L=x.createRadialGradient(0,0,0,0,0,560);
+ L.addColorStop(0,'#6000ff');L.addColorStop(.55,'#7440f0');L.addColorStop(.74,'#9657e8');L.addColorStop(.8,'#dcaefc');L.addColorStop(.85,'#9a5be8');L.addColorStop(.91,'#3a1270');L.addColorStop(.97,'#1c0838');L.addColorStop(1,'rgba(0,1,6,0)');
+ x.fillStyle=L;x.fillRect(-700,-700,1400,1400);x.restore();
+ x.save();x.filter='blur(60px)';x.globalAlpha=.35;x.translate(540,2230);x.scale(1.55,1);x.beginPath();x.arc(0,0,452,Math.PI,2*Math.PI);x.strokeStyle='#fccbff';x.lineWidth=10;x.stroke();x.restore();
 
- /* шапка: логотип + поток */
- mark(64,78,52);font(700,44);x.fillStyle='#fff';x.textBaseline='middle';x.fillText('Oduvanov',136,105);const ow=tw('Oduvanov');font(500,44);x.fillStyle='#c9a2ff';x.fillText('School',136+ow,105);
- font(500,26);const fl=o.flow||'AI-креатор · поток 2.0',fw=tw(fl)+48;rr(W-64-fw,77,fw,56,28);x.fillStyle='rgba(255,255,255,.07)';x.fill();x.fillStyle='rgba(255,255,255,.72)';x.fillText(fl,W-64-fw+24,105);
+ /* шапка */
+ mark(M,72,44);font(500,34);T('Oduvanov',M+60,95,'#fff');const ow=tw('Oduvanov');T('School',M+60+ow,95,'#c9a2ff');
+ font(600,22);const fl=(o.flow||'AI-креатор · поток 2.0').toUpperCase();const fw=tw(fl)+40;chip(fl,W-M-fw,71,'line');
 
- /* герой: аватар, имя, плашки */
- card(64,176,952,600,56);
- const ring=tp===1?['#fff1b8','#ffcf4d','#ff9a3d']:tp===2?['#eef1ff','#a9b4d6','#c38bff']:tp===3?['#ffe2cc','#ffc29a','#c1773f']:hot?['#ffd36b','#ff6a3d','#d77fff']:['#e2c9ff','#c38bff','#8b45e6'];
- const AX=540-150,AY=226,AS=300;
- x.save();x.shadowColor=ring[1];x.shadowBlur=70;rr(AX-10,AY-10,AS+20,AS+20,90);g=x.createLinearGradient(AX,AY,AX+AS,AY+AS);g.addColorStop(0,ring[0]);g.addColorStop(.5,ring[1]);g.addColorStop(1,ring[2]);x.fillStyle=g;x.fill();x.restore();
- rr(AX,AY,AS,AS,80);x.save();x.clip();x.fillStyle='#0d0d10';x.fillRect(AX,AY,AS,AS);const av=ph||rk;if(av){const k=Math.max(AS/av.width,AS/av.height);x.drawImage(av,AX+(AS-av.width*k)/2,AY+(AS-av.height*k)/2,av.width*k,av.height*k)}x.restore();
- if(tp){x.save();x.shadowColor='rgba(0,0,0,.5)';x.shadowBlur=20;x.beginPath();x.arc(AX+AS-8,AY+AS-8,50,0,7);g=x.createLinearGradient(0,AY+AS-58,0,AY+AS+42);g.addColorStop(0,'#fff1b8');g.addColorStop(1,'#ffb02e');x.fillStyle=g;x.fill();x.restore();x.lineWidth=8;x.strokeStyle='#141416';x.stroke();font(700,48);x.fillStyle='#2a1a00';x.textAlign='center';x.fillText(String(tp),AX+AS-8,AY+AS-6);x.textAlign='left'}
- const ns=fit(r.name,860,88,600);x.fillStyle='#fff';x.textAlign='center';x.fillText(r.name,540,AY+AS+86);x.textAlign='left';
- const chips=[[r.rank,'rgba(255,255,255,.1)','#fff']];if(tp)chips.push(['Топ-'+tp+' потока','#ffcf4d','#2a1a00']);else if(hot)chips.push(['В ударе','#ff7a45','#fff']);if(vip)chips.push(['★ Премиум Amazon','#8b45e6','#fff']);
- font(600,30);const cw=chips.map(c=>tw(c[0])+48),tot=cw.reduce((a,b)=>a+b,0)+(chips.length-1)*14;let cx=540-tot/2;const cy=AY+AS+150;
- chips.forEach((c,k)=>{rr(cx,cy,cw[k],60,30);x.fillStyle=c[1];x.fill();x.fillStyle=c[2];x.fillText(c[0],cx+24,cy+31);cx+=cw[k]+14});
+ /* герой: аватар + имя + звание/место */
+ const AY=200,AS=240;rr(M,AY,AS,AS,40);x.save();x.clip();x.fillStyle='#0c0c0c';x.fillRect(M,AY,AS,AS);const av=ph||rk;if(av){const k=Math.max(AS/av.width,AS/av.height);x.drawImage(av,M+(AS-av.width*k)/2,AY+(AS-av.height*k)/2,av.width*k,av.height*k)}x.restore();
+ rr(M+.5,AY+.5,AS-1,AS-1,40);x.strokeStyle='rgba(255,255,255,.06)';x.lineWidth=1;x.stroke();
+ const NX=M+AS+40,NW=W-M-NX;let cx=NX;
+ if(tp)cx+=chip('ТОП-'+tp+' ПОТОКА',cx,AY+6,'lil')+10;else if(hot)cx+=chip('В УДАРЕ',cx,AY+6,'lil')+10;if(vip)cx+=chip('ПРЕМИУМ AMAZON',cx,AY+6,'line')+10;
+ const chp=!!(tp||hot||vip);let ns=104;font(500,ns);while(tw(r.name)>NW&&ns>72){ns-=4;font(500,ns)}let ry;
+ if(tw(r.name)<=NW){T(r.name,NX,AY+(chp?128:96),'#fff');ry=AY+(chp?212:186)}
+ else{ns=64;font(500,ns);const ws=r.name.split(' '),l1=ws.shift(),l2=ws.join(' ')||'';const fitL=t=>{while(tw(t)>NW&&t.length>1)t=t.slice(0,-1);return t===l2||t===l1?t:t.trim()+'…'};
+  T(fitL(l1),NX,AY+(chp?104:84),'#fff');if(l2)T(fitL(l2),NX,AY+(chp?170:150),'#fff');ry=AY+(chp?232:214)}
+ font(500,ry>AY+220?34:40);const rl=r.rank,pl=r.place+' место',of=' из '+D.n;T(rl,NX,ry,'#fff');let px=NX+tw(rl);T(' · ',px,ry,W2);px+=tw(' · ');T(pl,px,ry,ACC);px+=tw(pl);T(of,px,ry,W2);
 
- /* статистика 3×2 */
- const SY=806,SH=330;card(64,SY,952,SH,48);
- const cells=[[String(r.place),'место из '+D.n,1],[fmt(r.pts),FS.pl(r.pts,['балл','балла','баллов'])],['+'+fmt(r.week),'за неделю'],[String(r.lessons),FS.pl(r.lessons,['урок','урока','уроков'])],[String(r.hw),FS.pl(r.hw,['домашка','домашки','домашек'])],[(r.ontime||0)+'%','в срок ×2']];
- x.strokeStyle='rgba(255,255,255,.07)';x.lineWidth=2;[381,698].forEach(X=>{x.beginPath();x.moveTo(X,SY+28);x.lineTo(X,SY+SH-28);x.stroke()});x.beginPath();x.moveTo(96,SY+SH/2);x.lineTo(984,SY+SH/2);x.stroke();
- cells.forEach((c,k)=>{const X=64+(k%3)*317+40,Y=SY+(k<3?0:SH/2)+70;font(600,68);x.fillStyle=c[2]?'#c9a2ff':'#fff';x.fillText(c[0],X,Y);font(400,28);x.fillStyle='rgba(255,255,255,.55)';x.fillText(c[1],X,Y+58)});
+ /* статистика 2×2 */
+ const SY=500,GW=(W-2*M-16)/2,GH=196;
+ [[fmt(r.pts),FS.pl(r.pts,['балл','балла','баллов'])+' на курсе'],[String(r.lessons),FS.pl(r.lessons,['урок пройден','урока пройдено','уроков пройдено'])],[String(r.hw),FS.pl(r.hw,['домашка сдана','домашки сдано','домашек сдано'])],[(r.ontime||0)+'%','заданий в срок ×2']].forEach((s,k)=>{
+  const X=M+(k%2)*(GW+16),Y=SY+Math.floor(k/2)*(GH+16);card(X,Y,GW,GH);font(500,92);T(s[0],X+40,Y+82,'#fff');font(400,30);T(s[1],X+40,Y+150,W2)});
 
- /* прогресс к следующему званию */
- const PY=1166;card(64,PY,952,170,44);font(500,28);x.fillStyle='rgba(255,255,255,.6)';x.fillText(cur[0],104,PY+48);x.textAlign='right';x.fillText(nx?nx[0]+' · '+fmt(hi):'вершина',976,PY+48);x.textAlign='left';
- rr(104,PY+78,872,16,8);x.fillStyle='rgba(255,255,255,.08)';x.fill();rr(104,PY+78,Math.max(24,872*pc),16,8);g=x.createLinearGradient(104,0,976,0);g.addColorStop(0,'#8b45e6');g.addColorStop(1,'#d77fff');x.fillStyle=g;x.fill();
- font(500,30);x.fillStyle='#fff';x.fillText(nx?'Ещё '+fmt(Math.max(0,hi-r.pts))+' '+FS.pl(hi-r.pts,['балл','балла','баллов'])+' до звания «'+nx[0]+'»':'Вершина карьерной лестницы',104,PY+132);
+ /* путь к следующему званию */
+ const PY=SY+2*GH+32,PH=176;card(M,PY,W-2*M,PH);
+ font(500,34);T(nx?'До звания «'+nx[0]+'»':'Вершина карьерной лестницы',M+40,PY+56,'#fff');
+ if(nx){const rest=fmt(Math.max(0,hi-r.pts))+' '+FS.pl(hi-r.pts,['балл','балла','баллов']);x.textAlign='right';T(rest,W-M-40,PY+56,ACC);x.textAlign='left'}
+ rr(M+40,PY+100,W-2*M-80,10,5);x.fillStyle='rgba(255,255,255,.08)';x.fill();rr(M+40,PY+100,Math.max(10,(W-2*M-80)*pc),10,5);x.fillStyle='#c38bff';x.fill();
+ font(400,26);T(fmt(r.pts)+' из '+fmt(nx?hi:r.pts),M+40,PY+140,W3);x.textAlign='right';T('+'+fmt(r.week)+' за неделю',W-M-40,PY+140,W3);x.textAlign='left';
 
- /* достижения */
- const got=FS.ACH.filter(a=>a[2](r,S)),AY2=1366;card(64,AY2,952,226,44);font(600,34);x.fillStyle='#fff';x.fillText('Достижения',104,AY2+52);const dw=tw('Достижения');font(500,28);x.fillStyle='rgba(255,255,255,.45)';x.fillText(got.length+' из '+FS.ACH.length,104+dw+16,AY2+54);
- const lock=FS.ACH.filter(a=>!a[2](r,S)),sh=got.slice(0,4).map(a=>[a,1]).concat(lock.slice(0,Math.max(0,4-got.length)).map(a=>[a,0])),tw4=(872-3*16)/4;
- sh.forEach(([a,on],k)=>{const X=104+k*(tw4+16),Y=AY2+92;rr(X,Y,tw4,108,24);x.fillStyle=on?'rgba(139,69,230,.16)':'rgba(255,255,255,.03)';x.fill();x.strokeStyle=on?'rgba(201,162,255,.35)':'rgba(255,255,255,.07)';x.lineWidth=2;x.stroke();
-   rr(X+16,Y+22,64,64,18);if(on){g=x.createLinearGradient(X+16,Y+22,X+80,Y+86);g.addColorStop(0,'#d9b8ff');g.addColorStop(1,'#8b45e6');x.fillStyle=g}else x.fillStyle='rgba(255,255,255,.07)';x.fill();
-   x.save();x.translate(X+16+14,Y+22+14);x.scale(36/24,36/24);x.strokeStyle=on?'#fff':'rgba(255,255,255,.35)';x.lineWidth=1.8;x.lineCap='round';x.lineJoin='round';x.stroke(new Path2D(a[3]));x.restore();
-   const nm=a[0].split(' ');let fs=22;font(600,fs);let lines=[a[0]];if(nm.length>1&&tw(a[0])>tw4-104){let k=Math.ceil(nm.length/2);if(nm[k-1].length<=2&&k>1)k--;lines=[nm.slice(0,k).join(' '),nm.slice(k).join(' ')]}while(Math.max(...lines.map(tw))>tw4-104&&fs>15){fs--;font(600,fs)}
-   x.fillStyle=on?'#fff':'rgba(255,255,255,.4)';lines.forEach((t,j)=>x.fillText(t,X+92,Y+54+(j-(lines.length-1)/2)*(fs+4)))});
- if(got.length>4){font(600,24);x.fillStyle='#c9a2ff';x.textAlign='right';x.fillText('+'+(got.length-4)+' ещё',976,AY2+54);x.textAlign='left'}
+ /* достижения: все 9 ячеек всегда помещаются, ниже — названия полученных */
+ const got=FS.ACH.filter(a=>a[2](r,S)),AY2=PY+PH+16,AH=252;card(M,AY2,W-2*M,AH);
+ font(500,34);T('Достижения',M+40,AY2+56,'#fff');const dw=tw('Достижения ');font(500,34);T(got.length+' из '+FS.ACH.length,M+40+dw,AY2+56,W2);
+ const n=FS.ACH.length,gap=12,cw=(W-2*M-80-gap*(n-1))/n;
+ FS.ACH.forEach((a,k)=>{const on=a[2](r,S),X=M+40+k*(cw+gap),Y=AY2+100;rr(X,Y,cw,cw,22);x.fillStyle=on?'#c38bff':'#262626';x.fill();
+  x.save();x.translate(X+cw/2-18,Y+cw/2-18);x.scale(36/24,36/24);x.strokeStyle=on?'#1a0b2e':'rgba(255,255,255,.22)';x.lineWidth=1.7;x.lineCap='round';x.lineJoin='round';x.stroke(new Path2D(a[3]));x.restore()});
+ font(400,26);const AW=W-2*M-80;let names;
+ if(!got.length)names='Первые награды впереди';else if(got.length===FS.ACH.length)names='Все достижения потока собраны';
+ else{const nm=got.map(a=>a[0]);let k=nm.length;names=nm.join(' · ');while(tw(names)>AW&&k>1){k--;names=nm.slice(0,k).join(' · ')+' и ещё '+(nm.length-k)}}
+ T(names,M+40,AY2+214,got.length?'rgba(255,255,255,.72)':W3);
 
- /* CTA: учись у нас + QR на службу заботы */
- const CY=1622,CH=234;rr(64,CY,952,CH,48);g=x.createLinearGradient(64,CY,1016,CY+CH);g.addColorStop(0,'#2a1250');g.addColorStop(.55,'#5a22a8');g.addColorStop(1,'#8b45e6');x.save();x.shadowColor='rgba(139,69,230,.6)';x.shadowBlur=60;x.fillStyle=g;x.fill();x.restore();x.strokeStyle='rgba(255,255,255,.18)';x.lineWidth=2;x.stroke();
- font(600,24);x.fillStyle='#e2c9ff';x.fillText('ХОЧЕШЬ ТАК ЖЕ?',108,CY+52);font(700,48);x.fillStyle='#fff';x.fillText('Учись в OduvanovSchool',108,CY+108);
- font(400,26);x.fillStyle='rgba(255,255,255,.78)';wrap('Наведи камеру на QR — служба заботы расскажет, как попасть на обучение',108,CY+156,560,34,2);
- const QS=200,QX=1016-44-QS,QY=CY+(CH-QS)/2;rr(QX-12,QY-12,QS+24,QS+24,28);x.fillStyle='#fff';x.fill();if(qr)x.drawImage(qr,QX,QY,QS,QS);
+ /* CTA в световой зоне: текст слева, QR на стекле справа, выровнены по одной высоте */
+ const CY=AY2+AH+80,QB=252,QX=W-M-QB;
+ rr(QX,CY,QB,QB,40);x.fillStyle='rgba(255,255,255,.11)';x.fill();rr(QX+.5,CY+.5,QB-1,QB-1,40);x.strokeStyle='rgba(255,255,255,.12)';x.lineWidth=1;x.stroke();
+ rr(QX+16,CY+16,QB-32,QB-32,26);x.fillStyle='#fff';x.fill();if(qr)x.drawImage(qr,QX+36,CY+36,QB-72,QB-72);
+ chip('СЛУЖБА ЗАБОТЫ',M,CY,'line');font(500,72);T('Хочешь так же?',M,CY+118,'#fff');
+ font(400,30);['Наведи камеру на QR — расскажем,','как попасть на обучение'].forEach((t,j)=>T(t,M,CY+196+j*40,'rgba(255,255,255,.85)'));
+
+ /* зерно ~6% против полос в градиенте */
+ const nz=x.getImageData(0,0,W,H),d=nz.data;for(let k=0;k<d.length;k+=4){const v=(Math.random()-.5)*14;d[k]+=v;d[k+1]+=v;d[k+2]+=v}x.putImageData(nz,0,0);
  return await new Promise(ok=>c.toBlob(ok,'image/png'));
 };
 
