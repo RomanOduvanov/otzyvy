@@ -94,6 +94,7 @@
       var rm = f.querySelector('.btn-remind'); if (rm) rm.textContent = 'Забыли пароль?';
       var rg = f.querySelector('.login-form .btn-register'); if (rg) rg.innerHTML = '<span class="fs-lg-q">Нет аккаунта?</span><b>Регистрация</b>';
       var lg = f.querySelector('.register-form .btn-login'); if (lg) lg.innerHTML = '<span class="fs-lg-q">Уже есть аккаунт?</span><b>Войти</b>';
+      [['.btn-chatium', 'Войти через приложение'], ['.btn-vk', 'Войти через ВКонтакте'], ['.btn-yandex_id', 'Войти через Яндекс ID']].forEach(function (x) { [].forEach.call(f.querySelectorAll(x[0]), function (el) { el.title = x[1]; el.setAttribute('aria-label', x[1]) }) });
       document.title = 'Вход · OduvanovSchool' };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go() })();
   /* брендинг OduvanovSchool: знак «кладка» в сайдбаре + подвал на страницах кабинета */
