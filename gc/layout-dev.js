@@ -13,7 +13,7 @@
   (function () { var B = 'https://romanoduvanov.github.io/otzyvy/gc/brand/'; var put = function () { var h = document.head; if (!h) return;
     [].forEach.call(h.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]'), function (l) { l.remove() });
     [['icon', 'image/svg+xml', 'favicon.svg', ''], ['icon', 'image/png', 'favicon-32.png', '32x32'], ['apple-touch-icon', 'image/png', 'apple-touch-icon.png', '180x180']].forEach(function (a) {
-      var l = document.createElement('link'); l.rel = a[0]; l.type = a[1]; l.href = B + a[2]; if (a[3]) l.sizes = a[3]; h.appendChild(l) }) };
+      var l = document.createElement('link'); l.rel = a[0]; l.type = a[1]; l.href = B + a[2] + '?v=2'; if (a[3]) l.sizes = a[3]; h.appendChild(l) }) };
     put(); document.addEventListener('DOMContentLoaded', put) })();
   /* статус ученика в рейтинге: подсветка аватарки в сайдбаре и профиль на странице /pl/<id> */
   (function () {
@@ -28,17 +28,27 @@
       return hot.some(function (x) { return x[0] === h }) ? 'hot' : '' }
     var uid = window.accountUserId, pm = location.pathname.match(/^\/pl\/(\d+)\/?$/);
     if (!uid && !pm) return;
+    var SC = {}; try { SC = JSON.parse(localStorage.getItem('fsSt') || '{}') } catch (e) {}
+    var setC = function (pre, s) { var H = document.documentElement; ['t1', 't2', 't3', 'hot'].forEach(function (x) { H.classList.toggle(pre + x, x === s) }) };
+    if (uid && SC[uid]) setC('fs-st-', SC[uid]); if (pm && SC[pm[1]]) setC('fs-pst-', SC[pm[1]]);
     rows().then(function (R) {
-      if (uid) sha(uid).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-st-' + s) });
-      if (pm) sha(pm[1]).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-pst-' + s) });
+      if (uid) sha(uid).then(function (h) { var s = status(R, h); setC('fs-st-', s); SC[uid] = s; try { localStorage.setItem('fsSt', JSON.stringify(SC)) } catch (e) {} });
+      if (pm) sha(pm[1]).then(function (h) { var s = status(R, h); setC('fs-pst-', s); SC[pm[1]] = s; try { localStorage.setItem('fsSt', JSON.stringify(SC)) } catch (e) {} });
     }).catch(function () {});
+    /* левая карточка профиля: строки «Откуда / Регистрация» и единый блок кнопок */
+    if (pm) { var tidy = function () { var c = document.querySelector('.xdget-userProfileSystemPage .col-md-3'); if (!c) return false; if (c.classList.contains('fs-tidy')) return true;
+        var inf = c.querySelector('.xdget-profileInfo'); if (inf) { var rowsH = inf.innerHTML.split(/<br\s*\/?>/i).map(function (x) { var t = x.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); if (!t) return ''; var m = t.match(/^([^:]{1,30}):\s*(.+)$/);
+          return m ? '<div class="fs-ir"><span>' + m[1] + '</span><b>' + m[2] + '</b></div>' : '<div class="fs-ir"><b>' + t + '</b></div>' }).join(''); inf.innerHTML = rowsH }
+        var acts = document.createElement('div'); acts.className = 'fs-acts'; var lk = c.querySelector('.xdget-profileLike'); if (lk) acts.appendChild(lk); c.appendChild(acts);
+        c.classList.add('fs-tidy'); return true };
+      if (!tidy()) document.addEventListener('DOMContentLoaded', tidy) }
     /* «Мой профиль» в меню ведёт на оформленный профиль /pl/<id>; настройки — кнопкой оттуда */
     if (uid) document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('a[href*="/user/my/profile"]'); if (!a || e.metaKey || e.ctrlKey) return;
       e.preventDefault(); e.stopPropagation(); var inMenu = a.closest('.main-menu');
       if (pm && String(uid) === pm[1] && !inMenu && window.fsOpenSettings) { window.fsOpenSettings(); return }
       location.href = '/pl/' + uid + (inMenu ? '' : '#settings') }, true);
     if (pm && String(uid) === pm[1]) { var addBtn = function () { var c = document.querySelector('.xdget-userProfileSystemPage .col-md-3'); if (!c || c.querySelector('.fs-set')) return !!c;
-        var b = document.createElement('button'); b.type = 'button'; b.className = 'fs-set'; b.innerHTML = '<span>Настройки профиля</span><i>→</i>'; b.onclick = function () { window.fsOpenSettings() }; c.appendChild(b); return true };
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'fs-set'; b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Настройки</span>'; b.onclick = function () { window.fsOpenSettings() }; (c.querySelector('.fs-acts') || c).appendChild(b); return true };
       if (!addBtn()) document.addEventListener('DOMContentLoaded', addBtn);
 
       /* ===== настройки профиля в нашем стиле (вместо стандартной страницы «Мой профиль») ===== */

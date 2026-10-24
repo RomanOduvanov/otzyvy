@@ -55,7 +55,7 @@
 @keyframes fsFire{0%{transform:scale(1) rotate(-3deg)}50%{transform:scale(1.1,1.16) rotate(2deg)}100%{transform:scale(.96,1.06) rotate(-1deg);filter:drop-shadow(0 0 10px rgba(255,170,70,.95))}}
 .crown{width:18px;height:18px;flex:none;filter:drop-shadow(0 0 6px rgba(255,200,80,.7));animation:fsCrown 2.4s ease-in-out infinite}
 @keyframes fsCrown{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-2px) rotate(6deg)}}
-.pf{display:flex;flex-direction:column;gap:18px;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif}
+.pf{container-type:inline-size;display:flex;flex-direction:column;gap:18px;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif}
 .pf-hd{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center}
 .pf-aw{position:relative;width:104px;height:104px;border-radius:30px;padding:3px;background:rgba(255,255,255,.08)}
 .pf-awi{width:100%;height:100%;border-radius:27px;background:center/cover}
@@ -121,6 +121,20 @@
 .pf-rg:not(.got){animation-name:pfInDim}
 @media(prefers-reduced-motion:reduce){.pf>*,.pf-aw,.pf-place,.pf-c,.pf-bar i,.pf-rg,.pf-a{animation:none!important}}
 
+.pf-cols{display:grid;grid-template-columns:1fr;gap:18px}
+.pf-cl,.pf-cr{display:flex;flex-direction:column;gap:18px;min-width:0}
+.pf-cl>*,.pf-cr>*{animation:pfIn .55s cubic-bezier(.2,.8,.2,1) both}
+.pf-cl>*:nth-child(2){animation-delay:.08s}.pf-cl>*:nth-child(3){animation-delay:.14s}.pf-cl>*:nth-child(4){animation-delay:.18s}.pf-cr>*{animation-delay:.2s}
+@container (min-width:900px){.pf-cols{grid-template-columns:1.1fr 1fr;gap:28px;align-items:start}.pf-cr{padding-left:28px;box-shadow:inset 1px 0 0 rgba(255,255,255,.06)}.pf-cr .pf-h2,.pf-cl .pf-h2{margin-top:0}.pf-ach{grid-template-columns:repeat(2,1fr)}.pf-lad{grid-template-columns:repeat(3,1fr)}}
+@container (min-width:1200px){.pf-ach{grid-template-columns:repeat(3,1fr)}.pf-lad{grid-template-columns:repeat(6,1fr)}}
+
+.pf-how{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.pf-how div{padding:14px;border-radius:14px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);display:flex;flex-direction:column;gap:4px}
+.pf-how b{font-size:20px;font-weight:500;letter-spacing:-.02em}.pf-how span{font-size:12px;line-height:1.35;color:rgba(255,255,255,.5)}
+.pf-how .x2{background:linear-gradient(135deg,rgba(150,87,232,.3),rgba(22,22,22,.4));box-shadow:inset 0 0 0 1px rgba(195,139,255,.35)}.pf-how .x2 b{color:#d77fff}
+.pf-cl>*:nth-child(5),.pf-cl>*:nth-child(6){animation-delay:.24s}
+@container (max-width:520px){.pf-how{grid-template-columns:1fr}}
+
 @media(max-width:720px){.g{grid-template-columns:1fr}}
 </style></head><body><div class="g"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div><div class="tc" id="tc"></div>
 <script>
@@ -164,13 +178,17 @@ const FS={
    <div class="pf-id"><div class="pf-l">${o.me?'Твой профиль на курсе':'Профиль ученика'}</div><div class="pf-n">${esc(r.name)}${vip?FS.STAR:''}${hot?FS.FIRE:''}${tp===1?FS.CROWN:''}</div>
     <div class="pf-ch"><span class="pf-c pf-rk">${esc(r.rank)}</span>${tp?`<span class="pf-c pf-ct">Топ-${tp} потока</span>`:''}${hot?'<span class="pf-c pf-ch-hot">В ударе · +'+fmt(r.week)+' за неделю</span>':''}${vip?'<span class="pf-c pf-cv">★ Премиум Amazon</span>':''}</div></div>
    <div class="pf-pos"><div class="pf-l">Место</div><div class="pf-pv">${r.place}<small> из ${D.n}</small></div></div></div>
+  <div class="pf-cols"><div class="pf-cl">
   <div class="pf-st"><div><b>${fmt(r.pts)}</b><span>${FS.pl(r.pts,['балл','балла','баллов'])}</span></div><div><b>+${fmt(r.week)}</b><span>за неделю</span></div><div><b>${r.lessons}</b><span>${FS.pl(r.lessons,['урок','урока','уроков'])}</span></div><div><b>${r.hw}</b><span>${FS.pl(r.hw,['домашка','домашки','домашек'])}</span></div><div><b>${r.ontime}%</b><span>в срок x2</span></div></div>
   <div class="pf-pr"><div class="pf-pl"><span>${esc(cur[0])}</span><span>${nx?esc(nx[0])+' · '+fmt(hi):'вершина'}</span></div><div class="pf-bar"><i style="width:${pc}%"></i></div>
    <div class="pf-nx">${nx?`Ещё <b>${fmt(Math.max(0,hi-r.pts))}</b> ${FS.pl(hi-r.pts,['балл','балла','баллов'])} до звания «${esc(nx[0])}»`:'Вершина карьерной лестницы'}</div></div>
   <div class="pf-h2">Карьерная лестница</div>
   <div class="pf-lad">${D.ranks.map((x,j)=>`<div class="pf-rg${j<=i?' got':''}${j===i?' cur':''}" title="${esc(x[0])} · ${fmt(x[1])}"><i style="background-image:url(${A}${x[2]}.jpg)"></i><span>${esc(x[0])}</span></div>`).join('')}</div>
+  <div class="pf-h2">${o.me?'Как расти быстрее':'Как начисляются баллы'}</div>
+  <div class="pf-how"><div><b>10</b><span>за каждый урок</span></div><div><b>15</b><span>за анкету обратной связи</span></div><div><b>20 · 40 · 70</b><span>за домашку: лёгкий, средний, максимальный уровень</span></div><div class="x2"><b>×2</b><span>в первые 48 ч после открытия модуля, домашки — 72 ч</span></div></div>
+  </div><div class="pf-cr">
   <div class="pf-h2">Достижения <small>${got} из ${FS.ACH.length}</small></div>
-  <div class="pf-ach">${FS.ACH.slice().sort((a,b)=>b[2](r,S)-a[2](r,S)).map(a=>{const g=a[2](r,S);return `<div class="pf-a${g?' got':''}"><div class="pf-ai">${ic(a[3])}${g?'':'<em>'+ic('M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z')+'</em>'}</div><b>${esc(a[0])}</b><span>${g?'получено':esc(a[1])}</span></div>`}).join('')}</div></div>`;
+  <div class="pf-ach">${FS.ACH.slice().sort((a,b)=>b[2](r,S)-a[2](r,S)).map(a=>{const g=a[2](r,S);return `<div class="pf-a${g?' got':''}"><div class="pf-ai">${ic(a[3])}${g?'':'<em>'+ic('M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z')+'</em>'}</div><b>${esc(a[0])}</b><span>${g?'получено':esc(a[1])}</span></div>`}).join('')}</div></div></div></div>`;
   FS.nbsp(el);FS.count(el)},
  /* плавный счётчик чисел в профиле */
  count(el){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;el.querySelectorAll('.pf-st b,.pf-pv').forEach((b,k)=>{const n=b.firstChild;if(!n||n.nodeType!==3)return;const m=n.nodeValue.match(/^([+]?)([\d\s\u00a0]+)(%?)$/);if(!m)return;
