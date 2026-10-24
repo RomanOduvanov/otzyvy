@@ -311,7 +311,7 @@ FS.shareCard=async function(D,r,o){
 
  /* зерно ~6% против полос в градиенте */
  const nz=x.getImageData(0,0,W,H),d=nz.data;for(let k=0;k<d.length;k+=4){const v=(Math.random()-.5)*14;d[k]+=v;d[k+1]+=v;d[k+2]+=v}x.putImageData(nz,0,0);
- return await new Promise(ok=>c.toBlob(ok,'image/png'));
+ return await new Promise(ok=>c.toBlob(ok,'image/jpeg',.92));
 };
 
 const A='../awards/',RATING='https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152';

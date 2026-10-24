@@ -209,7 +209,7 @@
         if (!box.classList.contains('fs-ava-empty')) lab.querySelector('.fs-ava-t').textContent = 'Сменить фото'; return true };
       if (!addAva()) document.addEventListener('DOMContentLoaded', addAva) }
     if (pm) { var ins = function () { if (document.querySelector('iframe.fs-prof')) return true; var col = document.querySelector('.xdget-userProfileSystemPage .col-md-9') || document.querySelector('.xdget-userProfileSystemPage .xdget-row'); if (!col) return false;
-        var f = document.createElement('iframe'); f.className = 'fs-prof'; f.title = 'Профиль на курсе'; f.src = RT + 'profile.html?v=21#u=' + pm[1] + (String(uid) === pm[1] ? '&me=1' : '');
+        var f = document.createElement('iframe'); f.className = 'fs-prof'; f.title = 'Профиль на курсе'; f.src = RT + 'profile.html?v=22#u=' + pm[1] + (String(uid) === pm[1] ? '&me=1' : '');
         f.style.cssText = 'width:100%;height:0;border:0;display:block;background:transparent'; col.classList.remove('empty');
         var sk = document.createElement('div'); sk.className = 'fs-prof-sk'; sk.innerHTML = '<div class="sk-hd"><i class="sk-av"></i><div><i class="sk-l w40"></i><i class="sk-l w60 big"></i><i class="sk-l w50"></i></div></div><div class="sk-st"><i></i><i></i><i></i><i></i><i></i></div><i class="sk-l w100 bar"></i><div class="sk-gr"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="sk-gr three"><i></i><i></i><i></i></div>';
         col.appendChild(sk); col.appendChild(f); setTimeout(function () { if (sk.parentNode && !f.classList.contains('on')) sk.remove() }, 12000); return true };
@@ -240,13 +240,13 @@
         if (!shImg && !shWait) { shWait = true; shM.classList.add('ld'); var f = document.querySelector('iframe.fs-prof'); if (f) f.contentWindow.postMessage({ fsShare: 1, ava: shAva() }, 'https://romanoduvanov.github.io') } };
       var shClose = function () { shM.classList.remove('on'); document.documentElement.classList.remove('fs-shm-open') };
       var shNote = function (t) { var n = shM.querySelector('.fs-shm-n'); n.textContent = t; n.classList.add('on'); clearTimeout(n._t); n._t = setTimeout(function () { n.classList.remove('on') }, 3500) };
-      var shFile = function () { return new File([shImg], 'oduvanovschool-rezultat.png', { type: 'image/png' }) };
+      var shFile = function () { return new File([shImg], 'oduvanovschool-rezultat.jpg', { type: 'image/jpeg' }) };
       var SHT = 'Мой прогресс на курсе «AI-креатор» в OduvanovSchool';
       var shGo = function () { if (!shImg) return; var fl = shFile();
         if (navigator.canShare && navigator.canShare({ files: [fl] })) navigator.share({ files: [fl], text: SHT }).catch(function () {});
         else { shDl(); shNote('Картинка сохранена — прикрепи её в Telegram, WhatsApp или в сторис') } };
-      var shDl = function () { if (!shImg) return; var a = document.createElement('a'); a.href = URL.createObjectURL(shImg); a.download = 'oduvanovschool-rezultat.png'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove() }, 1500) };
-      var shCp = function () { if (!shImg) return; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': shImg })]).then(function () { shNote('Скопировано — вставь картинку в чат (Ctrl/⌘ + V)') }, function () { shDl() }) } catch (e) { shDl() } };
+      var shDl = function () { if (!shImg) return; var a = document.createElement('a'); a.href = URL.createObjectURL(shImg); a.download = 'oduvanovschool-rezultat.jpg'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove() }, 1500) };
+      var shCp = function () { if (!shImg) return; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': createImageBitmap(shImg).then(function (b) { var cv = document.createElement('canvas'); cv.width = b.width; cv.height = b.height; cv.getContext('2d').drawImage(b, 0, 0); return new Promise(function (ok) { cv.toBlob(ok, 'image/png') }) }) })]).then(function () { shNote('Скопировано — вставь картинку в чат (Ctrl/⌘ + V)') }, function () { shDl() }) } catch (e) { shDl() } };
       window.addEventListener('message', function (e) { if (e.origin !== 'https://romanoduvanov.github.io' || !e.data) return;
         if (e.data.fsProfH > 0) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', shBlock); else shBlock() }
         if (e.data.fsShareImg && shM) { shImg = e.data.fsShareImg; shWait = false; var im = shM.querySelector('.fs-shm-p img'); im.onload = function () { shM.classList.remove('ld'); shM.classList.add('ok') }; im.src = URL.createObjectURL(shImg);
