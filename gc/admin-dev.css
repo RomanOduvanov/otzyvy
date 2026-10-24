@@ -1,0 +1,65 @@
+/* ===== v12: админка — «Пользователи» (список) в тёмной теме. Префикс :root обходит исключение админ-страниц ===== */
+:root body.page-user-index{background:#000106!important;color:#fff!important;font-family:var(--fs-font)!important}
+:root body.page-user-index :is(.gc-main-content,.container,.standard-page-content,.page-full-block){background:transparent!important;color:#fff}
+:root body.page-user-index :is(h1,h2,h3){color:#fff!important;font-family:var(--fs-font)!important;font-weight:500!important;letter-spacing:-.025em!important}
+:root body.page-user-index h1{font-size:44px!important;margin:8px 0 18px!important}
+:root body.page-user-index .standard-logo{display:none!important}
+:root body.page-user-index a{color:#d77fff}
+:root body.page-user-index a:hover{color:#fff}
+/* вкладки раздела */
+:root body.page-user-index .nav>li>a{color:rgba(255,255,255,.6)!important;border:0!important;border-radius:10px!important;background:transparent!important;font:500 14px var(--fs-font)!important}
+:root body.page-user-index .nav>li>a:hover{color:#fff!important;background:rgba(255,255,255,.06)!important}
+:root body.page-user-index .nav>li.active>a{color:#fff!important;background:rgba(255,255,255,.1)!important}
+:root body.page-user-index :is(ul,.nav).active,:root body.page-user-index li.active{background:transparent}
+:root body.page-user-index .nav-tabs{border:0!important}
+/* кнопки */
+:root body.page-user-index .btn{border:0!important;border-radius:10px!important;font:600 13px/1 var(--fs-font)!important;padding:10px 14px!important;box-shadow:none!important;text-shadow:none!important}
+:root body.page-user-index .btn-default{background:rgba(255,255,255,.08)!important;color:#fff!important}
+:root body.page-user-index .btn-default:hover{background:rgba(255,255,255,.14)!important}
+:root body.page-user-index :is(.btn-success,.btn-primary){background:var(--fs-btn)!important;color:#602364!important}
+:root body.page-user-index .dropdown-menu{background:#1a1a1a!important;border:0!important;border-radius:14px!important;box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.08)!important;padding:6px!important}
+:root body.page-user-index .dropdown-menu>li>a{color:#fff!important;border-radius:8px;padding:8px 12px!important}
+:root body.page-user-index .dropdown-menu>li>a:hover{background:rgba(255,255,255,.08)!important}
+/* панель таблицы */
+:root body.page-user-index .panel{background:#111!important;border:0!important;border-radius:22px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)!important;overflow:hidden}
+:root body.page-user-index :is(.kv-panel-before,.panel-footer,.panel-heading){background:#161616!important;border-color:rgba(255,255,255,.07)!important;color:rgba(255,255,255,.7)!important}
+:root body.page-user-index .summary,:root body.page-user-index .summary b{color:rgba(255,255,255,.7)!important}
+:root body.page-user-index .kv-grid-table,:root body.page-user-index .table{background:transparent!important;color:#fff!important;border:0!important}
+:root body.page-user-index .table>thead>tr>th{background:#111!important;color:rgba(255,255,255,.5)!important;border:0!important;border-bottom:1px solid rgba(255,255,255,.08)!important;font:600 11px/1.3 var(--fs-font)!important;text-transform:uppercase;letter-spacing:.06em;vertical-align:bottom!important;padding:12px 10px!important}
+:root body.page-user-index .table>thead>tr>th a{color:rgba(255,255,255,.6)!important;text-decoration:none!important}
+:root body.page-user-index .table>thead>tr>th a:hover{color:#fff!important}
+:root body.page-user-index .table>thead>tr.filters>td,:root body.page-user-index .table>thead>tr+tr>td{background:#111!important;border:0!important;border-bottom:1px solid rgba(255,255,255,.08)!important;padding:8px 10px!important}
+:root body.page-user-index .table>tbody>tr>td{background:transparent!important;border:0!important;border-bottom:1px solid rgba(255,255,255,.05)!important;color:rgba(255,255,255,.85)!important;font:400 14px/1.4 var(--fs-font)!important;padding:12px 10px!important;vertical-align:middle!important}
+:root body.page-user-index .table-striped>tbody>tr:nth-of-type(odd)>td{background:rgba(255,255,255,.015)!important}
+:root body.page-user-index .table>tbody>tr:hover>td{background:rgba(195,139,255,.06)!important}
+:root body.page-user-index .table>tbody>tr>td a{color:#d77fff!important}
+:root body.page-user-index .table>tbody>tr>td a:hover{color:#fff!important}
+:root body.page-user-index .table img.user-profile-image{border-radius:50%!important;width:34px!important;height:34px!important;object-fit:cover;filter:grayscale(.2)}
+:root body.page-user-index .table img.user-default-profile-image{filter:invert(1) brightness(.35)}
+:root body.page-user-index .label{border-radius:99px!important;padding:5px 10px!important;font:600 11px/1 var(--fs-font)!important}
+:root body.page-user-index .label-success{background:rgba(74,222,128,.14)!important;color:#7ee2a2!important}
+:root body.page-user-index :is(.label-default,.label-info,.label-primary){background:rgba(195,139,255,.16)!important;color:#d77fff!important}
+:root body.page-user-index :is(.label-danger,.label-warning){background:rgba(248,113,113,.14)!important;color:#f69a9a!important}
+:root body.page-user-index .fa-chevron-circle-down{color:#7ee2a2!important}
+/* поля фильтров и select2 */
+:root body.page-user-index :is(input.form-control,select.form-control,textarea.form-control){background:#1b1b1b!important;color:#fff!important;border:0!important;border-radius:10px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;height:34px}
+:root body.page-user-index .form-control::placeholder{color:rgba(255,255,255,.35)!important}
+:root body.page-user-index .select2-container.form-control{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important}
+:root body.page-user-index .select2-container .select2-choice{background:#1b1b1b!important;background-image:none!important;color:#fff!important;border:0!important;border-radius:10px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;height:34px!important;line-height:34px!important}
+:root body.page-user-index .select2-container .select2-choice .select2-arrow{background:transparent!important;border:0!important}
+:root body.page-user-index .select2-container .select2-choice span{color:#fff!important}
+:root .select2-drop{background:#1a1a1a!important;color:#fff!important;border:0!important;border-radius:12px!important;box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.08)!important}
+:root .select2-drop .select2-results li{color:#fff!important}
+:root .select2-drop .select2-results .select2-highlighted{background:rgba(195,139,255,.2)!important;color:#fff!important}
+:root .select2-drop .select2-search input{background:#111!important;color:#fff!important;border:0!important;border-radius:8px!important}
+/* пагинация */
+:root body.page-user-index .pagination>li>:is(a,span){background:transparent!important;border:0!important;color:rgba(255,255,255,.65)!important;border-radius:9px!important;margin:0 2px;min-width:34px;text-align:center}
+:root body.page-user-index .pagination>li>a:hover{background:rgba(255,255,255,.08)!important;color:#fff!important}
+:root body.page-user-index .pagination>li.active>:is(a,span){background:var(--fs-l400)!important;color:#1a0b2e!important}
+:root body.page-user-index .pagination>li.disabled>span{opacity:.35}
+/* модальные окна (настройка таблицы) */
+:root body.page-user-index .modal-content{background:#161616!important;color:#fff!important;border:0!important;border-radius:20px!important;box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.08)!important}
+:root body.page-user-index :is(.modal-header,.modal-footer){border-color:rgba(255,255,255,.08)!important}
+:root body.page-user-index .close{color:#fff!important;opacity:.6;text-shadow:none!important}
+/* верхняя плашка GetCourse на этой странице */
+:root body.page-user-index .topNotitication{display:none!important}
