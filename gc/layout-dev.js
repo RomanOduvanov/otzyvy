@@ -51,6 +51,8 @@
       var mi = document.querySelector('.main-menu__inner');
       if (mi && !mi.querySelector('.fs-brand')) { var b = document.createElement('a'); b.className = 'fs-brand'; b.href = '/teach/control/stream';
         b.title = 'OduvanovSchool'; b.setAttribute('aria-label', 'OduvanovSchool — на главную'); b.innerHTML = MK('fs-mk'); mi.insertBefore(b, mi.firstChild) }
+      var al = document.querySelector('.top-menu .account-logo__link');
+      if (al && !al.querySelector('.fs-mk')) { al.classList.add('fs-alogo'); al.innerHTML = MK('fs-mk') + '<span>Oduvanov<b>School</b></span>' }
       var mc = document.querySelector('.gc-main-content');
       if (mc && !document.querySelector('.fs-foot') && !/\/pl\/cms\/|editMode/.test(location.href)) { var f = document.createElement('div'); f.className = 'fs-foot';
         f.innerHTML = '<a class="fs-foot-b" href="/teach/control/stream">' + MK('fs-mk') + '<span>Oduvanov<b>School</b></span></a>'
