@@ -346,6 +346,10 @@
   /* высота виджета «Актуальные события + кейсы» в списке тренингов */
   window.addEventListener('message', function (e) { if (e.origin !== 'https://romanoduvanov.github.io' || !e.data || !e.data.fsSchedH) return;
     [].forEach.call(document.querySelectorAll('iframe.fs-sched'), function (f) { f.style.setProperty('height', Math.ceil(e.data.fsSchedH) + 'px', 'important') }) });
+  /* нет доступа к потоку AI-креатор 2.0 — в виджете остаются только «Истории учеников» */
+  (function () { var na = function () { if (document.querySelector('tr.training-row[data-training-id="935917158"]')) return;
+      [].forEach.call(document.querySelectorAll('iframe.fs-sched'), function (f) { if (f.src.indexOf('#na=1') < 0) f.src = f.src.split('#')[0] + '#na=1' }) };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', na); else na() })();
   if (!/^\/(pl\/)?teach\/control\/schedule/.test(location.pathname)) return;
   var ROOT = 935917158, SKIP = {935952152: 1};
   var MON = {'янв':0,'фев':1,'мар':2,'апр':3,'мая':4,'май':4,'июн':5,'июл':6,'авг':7,'сен':8,'окт':9,'ноя':10,'дек':11};

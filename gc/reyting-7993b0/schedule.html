@@ -22,7 +22,7 @@
 .k-b{display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:13px 18px;border-radius:12px;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;font-size:15px;text-decoration:none;transition:filter .15s,transform .15s}
 .k-b:hover{filter:brightness(1.04);transform:translateY(-1px)}.k-b i{font-style:normal;transition:transform .15s}.k-b:hover i{transform:translateX(3px)}
 .k-n{text-wrap:pretty;font-size:12.5px;line-height:1.45;color:rgba(255,255,255,.5);margin-top:12px}
-</style></head><body>
+html.na .c{display:none}html.na .k{margin-top:0}</style></head><body>
 <div class="c"><div class="s">Поток AI-креатор 2.0 · первые 48 часов после открытия — x2&nbsp;к&nbsp;баллам</div><div id="l"></div>
 <a class="all" href="https://oduvanovroman.getcourse.ru/pl/teach/control/schedule" target="_top" id="all"><span>Полное расписание <small id="cnt"></small></span><i>→</i></a></div>
 
@@ -38,7 +38,7 @@
  <a class="k-b" href="https://t.me/zabota_oduvanov" target="_blank" rel="noopener">Рассказать о&nbsp;результате <i>→</i></a>
  <div class="k-n">Пришли в&nbsp;службу заботы 2–3&nbsp;скриншота и&nbsp;пару предложений: что сделал и&nbsp;что это тебе дало. Остальное мы&nbsp;оформим сами.</div>
 </div>
-<script>const M=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+<script>const NA=()=>document.documentElement.classList.toggle('na',/na=1/.test(location.hash));NA();addEventListener('hashchange',()=>{NA();post()});const M=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
 const post=()=>{try{parent.postMessage({fsSchedH:Math.ceil(document.body.getBoundingClientRect().height)+2},'*')}catch(e){}};
 fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(D=>{const now=new Date();const all=(D.schedule||[]).map(s=>({t:new Date(s.at),n:s.name})).filter(x=>x.t>now-48*36e5);const it=all.slice(0,2);
 document.getElementById('l').innerHTML=it.length?it.map(x=>{const live=x.t<=now;const d=live?'идёт x2':x.t.getDate()+' '+M[x.t.getMonth()]+', '+String(x.t.getHours()).padStart(2,'0')+':'+String(x.t.getMinutes()).padStart(2,'0');return`<div class="i${live?' now':''}"><b>${d}</b><span>${x.n.replace(/[<>&]/g,'')}</span></div>`}).join(''):'<div class="e">Все модули уже открыты</div>';
