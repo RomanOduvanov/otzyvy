@@ -60,6 +60,9 @@ const FS={
  uid(){const m=(location.hash||'').match(/u=(\d+)/);return m?m[1]:null},
  async hash(u){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('gc2:'+u));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,16)},
  pl(n,f){n=Math.abs(n)%100;const n1=n%10;return n>10&&n<20?f[2]:n1>1&&n1<5?f[1]:n1==1?f[0]:f[2]},
+ /* неразрывный пробел после коротких слов — без висячих предлогов */
+ nbsp(el){const re=/(^|[\s(«"—])(в|во|и|к|ко|с|со|о|об|у|а|но|по|на|до|от|за|из|не|ни|ты|мы|я|для|без|при|про|через)\s+/gi;const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while(n=w.nextNode()){const t=n.nodeValue.replace(re,(m,a,b)=>a+b+'\u00a0').replace(re,(m,a,b)=>a+b+'\u00a0');if(t!==n.nodeValue)n.nodeValue=t}
+  /* предлог в конце текста перед ссылкой */el.querySelectorAll('a').forEach(a=>{const p=a.previousSibling;if(p&&p.nodeType===3)p.nodeValue=p.nodeValue.replace(/(\s)(\S{1,3})\s$/,'$1$2\u00a0')})},
  SUPPORT:'https://t.me/zabota_oduvanov',
  TOP_TARIFF:'Премиум Амазон',
  /* срок доступа: [значение, подпись] */
@@ -107,6 +110,7 @@ fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{
  FS.me(document.getElementById('me'),D,r,{awards:A,link:RATING,target:'_top'});
  FS.tariff(document.getElementById('tc'),r);
  FS.x2(document.getElementById('x2'),D.x2,RATING,'_top');
+ ['me','tc','x2'].forEach(i=>FS.nbsp(document.getElementById(i)));
  const post=()=>{try{parent.postMessage({fsEmbedHeight:document.documentElement.scrollHeight},'*')}catch(e){}};post();addEventListener('resize',post);
 });
 </script></body></html>
