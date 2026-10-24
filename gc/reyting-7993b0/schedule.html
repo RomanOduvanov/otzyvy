@@ -39,7 +39,7 @@
  <div class="k-n">Пришли в&nbsp;Заботу 2–3 скриншота и&nbsp;пару предложений: что сделал и&nbsp;что это тебе дало. Остальное мы оформим сами.</div>
 </div>
 <script>const M=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
-const post=()=>{try{parent.postMessage({fsSchedH:document.documentElement.scrollHeight},'*')}catch(e){}};
+const post=()=>{try{parent.postMessage({fsSchedH:Math.ceil(document.body.getBoundingClientRect().height)+2},'*')}catch(e){}};
 fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(D=>{const now=new Date();const all=(D.schedule||[]).map(s=>({t:new Date(s.at),n:s.name})).filter(x=>x.t>now-48*36e5);const it=all.slice(0,2);
 document.getElementById('l').innerHTML=it.length?it.map(x=>{const live=x.t<=now;const d=live?'идёт x2':x.t.getDate()+' '+M[x.t.getMonth()]+', '+String(x.t.getHours()).padStart(2,'0')+':'+String(x.t.getMinutes()).padStart(2,'0');return`<div class="i${live?' now':''}"><b>${d}</b><span>${x.n.replace(/[<>&]/g,'')}</span></div>`}).join(''):'<div class="e">Все модули уже открыты</div>';
 const rest=all.length-it.length;document.getElementById('cnt').textContent=rest>0?'· ещё '+rest+' '+(rest%10==1&&rest%100!=11?'модуль':rest%10>=2&&rest%10<=4&&(rest%100<10||rest%100>=20)?'модуля':'модулей'):'';post()}).catch(post);
