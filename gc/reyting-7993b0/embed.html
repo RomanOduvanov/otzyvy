@@ -48,6 +48,61 @@
 @media(max-width:560px){.mc{padding:18px}.mc-top{grid-template-columns:56px 1fr auto;gap:12px}.mc-aw{width:56px}.mc-r{font-size:24px}.mc-pv{font-size:30px}
 .mc-st b{font-size:18px}.mc-st div{padding:10px 12px}.tc{padding:16px 18px}.tc-b,.tc-n{margin-left:0;width:100%;justify-content:center}}
 
+/* ===== профиль ученика ===== */
+.vip{width:17px;height:17px;flex:none;filter:drop-shadow(0 0 6px rgba(195,139,255,.65));animation:vipPulse 2.8s ease-in-out infinite}
+@keyframes vipPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(195,139,255,.5));transform:scale(1)}50%{filter:drop-shadow(0 0 10px rgba(215,127,255,.95));transform:scale(1.08)}}
+.fire{width:17px;height:17px;flex:none;transform-origin:50% 90%;filter:drop-shadow(0 0 6px rgba(255,140,60,.7));animation:fsFire 1.1s ease-in-out infinite alternate}
+@keyframes fsFire{0%{transform:scale(1) rotate(-3deg)}50%{transform:scale(1.1,1.16) rotate(2deg)}100%{transform:scale(.96,1.06) rotate(-1deg);filter:drop-shadow(0 0 10px rgba(255,170,70,.95))}}
+.crown{width:18px;height:18px;flex:none;filter:drop-shadow(0 0 6px rgba(255,200,80,.7));animation:fsCrown 2.4s ease-in-out infinite}
+@keyframes fsCrown{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-2px) rotate(6deg)}}
+.pf{display:flex;flex-direction:column;gap:18px;color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif}
+.pf-hd{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center}
+.pf-aw{position:relative;width:104px;height:104px;border-radius:30px;padding:3px;background:rgba(255,255,255,.08)}
+.pf-awi{width:100%;height:100%;border-radius:27px;background:center/cover}
+.pf-top .pf-aw{background:conic-gradient(from var(--a,0deg),#ffd36b,#c38bff,#ff9a3d,#ffd36b);animation:fsSpin 4s linear infinite;box-shadow:0 0 30px rgba(255,200,90,.35)}
+.pf-t2 .pf-aw{background:conic-gradient(from var(--a,0deg),#f2f4ff,#a9b4d6,#c38bff,#f2f4ff);box-shadow:0 0 30px rgba(200,210,255,.3)}
+.pf-t3 .pf-aw{background:conic-gradient(from var(--a,0deg),#ffc29a,#c1773f,#c38bff,#ffc29a);box-shadow:0 0 30px rgba(220,140,80,.3)}
+.pf-hot:not(.pf-top) .pf-aw{background:conic-gradient(from var(--a,0deg),#ff6a3d,#ffd36b,#d77fff,#ff6a3d);animation:fsSpin 3s linear infinite;box-shadow:0 0 26px rgba(255,120,60,.35)}
+.pf-vip:not(.pf-top):not(.pf-hot) .pf-aw{background:linear-gradient(135deg,#f3c6ff,#8b45e6);box-shadow:0 0 24px rgba(195,139,255,.4)}
+@property --a{syntax:"<angle>";inherits:false;initial-value:0deg}
+@keyframes fsSpin{to{--a:360deg}}
+.pf-place{position:absolute;right:-8px;bottom:-8px;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#3a2400;background:linear-gradient(135deg,#fff1b8,#ffcf4d 50%,#e09a1a);box-shadow:0 0 0 3px #111,0 4px 14px rgba(255,190,60,.5)}
+.pf-t2 .pf-place{color:#23263a;background:linear-gradient(135deg,#ffffff,#c9d1ea 50%,#8d97b8);box-shadow:0 0 0 3px #111,0 4px 14px rgba(200,210,255,.45)}
+.pf-t3 .pf-place{color:#3a1a05;background:linear-gradient(135deg,#ffd9bd,#d38b55 50%,#9a5426);box-shadow:0 0 0 3px #111,0 4px 14px rgba(220,140,80,.45)}
+.pf-l{font-size:13px;color:rgba(255,255,255,.5)}
+.pf-n{display:flex;align-items:center;gap:8px;font-size:30px;font-weight:500;letter-spacing:-.03em;line-height:1.1;margin-top:3px}
+.pf-n svg{width:22px;height:22px}
+.pf-ch{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.pf-c{font-size:12px;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75)}
+.pf-ct{background:linear-gradient(90deg,#ffcf4d,#ff9a3d);color:#3a2400}.pf-t2 .pf-ct{background:linear-gradient(90deg,#f2f4ff,#a9b4d6);color:#23263a}.pf-t3 .pf-ct{background:linear-gradient(90deg,#ffc29a,#c1773f);color:#3a1a05}
+.pf-ch-hot{background:rgba(255,120,60,.16);color:#ffb37a}
+.pf-cv{background:linear-gradient(110deg,#6724ad,#9657e8 45%,#d77fff);color:#fff}
+.pf-pos{text-align:right}.pf-pv{font-size:40px;font-weight:500;letter-spacing:-.04em;line-height:1;margin-top:4px}.pf-pv small{font-size:16px;color:rgba(255,255,255,.5);letter-spacing:0}
+.pf-st{display:grid;grid-template-columns:repeat(5,1fr);border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.pf-st div{padding:12px 14px}.pf-st div+div{box-shadow:inset 1px 0 0 rgba(255,255,255,.06)}
+.pf-st b{display:block;font-size:20px;font-weight:500;letter-spacing:-.02em}.pf-st span{font-size:12px;color:rgba(255,255,255,.5)}
+.pf-pl{display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.5);margin-bottom:8px}
+.pf-bar{height:6px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}.pf-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#9657e8,#d77fff)}
+.pf-nx{font-size:14px;color:rgba(255,255,255,.62);margin-top:10px}.pf-nx b{color:#d77fff;font-weight:600}
+.pf-h2{font-size:20px;font-weight:500;letter-spacing:-.02em;margin-top:6px}.pf-h2 small{font-size:13px;color:rgba(255,255,255,.45);font-weight:400;margin-left:6px}
+.pf-lad{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.pf-rg{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:14px;background:rgba(255,255,255,.03);opacity:.4;filter:grayscale(1);text-align:center}
+.pf-rg i{width:46px;height:46px;border-radius:12px;background:center/cover}.pf-rg span{font-size:11px;line-height:1.2;color:rgba(255,255,255,.75)}
+.pf-rg.got{opacity:1;filter:none}.pf-rg.cur{background:rgba(195,139,255,.14);box-shadow:inset 0 0 0 1px rgba(195,139,255,.5)}
+.pf-ach{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pf-a{position:relative;display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:16px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.pf-a b{font-size:14px;font-weight:600;margin-top:6px;color:rgba(255,255,255,.55)}.pf-a span{font-size:12px;line-height:1.35;color:rgba(255,255,255,.4)}
+.pf-ai{position:relative;width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);color:rgba(255,255,255,.3)}
+.pf-ai svg{width:22px;height:22px}.pf-ai em{position:absolute;right:-6px;bottom:-6px;width:20px;height:20px;border-radius:50%;background:#2a2a2a;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #161616}.pf-ai em svg{width:11px;height:11px;color:rgba(255,255,255,.6)}
+.pf-a.got{background:linear-gradient(160deg,rgba(150,87,232,.28),rgba(22,22,22,.6));box-shadow:inset 0 0 0 1px rgba(195,139,255,.45)}
+.pf-a.got b{color:#fff}.pf-a.got span{color:#d77fff;font-weight:600}
+.pf-a.got .pf-ai{color:#fff;background:linear-gradient(135deg,#d77fff,#9657e8);box-shadow:0 6px 18px rgba(150,87,232,.5)}
+.pf-a.got::after{content:"";position:absolute;inset:0;border-radius:16px;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.08) 50%,transparent 70%);background-size:250% 100%;animation:fsAchShine 4s ease-in-out infinite;pointer-events:none}
+@keyframes fsAchShine{0%,55%{background-position:120% 0}100%{background-position:-120% 0}}
+@media(max-width:640px){.pf-hd{grid-template-columns:auto 1fr}.pf-pos{grid-column:1/3;text-align:left;display:flex;align-items:baseline;gap:10px}.pf-aw{width:80px;height:80px;border-radius:24px}.pf-awi{border-radius:21px}.pf-n{font-size:24px}
+.pf-st{grid-template-columns:repeat(3,1fr)}.pf-st div:nth-child(4){box-shadow:none}.pf-lad{grid-template-columns:repeat(3,1fr)}.pf-ach{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){.vip,.fire,.crown,.pf-aw,.pf-a.got::after{animation:none!important}}
+
 @media(max-width:720px){.g{grid-template-columns:1fr}}
 </style></head><body><div class="g"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div><div class="tc" id="tc"></div>
 <script>
@@ -64,6 +119,42 @@ const FS={
  /* неразрывный пробел после коротких слов — без висячих предлогов */
  nbsp(el){const re=/(^|[\s(«"—])(в|во|и|к|ко|с|со|о|об|у|а|но|по|на|до|от|за|из|не|ни|ты|мы|я|для|без|при|про|через)\s+/gi;const w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;while(n=w.nextNode()){const t=n.nodeValue.replace(re,(m,a,b)=>a+b+'\u00a0').replace(re,(m,a,b)=>a+b+'\u00a0');if(t!==n.nodeValue)n.nodeValue=t}
   /* предлог в конце текста перед ссылкой */el.querySelectorAll('a').forEach(a=>{const p=a.previousSibling;if(p&&p.nodeType===3)p.nodeValue=p.nodeValue.replace(/(\s)(\S{1,3})\s$/,'$1$2\u00a0')})},
+
+ /* статусы: топ-3 и «в ударе» (топ-10 по баллам за неделю, кроме топ-3, от 200 баллов) */
+ status(D){const top={},hot={};D.rows.forEach(x=>{if(x.place<=3&&x.pts>0)top[x.h]=x.place});
+  D.rows.filter(x=>!top[x.h]&&x.week>=200).sort((a,b)=>b.week-a.week).slice(0,7).forEach(x=>hot[x.h]=1);return {top,hot}},
+ FIRE:'<svg class="fire" viewBox="0 0 24 24" aria-label="В ударе"><defs><linearGradient id="fg" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff6a3d"/><stop offset=".55" stop-color="#ff9a3d"/><stop offset="1" stop-color="#ffd36b"/></linearGradient></defs><path fill="url(#fg)" d="M12 2c.6 3.2 3.4 4.9 4.6 7.6 1.6 3.6.2 8.3-3.7 9.9-4.3 1.8-9.1-1.2-9.1-5.9 0-2.6 1.3-4.3 2.9-5.6-.1 1.5.4 2.9 1.6 3.6-.4-3.9 1.4-7.1 3.7-9.6z"/><path fill="#fff3c4" opacity=".85" d="M12.3 12.2c.3 1.6 1.7 2.5 1.7 4.1 0 1.5-1.1 2.6-2.3 2.6-1.4 0-2.4-1.1-2.3-2.5.1-1.5 1.6-2.4 2.9-4.2z"/></svg>',
+ CROWN:'<svg class="crown" viewBox="0 0 24 24" aria-label="Лидер потока"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".5" stop-color="#ffcf4d"/><stop offset="1" stop-color="#e09a1a"/></linearGradient></defs><path fill="url(#cg)" d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-2 10H5z"/><rect x="5" y="19" width="14" height="2" rx="1" fill="#e09a1a"/></svg>',
+ /* достижения: [название, условие, проверка, иконка] */
+ ACH:[
+  ['Ранняя пташка','пройти уроки модуля в первые 48 часов',(r,s)=>r.medals.includes('Ранняя пташка'),'M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1M7 17a5 5 0 0 1 10 0M4 20h16'],
+  ['Голос потока','заполнить 8+ анкет обратной связи',(r,s)=>r.medals.includes('Голос потока'),'M4 5h16v11H9l-5 4z'],
+  ['Максималист','сдать 3 домашки на максимальном уровне',(r,s)=>r.medals.includes('Максималист'),'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z'],
+  ['Первый в потоке','первым сдать принятую домашку',(r,s)=>r.medals.includes('Первый в потоке'),'M6 21V4M6 4h11l-2.5 4L17 12H6'],
+  ['Топ-3 потока','войти в тройку лидеров рейтинга',(r,s)=>!!s.top[r.h],'M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8'],
+  ['В ударе','быть в топе по баллам за неделю',(r,s)=>!!s.hot[r.h]||!!s.top[r.h]&&r.week>=200,'M12 3c.5 2.7 2.9 4.1 3.9 6.4 1.4 3-.2 7-3.1 8.3-3.6 1.5-7.7-1-7.7-5 0-2.2 1.1-3.6 2.4-4.7 0 1.3.4 2.4 1.4 3-.4-3.2 1.2-5.9 3.1-8z'],
+  ['Марафонец','пройти 50+ уроков',(r,s)=>r.lessons>=50,'M13 4a2 2 0 1 0 0 .1M7 21l3-6 3 2v5M10 15l1-5 4 3 3-1M8 11l3-2'],
+  ['Точно в срок','выполнить 50% заданий в срок x2',(r,s)=>r.ontime>=50,'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z'],
+  ['Премиум Amazon','максимальный тариф курса',(r,s)=>r.tar===FS.TOP_TARIFF,'M3 9l3-5h12l3 5-9 11zM3 9h18M9 4l3 5 3-5M12 9v11']],
+ /* профиль ученика (рейтинг — модалка, профиль GetCourse — iframe). o: {awards, me (bool)} */
+ profile(el,D,r,o){const A=o.awards,esc=FS.esc,fmt=FS.fmt,S=FS.status(D);
+  const i=D.ranks.findIndex(x=>x[0]===r.rank),cur=D.ranks[i],nx=D.ranks[i+1],lo=cur[1],hi=nx?nx[1]:lo,pc=nx?Math.max(3,Math.min(100,Math.round(100*(r.pts-lo)/(hi-lo)))):100;
+  const tp=S.top[r.h],hot=S.hot[r.h],vip=r.tar===FS.TOP_TARIFF,got=FS.ACH.filter(a=>a[2](r,S)).length;
+  const ic=d=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+  el.innerHTML=`<div class="pf${tp?' pf-top pf-t'+tp:''}${hot?' pf-hot':''}${vip?' pf-vip':''}">
+  <div class="pf-hd"><div class="pf-aw"><div class="pf-awi" style="background-image:url(${A}${cur[2]}.jpg)"></div>${tp?`<span class="pf-place">${tp}</span>`:''}</div>
+   <div class="pf-id"><div class="pf-l">${o.me?'Твой профиль на курсе':'Профиль ученика'}</div><div class="pf-n">${esc(r.name)}${vip?FS.STAR:''}${hot?FS.FIRE:''}${tp===1?FS.CROWN:''}</div>
+    <div class="pf-ch"><span class="pf-c pf-rk">${esc(r.rank)}</span>${tp?`<span class="pf-c pf-ct">Топ-${tp} потока</span>`:''}${hot?'<span class="pf-c pf-ch-hot">В ударе · +'+fmt(r.week)+' за неделю</span>':''}${vip?'<span class="pf-c pf-cv">★ Премиум Amazon</span>':''}</div></div>
+   <div class="pf-pos"><div class="pf-l">Место</div><div class="pf-pv">${r.place}<small> из ${D.n}</small></div></div></div>
+  <div class="pf-st"><div><b>${fmt(r.pts)}</b><span>${FS.pl(r.pts,['балл','балла','баллов'])}</span></div><div><b>+${fmt(r.week)}</b><span>за неделю</span></div><div><b>${r.lessons}</b><span>${FS.pl(r.lessons,['урок','урока','уроков'])}</span></div><div><b>${r.hw}</b><span>${FS.pl(r.hw,['домашка','домашки','домашек'])}</span></div><div><b>${r.ontime}%</b><span>в срок x2</span></div></div>
+  <div class="pf-pr"><div class="pf-pl"><span>${esc(cur[0])}</span><span>${nx?esc(nx[0])+' · '+fmt(hi):'вершина'}</span></div><div class="pf-bar"><i style="width:${pc}%"></i></div>
+   <div class="pf-nx">${nx?`Ещё <b>${fmt(Math.max(0,hi-r.pts))}</b> ${FS.pl(hi-r.pts,['балл','балла','баллов'])} до звания «${esc(nx[0])}»`:'Вершина карьерной лестницы'}</div></div>
+  <div class="pf-h2">Карьерная лестница</div>
+  <div class="pf-lad">${D.ranks.map((x,j)=>`<div class="pf-rg${j<=i?' got':''}${j===i?' cur':''}" title="${esc(x[0])} · ${fmt(x[1])}"><i style="background-image:url(${A}${x[2]}.jpg)"></i><span>${esc(x[0])}</span></div>`).join('')}</div>
+  <div class="pf-h2">Достижения <small>${got} из ${FS.ACH.length}</small></div>
+  <div class="pf-ach">${FS.ACH.slice().sort((a,b)=>b[2](r,S)-a[2](r,S)).map(a=>{const g=a[2](r,S);return `<div class="pf-a${g?' got':''}"><div class="pf-ai">${ic(a[3])}${g?'':'<em>'+ic('M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z')+'</em>'}</div><b>${esc(a[0])}</b><span>${g?'получено':esc(a[1])}</span></div>`}).join('')}</div></div>`;
+  FS.nbsp(el)},
+ STAR:'<svg class="vip" viewBox="0 0 24 24" aria-label="Премиум Amazon"><defs><linearGradient id="vgp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3c6ff"/><stop offset=".5" stop-color="#c38bff"/><stop offset="1" stop-color="#8b45e6"/></linearGradient></defs><path fill="url(#vgp)" d="M12 2.2l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>',
  SUPPORT:'https://t.me/zabota_oduvanov',
  TOP_TARIFF:'Премиум Амазон',
  /* срок доступа: [значение, подпись] */

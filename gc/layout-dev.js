@@ -9,6 +9,30 @@
   document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.notice-top-panel .close-link'); if (!c) return;
     var p = c.closest('.notice-top-panel'), t = p.textContent.replace(/\s+/g, ' ').trim();
     [].forEach.call(document.querySelectorAll('.notice-top-panel'), function (el) { if (el.textContent.replace(/\s+/g, ' ').trim() === t) el.style.setProperty('display', 'none', 'important') }) }, true);
+  /* статус ученика в рейтинге: подсветка аватарки в сайдбаре и профиль на странице /pl/<id> */
+  (function () {
+    var RT = 'https://romanoduvanov.github.io/otzyvy/gc/reyting-7993b0/';
+    function sha(u) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode('gc2:' + u)).then(function (b) { return [].map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2) }).join('').slice(0, 16) }) }
+    function rows() { try { var c = JSON.parse(sessionStorage.getItem('fsRt') || 'null'); if (c && Date.now() - c.ts < 9e5) return Promise.resolve(c.r) } catch (e) {}
+      return fetch(RT + 'data.json', { cache: 'no-store' }).then(function (r) { return r.json() }).then(function (D) { var r = D.rows.map(function (x) { return [x.h, x.place, x.pts, x.week] });
+        try { sessionStorage.setItem('fsRt', JSON.stringify({ ts: Date.now(), r: r })) } catch (e) {} return r }) }
+    function status(R, h) { var me = R.filter(function (x) { return x[0] === h })[0]; if (!me) return '';
+      if (me[1] <= 3 && me[2] > 0) return 't' + me[1];
+      var hot = R.filter(function (x) { return !(x[1] <= 3 && x[2] > 0) && x[3] >= 200 }).sort(function (a, b) { return b[3] - a[3] }).slice(0, 7);
+      return hot.some(function (x) { return x[0] === h }) ? 'hot' : '' }
+    var uid = window.accountUserId, pm = location.pathname.match(/^\/pl\/(\d+)\/?$/);
+    if (!uid && !pm) return;
+    rows().then(function (R) {
+      if (uid) sha(uid).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-st-' + s) });
+      if (pm) sha(pm[1]).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-pst-' + s) });
+    }).catch(function () {});
+    if (pm) { var ins = function () { if (document.querySelector('iframe.fs-prof')) return true; var col = document.querySelector('.xdget-userProfileSystemPage .col-md-9') || document.querySelector('.xdget-userProfileSystemPage .xdget-row'); if (!col) return false;
+        var f = document.createElement('iframe'); f.className = 'fs-prof'; f.title = 'Профиль на курсе'; f.src = RT + 'profile.html#u=' + pm[1] + (String(uid) === pm[1] ? '&me=1' : '');
+        f.style.cssText = 'width:100%;height:0;border:0;display:block;background:transparent'; col.classList.remove('empty'); col.appendChild(f); return true };
+      if (!ins()) document.addEventListener('DOMContentLoaded', ins);
+      window.addEventListener('message', function (e) { if (e.origin !== 'https://romanoduvanov.github.io' || !e.data || e.data.fsProfH === undefined) return;
+        [].forEach.call(document.querySelectorAll('iframe.fs-prof'), function (f) { f.style.setProperty('height', Math.ceil(e.data.fsProfH) + 'px', 'important') }) }) }
+  })();
   /* высота виджета «Актуальные события + кейсы» в списке тренингов */
   window.addEventListener('message', function (e) { if (e.origin !== 'https://romanoduvanov.github.io' || !e.data || !e.data.fsSchedH) return;
     [].forEach.call(document.querySelectorAll('iframe.fs-sched'), function (f) { f.style.setProperty('height', Math.ceil(e.data.fsSchedH) + 'px', 'important') }) });
