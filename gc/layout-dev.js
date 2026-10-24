@@ -31,7 +31,35 @@
       e.preventDefault(); e.stopPropagation(); location.href = '/pl/' + uid }, true);
     if (pm && String(uid) === pm[1]) { var addBtn = function () { var c = document.querySelector('.xdget-userProfileSystemPage .col-md-3'); if (!c || c.querySelector('.fs-set')) return !!c;
         var b = document.createElement('a'); b.className = 'fs-set'; b.href = '/user/my/profile'; b.innerHTML = '<span>Настройки профиля</span><i>→</i>'; c.appendChild(b); return true };
-      if (!addBtn()) document.addEventListener('DOMContentLoaded', addBtn) }
+      if (!addBtn()) document.addEventListener('DOMContentLoaded', addBtn);
+      /* смена аватарки прямо на странице: квадратная обрезка 600×600 и отправка формы «Мой профиль» */
+      var addAva = function () { var box = document.querySelector('.xdget-profileAvatar'); if (!box || box.querySelector('.fs-ava-up')) return !!box;
+        var lab = document.createElement('label'); lab.className = 'fs-ava-up'; lab.title = 'Загрузить фото';
+        lab.innerHTML = '<input type="file" accept="image/*" hidden><span class="fs-ava-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span class="fs-ava-t">Загрузить фото</span>';
+        box.appendChild(lab);
+        lab.querySelector('input').addEventListener('change', function () { var file = this.files && this.files[0]; if (!file) return;
+          if (!/^image\//.test(file.type)) { alert('Выбери картинку: JPG, PNG или WEBP'); return }
+          lab.classList.add('busy'); lab.querySelector('.fs-ava-t').textContent = 'Загружаем…';
+          var fail = function (m) { lab.classList.remove('busy'); lab.querySelector('.fs-ava-t').textContent = 'Загрузить фото'; alert(m || 'Не получилось загрузить фото. Попробуй ещё раз или загрузи в «Настройках профиля».') };
+          var img = new Image(), url = URL.createObjectURL(file);
+          img.onload = function () { var s = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = 600;
+            c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 600, 600); URL.revokeObjectURL(url);
+            c.toBlob(function (blob) { if (!blob) return fail();
+              fetch('/user/my/profile', { credentials: 'same-origin' }).then(function (r) { return r.text() }).then(function (t) {
+                var f = [].filter.call(new DOMParser().parseFromString(t, 'text/html').forms, function (x) { return x.querySelector('[name="User[first_name]"]') })[0]; if (!f) throw 0;
+                var fd = new FormData(f); fd.delete('User[profile_image]'); fd.append('User[profile_image]', ''); fd.append('User[profile_image]', new File([blob], 'avatar.jpg', { type: 'image/jpeg' }));
+                ['ChangePasswordForm[primaryPassword]', 'ChangePasswordForm[password]', 'ChangePasswordForm[confirmPassword]'].forEach(function (k) { fd.delete(k) });
+                var sb = f.querySelector('[type=submit][name]'); if (sb && !fd.has(sb.name)) fd.append(sb.name, sb.value || '1');
+                return fetch(f.getAttribute('action') || '/user/my/profile', { method: 'POST', body: fd, credentials: 'same-origin' }) })
+              .then(function (r) { if (!r.ok) throw 0; return fetch(location.pathname, { credentials: 'same-origin', cache: 'no-store' }) }).then(function (r) { return r.text() })
+              .then(function (t) { var n = new DOMParser().parseFromString(t, 'text/html').querySelector('.xdget-profileAvatar img'), o = box.querySelector('img');
+                if (n && o && n.getAttribute('src') !== o.getAttribute('src')) { o.src = n.getAttribute('src') + (n.getAttribute('src').indexOf('?') < 0 ? '?' : '&') + 'v=' + Date.now(); o.classList.remove('user-default-profile-image') }
+                else if (n && /default_profile/.test(n.getAttribute('src'))) return fail();
+                lab.classList.remove('busy'); lab.querySelector('.fs-ava-t').textContent = 'Готово!'; setTimeout(function () { lab.querySelector('.fs-ava-t').textContent = 'Загрузить фото' }, 2200);
+                try { sessionStorage.removeItem('fsRt') } catch (e) {} })
+              .catch(function () { fail() }) }, 'image/jpeg', .9) };
+          img.onerror = function () { fail('Не удалось открыть картинку') }; img.src = url; this.value = '' }); return true };
+      if (!addAva()) document.addEventListener('DOMContentLoaded', addAva) }
     if (pm) { var ins = function () { if (document.querySelector('iframe.fs-prof')) return true; var col = document.querySelector('.xdget-userProfileSystemPage .col-md-9') || document.querySelector('.xdget-userProfileSystemPage .xdget-row'); if (!col) return false;
         var f = document.createElement('iframe'); f.className = 'fs-prof'; f.title = 'Профиль на курсе'; f.src = RT + 'profile.html#u=' + pm[1] + (String(uid) === pm[1] ? '&me=1' : '');
         f.style.cssText = 'width:100%;height:0;border:0;display:block;background:transparent'; col.classList.remove('empty'); col.appendChild(f); return true };
