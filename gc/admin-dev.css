@@ -63,3 +63,47 @@
 :root body.page-user-index .close{color:#fff!important;opacity:.6;text-shadow:none!important}
 /* верхняя плашка GetCourse на этой странице */
 :root body.page-user-index .topNotitication{display:none!important}
+:root body.page-user-index .standard-page-menu{border:0!important;background:transparent!important}
+:root body.page-user-index .standard-page-menu li{background:transparent!important;border:0!important;border-radius:10px!important}
+:root body.page-user-index .standard-page-menu li a{color:rgba(255,255,255,.6)!important;text-decoration:none!important}
+:root body.page-user-index .standard-page-menu li.active{background:rgba(255,255,255,.1)!important}
+:root body.page-user-index .standard-page-menu li.active a,:root body.page-user-index .standard-page-menu li a:hover{color:#fff!important}
+
+/* ===== v12: карточка пользователя (админка) ===== */
+:root .values-table td.key,:root .client-form td.key{color:rgba(255,255,255,.45)!important}
+:root .editable-link-wrapper a.link{color:#fff!important;border-bottom:1px dashed rgba(195,139,255,.55)!important;text-decoration:none!important}
+:root .editable-link-wrapper a.link.small{color:rgba(255,255,255,.5)!important;border-bottom-color:rgba(255,255,255,.25)!important}
+:root .editable-link-wrapper a.link:hover{color:#d77fff!important}
+:root .select2-container .select2-choice{background:#1b1b1b!important;background-image:none!important;color:#fff!important;border:0!important;border-radius:10px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important}
+:root .select2-container .select2-choice span{color:#fff!important}
+:root .select2-container .select2-choice .select2-arrow{background:transparent!important;border:0!important}
+/* правая панель пользователя */
+:root .gc-right-active-block{background:#0f0f0f!important;color:#fff!important;border-left:1px solid rgba(255,255,255,.06)!important;box-shadow:-20px 0 50px rgba(0,0,0,.4)!important}
+:root .gc-right-active-block :is(.user-block-header,.user-block-body,.content-block,.content){background:transparent!important;color:#fff!important}
+:root .gc-right-active-block :is(.user-name,.user-email,.user-phone,.user-timezone,.user-address-str,.user-payed-money,.balance-list){color:rgba(255,255,255,.85)!important}
+:root .gc-right-active-block a{color:#d77fff!important}
+:root .gc-right-active-block a:hover{color:#fff!important}
+:root .gc-right-active-block .text-muted{color:rgba(255,255,255,.45)!important}
+:root .gc-right-active-block .user-communication-buttons .btn{background:rgba(195,139,255,.14)!important;color:#d77fff!important;border:0!important;border-radius:10px!important}
+:root .gc-right-active-block .user-communication-buttons .btn span{color:#d77fff!important}
+:root .gc-right-active-block .bg-commented,:root .gc-right-active-block .editable-link-wrapper a.link{background:transparent!important}
+:root .gc-right-active-block .bg-commented{border-radius:10px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+:root .gc-right-active-block textarea{background:#161616!important;color:#fff!important;border:0!important;border-radius:10px!important}
+:root .gc-right-active-block :is(.items-menu,.block-items-menu){background:#141414!important;border-color:rgba(255,255,255,.06)!important}
+:root .gc-right-active-block :is(.items-menu,.block-items-menu) li{background:transparent!important;border:0!important}
+:root .gc-right-active-block :is(.items-menu,.block-items-menu) li a,:root .gc-right-active-block :is(.items-menu,.block-items-menu) .fa{color:rgba(255,255,255,.55)!important}
+:root .gc-right-active-block :is(.items-menu,.block-items-menu) li.active{background:rgba(255,255,255,.1)!important;border-radius:8px}
+:root .gc-right-active-block :is(.items-menu,.block-items-menu) li.active :is(a,.fa){color:#fff!important}
+:root .gc-right-active-block .right-panel-history-eye{background:#141414!important;color:rgba(255,255,255,.55)!important}
+:root .gc-right-active-block .right-panel-history-eye *{color:rgba(255,255,255,.55)!important}
+:root .gc-right-active-block .date-panel{color:rgba(255,255,255,.4)!important}
+:root .gc-right-active-block .info-panel-group{background:#161616!important;border:0!important;border-radius:12px!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)!important;color:#fff!important;margin-bottom:8px!important}
+:root .gc-right-active-block .info-panel-group :is(.time,.action-name,.inline-date,.info-group-title){color:rgba(255,255,255,.45)!important}
+:root .gc-right-active-block .info-panel-group :is(.action-desc,.body,.info-panel-content){color:rgba(255,255,255,.88)!important}
+:root .gc-right-active-block .group-item{border-color:rgba(255,255,255,.06)!important;background:transparent!important}
+:root .gc-right-active-block .read-more{background:linear-gradient(180deg,rgba(22,22,22,0),#161616 60%)!important}
+:root .gc-right-active-block .more-btn{color:#d77fff!important}
+:root .gc-right-active-block .small-user-thumbnail img,:root .gc-right-active-block img.user-default-profile-image{filter:invert(1) brightness(.4)}
+:root .gc-right-active-block .user-avatar img.user-default-profile-image{filter:invert(1) brightness(.4);border-radius:50%}
+:root .gc-right-active-block .deal-status-light{background:transparent!important}
+:root .gc-right-active-block .btn-close,:root .gc-right-active-block .fa-times{color:rgba(255,255,255,.5)!important}
