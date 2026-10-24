@@ -41,6 +41,26 @@
   document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.notice-top-panel .close-link'); if (!c) return;
     var p = c.closest('.notice-top-panel'), t = p.textContent.replace(/\s+/g, ' ').trim();
     [].forEach.call(document.querySelectorAll('.notice-top-panel'), function (el) { if (el.textContent.replace(/\s+/g, ' ').trim() === t) el.style.setProperty('display', 'none', 'important') }) }, true);
+  /* брендинг OduvanovSchool: знак «кладка» в сайдбаре + подвал на страницах кабинета */
+  (function () {
+    if (window.top !== window) return;
+    var MK = function (cls) { var s = '<svg class="' + cls + '" viewBox="0 0 64 64" aria-hidden="true">', S = 20, G = 2;
+      [[0,0],[0,1],[1,0],[1,2],[2,0],[2,1],[2,2]].forEach(function (p) { s += '<rect x="' + p[1]*(S+G) + '" y="' + p[0]*(S+G) + '" width="20" height="20" rx="4"/>' });
+      return s + '<rect class="a" x="44" y="0" width="20" height="20" rx="4"/></svg>' };
+    var put = function () {
+      var mi = document.querySelector('.main-menu__inner');
+      if (mi && !mi.querySelector('.fs-brand')) { var b = document.createElement('a'); b.className = 'fs-brand'; b.href = '/teach/control/stream';
+        b.title = 'OduvanovSchool'; b.setAttribute('aria-label', 'OduvanovSchool — на главную'); b.innerHTML = MK('fs-mk'); mi.insertBefore(b, mi.firstChild) }
+      var mc = document.querySelector('.gc-main-content');
+      if (mc && !document.querySelector('.fs-foot') && !/\/pl\/cms\/|editMode/.test(location.href)) { var f = document.createElement('div'); f.className = 'fs-foot';
+        f.innerHTML = '<a class="fs-foot-b" href="/teach/control/stream">' + MK('fs-mk') + '<span>Oduvanov<b>School</b></span></a>'
+          + '<span class="fs-foot-c">© ' + new Date().getFullYear() + ' · Онлайн-школа Романа Одуванова</span>'
+          + '<a class="fs-foot-l" href="https://t.me/zabota_oduvanov" target="_blank" rel="noopener">Служба заботы →</a>';
+        mc.appendChild(f) }
+    };
+    var n = 0, iv = setInterval(function () { put(); if (++n > 40) { clearInterval(iv); setInterval(put, 1500) } }, 250);
+    document.addEventListener('DOMContentLoaded', put);
+  })();
   /* иконка вкладки OduvanovSchool */
   (function () { var B = 'https://romanoduvanov.github.io/otzyvy/gc/brand/'; var put = function () { var h = document.head; if (!h) return;
     [].forEach.call(h.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"]'), function (l) { l.remove() });

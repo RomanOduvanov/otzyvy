@@ -9,7 +9,7 @@ body{color:#fff;font-family:"Inter Tight",Inter,system-ui,sans-serif;-webkit-fon
 body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(60% 18% at 55% 100%,rgba(252,203,255,.28),transparent),radial-gradient(85% 42% at 55% 100%,rgba(150,87,232,.55),rgba(96,0,255,.3) 40%,rgba(28,8,56,.25) 70%,transparent),var(--bg)}
 body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(90deg,var(--hair) 1px,transparent 1px);background-size:calc(100%/6) 100%;background-position:calc(100%/12) 0;-webkit-mask:linear-gradient(#000,transparent 75%);mask:linear-gradient(#000,transparent 75%)}
 .w{max-width:1200px;margin:0 auto;padding:48px 32px 96px}
-.top-l{font-size:14px;color:var(--ink3)}h1{font-weight:500;font-size:clamp(36px,6vw,60px);line-height:1.04;letter-spacing:-.035em;margin:10px 0 0}h1 span{color:var(--ink2)}
+.top-l{font-size:14px;color:var(--ink3);display:flex;align-items:center;flex-wrap:wrap;gap:8px}.top-l .bmk{width:18px;height:18px;flex:none}.top-l .bmk rect{fill:#fff}.top-l .bmk rect.a{fill:#c9a2ff}.top-l b{color:#fff;font-weight:700;letter-spacing:-.02em}.top-l b i{font-style:normal;font-weight:500;color:#c9a2ff}h1{font-weight:500;font-size:clamp(36px,6vw,60px);line-height:1.04;letter-spacing:-.035em;margin:10px 0 0}h1 span{color:var(--ink2)}
 .upd{margin-top:10px;font-size:14px;color:var(--ink3)}
 .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:20px;margin-top:32px}
 .card{background:var(--s1);border-radius:28px;box-shadow:inset 0 0 0 1px var(--hair)}
@@ -173,6 +173,8 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 .pf-cl>*:nth-child(5),.pf-cl>*:nth-child(6){animation-delay:.24s}
 @container (max-width:520px){.pf-how{grid-template-columns:1fr}}
 
+.pf-l{display:flex;align-items:center;gap:7px}.pf-l .pf-bmk{width:14px;height:14px;flex:none}.pf-l .pf-bmk rect{fill:currentColor;opacity:.9}.pf-l .pf-bmk rect.a{fill:#c9a2ff;opacity:1}
+
 @media(max-width:860px){.grid .mc,.grid .x2{padding:20px}}
 
 .th button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:var(--ink3);font-size:12px;border-radius:7px;padding:3px 6px;margin:-3px -6px;transition:color .15s,background .15s;user-select:none;white-space:nowrap}
@@ -216,7 +218,7 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 @media(max-width:640px){.pm{padding:12px}.pm-b{padding:20px;border-radius:22px}}
 @media(prefers-reduced-motion:reduce){.tr.top::before,.pl .md1,.tr.hot .nm img{animation:none}}
 </style></head><body><div class="w">
-<div class="top-l">AI-креатор с 0 до PRO · поток 2.0</div>
+<div class="top-l"><svg class="bmk" viewBox="0 0 64 64" aria-hidden="true"><rect x="0" y="0" width="20" height="20" rx="4"/><rect x="22" y="0" width="20" height="20" rx="4"/><rect x="0" y="22" width="20" height="20" rx="4"/><rect x="44" y="22" width="20" height="20" rx="4"/><rect x="0" y="44" width="20" height="20" rx="4"/><rect x="22" y="44" width="20" height="20" rx="4"/><rect x="44" y="44" width="20" height="20" rx="4"/><rect class="a" x="44" y="0" width="20" height="20" rx="4"/></svg><b>Oduvanov<i>School</i></b><span>·</span>AI-креатор с 0 до PRO · поток 2.0</div>
 <h1>Карьерная лестница <span>потока</span></h1>
 <div class="upd" id="upd"></div>
 <div class="grid"><div class="mc" id="me"></div><div class="x2" id="x2"></div></div>
@@ -267,7 +269,7 @@ const FS={
   const ic=d=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
   el.innerHTML=`<div class="pf${tp?' pf-top pf-t'+tp:''}${hot?' pf-hot':''}${vip?' pf-vip':''}">
   <div class="pf-hd"><div class="pf-aw"><div class="pf-awi" style="background-image:url(${A}${cur[2]}.jpg)"></div>${tp?`<span class="pf-place">${tp}</span>`:''}</div>
-   <div class="pf-id"><div class="pf-l">${o.me?'Твой профиль на курсе':'Профиль ученика'}</div><div class="pf-n">${esc(r.name)}${vip?FS.STAR:''}${hot?FS.FIRE:''}${tp===1?FS.CROWN:''}</div>
+   <div class="pf-id"><div class="pf-l"><svg class="pf-bmk" viewBox="0 0 64 64" aria-hidden="true"><rect x="0" y="0" width="20" height="20" rx="4"/><rect x="22" y="0" width="20" height="20" rx="4"/><rect x="0" y="22" width="20" height="20" rx="4"/><rect x="44" y="22" width="20" height="20" rx="4"/><rect x="0" y="44" width="20" height="20" rx="4"/><rect x="22" y="44" width="20" height="20" rx="4"/><rect x="44" y="44" width="20" height="20" rx="4"/><rect class="a" x="44" y="0" width="20" height="20" rx="4"/></svg><span>OduvanovSchool · ${o.me?'твой профиль на курсе':'профиль ученика'}</span></div><div class="pf-n">${esc(r.name)}${vip?FS.STAR:''}${hot?FS.FIRE:''}${tp===1?FS.CROWN:''}</div>
     <div class="pf-ch"><span class="pf-c pf-rk">${esc(r.rank)}</span>${tp?`<span class="pf-c pf-ct">Топ-${tp} потока</span>`:''}${hot?'<span class="pf-c pf-ch-hot">В ударе · +'+fmt(r.week)+' за неделю</span>':''}${vip?'<span class="pf-c pf-cv">★ Премиум Amazon</span>':''}</div></div>
    <div class="pf-pos"><div class="pf-l">Место</div><div class="pf-pv">${r.place}<small> из ${D.n}</small></div></div></div>
   <div class="pf-cols"><div class="pf-cl">
