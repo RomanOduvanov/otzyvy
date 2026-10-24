@@ -138,11 +138,27 @@
 
 .pf-l{display:flex;align-items:center;gap:7px}.pf-l .pf-bmk{width:14px;height:14px;flex:none}.pf-l .pf-bmk rect{fill:currentColor;opacity:.9}.pf-l .pf-bmk rect.a{fill:#c9a2ff;opacity:1}
 
+/* часы на платформе и за уроками */
+.pf-tm{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.pf-tm>div{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;align-items:center;padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.pf-tm i{grid-row:1/3;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7)}
+.pf-tm i svg{width:20px;height:20px}
+.pf-tm b{font-size:22px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
+.pf-tm span{font-size:13px;color:rgba(255,255,255,.55)}
+.pf-tm .pf-tm-v{background:linear-gradient(160deg,rgba(150,87,232,.22),rgba(22,22,22,.4));box-shadow:inset 0 0 0 1px rgba(195,139,255,.4)}
+.pf-tm .pf-tm-v i{background:linear-gradient(135deg,#d77fff,#9657e8);color:#fff}
+@media(max-width:520px){.pf-tm{grid-template-columns:1fr}}
+
 </style></head><body><div class="wrap" id="w" style="display:none"><div id="p"></div><a class="lnk" href="https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152" target="_top">Открыть рейтинг потока <span>→</span></a></div>
 <script>
 /* общий модуль страниц рейтинга: утилиты, карточка ученика, карточка x2, плашка тарифа.
    gamify.py вставляет этот файл в rating_template.html и embed_template.html вместо комментария FS_JS */
 const FS={
+ API:'https://oduvanov-api.romanoduvanov52.workers.dev',
+ /* часы на платформе и за видео уроков с сервера: {h:[сайт, видео]} в секундах */
+ hours(){if(!/^http/.test(FS.API))return Promise.resolve(null);return Promise.race([fetch(FS.API+'/hours').then(r=>r.json()).catch(()=>null),new Promise(ok=>setTimeout(()=>ok(null),2500))])},
+ hrs(sec){const h=(sec||0)/3600;return h<0.05?'0 ч':h<10?(Math.round(h*10)/10).toString().replace('.',',')+' ч':Math.round(h)+' ч'},
+
  esc:s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
  fmt:n=>Number(n).toLocaleString('ru-RU'),
  M:['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],
@@ -182,6 +198,7 @@ const FS={
    <div class="pf-pos"><div class="pf-l">Место</div><div class="pf-pv">${r.place}<small> из ${D.n}</small></div></div></div>
   <div class="pf-cols"><div class="pf-cl">
   <div class="pf-st"><div><b>${fmt(r.pts)}</b><span>${FS.pl(r.pts,['балл','балла','баллов'])}</span></div><div><b>+${fmt(r.week)}</b><span>за неделю</span></div><div><b>${r.lessons}</b><span>${FS.pl(r.lessons,['урок','урока','уроков'])}</span></div><div><b>${r.hw}</b><span>${FS.pl(r.hw,['домашка','домашки','домашек'])}</span></div><div><b>${r.ontime}%</b><span>в срок x2</span></div></div>
+  ${r.vs!=null?`<div class="pf-tm"><div><i>${FS.CLOCK}</i><b>${FS.hrs(r.vs)}</b><span>на платформе</span></div><div class="pf-tm-v"><i>${FS.PLAY}</i><b>${FS.hrs(r.vh)}</b><span>за просмотром уроков</span></div></div>`:''}
   <div class="pf-pr"><div class="pf-pl"><span>${esc(cur[0])}</span><span>${nx?esc(nx[0])+' · '+fmt(hi):'вершина'}</span></div><div class="pf-bar"><i style="width:${pc}%"></i></div>
    <div class="pf-nx">${nx?`Ещё <b>${fmt(Math.max(0,hi-r.pts))}</b> ${FS.pl(hi-r.pts,['балл','балла','баллов'])} до звания «${esc(nx[0])}»`:'Вершина карьерной лестницы'}</div></div>
   <div class="pf-h2">Карьерная лестница</div>
@@ -198,6 +215,8 @@ const FS={
   const step=t=>{const p=Math.min(1,Math.max(0,(t-t0)/d)),e=1-Math.pow(1-p,3);n.nodeValue=m[1]+FS.fmt(Math.round(to*e))+m[3];if(p<1)requestAnimationFrame(step)};requestAnimationFrame(step)})},
  STAR:'<svg class="vip" viewBox="0 0 24 24" aria-label="Премиум Amazon"><defs><linearGradient id="vgp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3c6ff"/><stop offset=".5" stop-color="#c38bff"/><stop offset="1" stop-color="#8b45e6"/></linearGradient></defs><path fill="url(#vgp)" d="M12 2.2l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>',
  SUPPORT:'https://t.me/zabota_oduvanov',
+ CLOCK:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ PLAY:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/></svg>',
  TOP_TARIFF:'Премиум Амазон',
  /* срок доступа: [значение, подпись] */
  access(a){if(a==='inf')return['Бессрочный','навсегда в кабинете'];if(!a)return null;const d=new Date(a+'T23:59:59'),n=Math.ceil((d-new Date())/864e5);
@@ -335,7 +354,7 @@ FS.shareCard=async function(D,r,o){
 
 const post=()=>{try{parent.postMessage({fsProfH:document.getElementById('w').style.display==='none'?0:Math.ceil(document.body.getBoundingClientRect().height)+2},'*')}catch(e){}};
 fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{const u=FS.uid();if(!u){post();return}const h=await FS.hash(u);const r=D.rows.find(x=>x.h===h);if(!r){post();return}
- document.getElementById('w').style.display='';FS.profile(document.getElementById('p'),D,r,{awards:'../awards/',me:/me=1/.test(location.hash)});post()}).catch(post);
+ const H=await FS.hours();if(H){const t=H[r.h]||[0,0];r.vs=t[0];r.vh=t[1]}document.getElementById('w').style.display='';FS.profile(document.getElementById('p'),D,r,{awards:'../awards/',me:/me=1/.test(location.hash)});post()}).catch(post);
 let SD=null,SR=null;
 /* «Поделиться результатом»: родитель (кабинет GetCourse) просит картинку */
 addEventListener('message',async e=>{if(!e.data||!e.data.fsShare||!/^https:\/\/oduvanovroman\.getcourse\.ru$/.test(e.origin))return;
