@@ -17,6 +17,7 @@ body:has(.xdget-loginSystemPage) .gc-main-content{padding:0!important}
 @keyframes fsLgIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .xdget-loginUserForm .state-form{background:none!important;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}
 form.state-login>.login-form,form.state-register>.register-form{display:flex!important;flex-direction:column}
+form.state-login>.state-form:not(.login-form),form.state-register>.state-form:not(.register-form),form.state-logined>.state-form:not(.logined-form){display:none!important}
 .xdget-loginUserForm .state-form>*{float:none!important;margin-left:0!important;margin-right:0!important}
 
 /* заголовок и подзаголовок */
