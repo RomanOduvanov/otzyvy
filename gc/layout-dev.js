@@ -26,6 +26,12 @@
       if (uid) sha(uid).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-st-' + s) });
       if (pm) sha(pm[1]).then(function (h) { var s = status(R, h); if (s) document.documentElement.classList.add('fs-pst-' + s) });
     }).catch(function () {});
+    /* «Мой профиль» в меню ведёт на оформленный профиль /pl/<id>; настройки — кнопкой оттуда */
+    if (uid) document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.main-menu a[href*="/user/my/profile"]'); if (!a || e.metaKey || e.ctrlKey) return;
+      e.preventDefault(); e.stopPropagation(); location.href = '/pl/' + uid }, true);
+    if (pm && String(uid) === pm[1]) { var addBtn = function () { var c = document.querySelector('.xdget-userProfileSystemPage .col-md-3'); if (!c || c.querySelector('.fs-set')) return !!c;
+        var b = document.createElement('a'); b.className = 'fs-set'; b.href = '/user/my/profile'; b.innerHTML = '<span>Настройки профиля</span><i>→</i>'; c.appendChild(b); return true };
+      if (!addBtn()) document.addEventListener('DOMContentLoaded', addBtn) }
     if (pm) { var ins = function () { if (document.querySelector('iframe.fs-prof')) return true; var col = document.querySelector('.xdget-userProfileSystemPage .col-md-9') || document.querySelector('.xdget-userProfileSystemPage .xdget-row'); if (!col) return false;
         var f = document.createElement('iframe'); f.className = 'fs-prof'; f.title = 'Профиль на курсе'; f.src = RT + 'profile.html#u=' + pm[1] + (String(uid) === pm[1] ? '&me=1' : '');
         f.style.cssText = 'width:100%;height:0;border:0;display:block;background:transparent'; col.classList.remove('empty'); col.appendChild(f); return true };
