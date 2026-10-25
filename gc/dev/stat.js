@@ -110,7 +110,7 @@
       if (k === 'all') return { a: null, b: t, pa: null, pb: null, name: 'Всё время' };
       if ((m = k.match(/^c(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/))) { var A = new Date(m[1] + 'T00:00'), B = new Date(m[2] + 'T00:00'), L = ndays(A, B); return { a: A, b: B, pa: addD(A, -L), pb: addD(A, -1), name: 'Свой период' } }
       return period('month') };
-    var S = { k: 'month', gran: null, metric: 'rev' };
+    var S = { k: 'month', gran: null, metric: 'rev', money: 'net' };
     try { var sk = sessionStorage.getItem('fssP'); if (sk) S.k = sk } catch (e) {}
     var P = function () { var p = period(S.k); if (!p.a) p.a = (C.payV && C.payV.first) || new Date(2020, 0, 1); return p };
 
@@ -181,7 +181,7 @@
       + '.fss-t td{padding:12px 10px;border-top:1px solid var(--hair);text-align:right;white-space:nowrap}.fss-t td:first-child{white-space:normal}.fss-t td.b{font-weight:600}.fss-t td.m{color:var(--ink2)}.fss-t tr.sum td{font-weight:600}.fss-t tr.hl td{background:rgba(195,139,255,.06)}.fss-t a{color:#fff!important;text-decoration:none!important}.fss-t a:hover{color:var(--acc)!important}'
       + '.fss-bar{display:block;height:4px;border-radius:4px;background:rgba(255,255,255,.06);margin-top:8px;overflow:hidden}.fss-bar i{display:block;height:100%;border-radius:4px;background:var(--lil)}.fss-n{color:var(--ink3);font-size:12px;margin-top:3px}.fss-scroll{overflow-x:auto}'
       + '.fss-kv{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}@media(max-width:1000px){.fss-kv{grid-template-columns:repeat(2,1fr)}}.fss-kv>div{background:var(--s1);border:1px solid var(--hair);border-radius:22px;padding:20px 24px}.fss-kv>div>i{display:block;font-style:normal;color:var(--ink2);font-size:14px}.fss-kv>div>b{display:block;font-size:32px;font-weight:500;letter-spacing:-.02em;margin:6px 0}.fss-kv small{display:block;color:var(--ink3);font-size:13px;line-height:1.35}'
-      + '.fss-strip{display:flex;flex-wrap:wrap;gap:6px 28px;margin:-6px 0 18px;padding:0 0 16px;border-bottom:1px solid var(--hair);font-size:13px;color:var(--ink2)}.fss-strip b{color:#fff;font-weight:600}.fss-note{margin:-8px 0 16px;padding:12px 16px;border-radius:14px;background:rgba(195,139,255,.08);border:1px solid rgba(195,139,255,.2);color:#e6d4ff;font-size:13px}.fss-load{padding:80px 0;text-align:center;color:var(--ink2)}.fss-load:after{content:"";display:block;width:26px;height:26px;margin:16px auto 0;border-radius:50%;border:2px solid rgba(195,139,255,.18);border-top-color:var(--lil);animation:fssr .8s linear infinite}@keyframes fssr{to{transform:rotate(360deg)}}.fss-empty{padding:32px 0;text-align:center;color:var(--ink2)}'
+      + '.fss-strip{display:flex;flex-wrap:wrap;gap:6px 28px;margin:-6px 0 18px;padding:0 0 16px;border-bottom:1px solid var(--hair);font-size:13px;color:var(--ink2)}.fss-strip b{color:#fff;font-weight:600}.fss-note{margin:-8px 0 16px;padding:12px 16px;border-radius:14px;background:rgba(195,139,255,.08);border:1px solid rgba(195,139,255,.2);color:#e6d4ff;font-size:13px}.fss-sw{display:inline-flex;align-items:center;gap:4px;margin-left:8px;vertical-align:1px;color:var(--ink3)}.fss-sw i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.22)}.fss-sw i.on{background:var(--lil)}.fss-sw svg{width:13px;height:13px;margin-left:3px}.fss-m.on .fss-sw{color:#fff}.fss-strip .sw{cursor:pointer;border-bottom:1px dashed transparent}.fss-strip .sw:hover{color:#fff}.fss-strip .sw.on{color:#fff;border-bottom-color:var(--lil)}.fss-hint{margin-left:auto;color:var(--ink3);border-bottom:1px dashed rgba(255,255,255,.25);cursor:help}.fss-load{padding:80px 0;text-align:center;color:var(--ink2)}.fss-load:after{content:"";display:block;width:26px;height:26px;margin:16px auto 0;border-radius:50%;border:2px solid rgba(195,139,255,.18);border-top-color:var(--lil);animation:fssr .8s linear infinite}@keyframes fssr{to{transform:rotate(360deg)}}.fss-empty{padding:32px 0;text-align:center;color:var(--ink2)}'
       + '.fss-sk{height:16px;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));background-size:200% 100%;animation:fsss 1.2s ease infinite;margin:10px 0}@keyframes fsss{to{background-position:-200% 0}}'
       + '.fss-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:4px 0 20px}.fss-stack i{display:block;height:100%}.fss-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:0}'
       + '.fss-modal{position:fixed;inset:0;background:rgba(0,1,6,.86);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}.fss-mw{display:flex;flex-direction:column;align-items:center;gap:16px;max-height:100%}.fss-mw img{max-height:calc(100vh - 120px);max-width:100%;border-radius:22px;border:1px solid rgba(255,255,255,.08)}.fss-mb{display:flex;gap:10px}';
@@ -192,43 +192,62 @@
     var cmpName = function (p) { return p.pa ? human(p.pa, p.pb) : '' };
 
     /* ---------- вкладка «Продажи» ---------- */
+    var MODES = { net: { l: 'На вывод', s: 'после комиссий GetCourse и банков', lead: ' на вывод пришло ' }, gross: { l: 'Оплачено клиентами', s: 'до комиссий', lead: ' клиенты заплатили ' }, gc: { l: 'Сумма оплат GetCourse', s: 'как в стандартной статистике', lead: ' GetCourse засчитал оплат на ' } };
+    var gcBucket = function (b) { return dealTot(day0(b[0]), day0(b[b.length - 1])).then(function (t) { return t.sum }) };
+    var pool = function (arr, fn) { var out = new Array(arr.length), i = 0; var w = function () { if (i >= arr.length) return Promise.resolve(); var j = i++; return fn(arr[j]).then(function (v) { out[j] = v; return w() }) }; var ws = []; for (var k = 0; k < 6; k++) ws.push(w()); return Promise.all(ws).then(function () { return out }) };
     var renderSales = function () { var tok = S.tok = Math.random(); loading();
       payments().then(function (PAY) { C.payV = PAY; if (tok !== S.tok) return; var p = P(), n = ndays(p.a, p.b);
         var g = S.gran && grans(n).some(function (x) { return x[0] === S.gran && x[2] }) ? S.gran : autoGran(n);
-        var rc = paySum(PAY, p.a, p.b), rp = p.pa ? paySum(PAY, p.pa, p.pb) : null;
-        var cmp = cmpName(p), isOne = n === 1;
-        body.innerHTML = '<p class="fss-lead" id="fssLead">' + leadP(p) + (PAY.gross ? ' клиенты заплатили <em>' : ' на вывод пришло <em>') + RUB(rc.sum) + '</em><span id="fssLeadN"></span>'
-          + (rp ? '<br><span>' + (rp.sum ? (rc.sum >= rp.sum ? 'Это на ' + Math.round(pct(rc.sum, rp.sum)) + '% больше' : 'Это на ' + Math.round(-pct(rc.sum, rp.sum)) + '% меньше') + ', чем за ' + esc(cmp) + ' (' + RUB(rp.sum) + ')' : 'За ' + esc(cmp) + ' поступлений не было') + '</span>' : '') + '</p>'
-          + (PAY.gross ? '<div class="fss-note">Данные о выводе не подключены — суммы показаны до комиссий GetCourse и банков. Открой страницу по ссылке доступа, чтобы видеть чистые деньги.</div>' : '') + '<div class="fss-card"><div class="fss-mt" id="fssMT"></div>' + (PAY.gross ? '' : '<div class="fss-strip"><span>Клиенты заплатили <b>' + RUB(rc.gross) + '</b></span><span>Комиссии GetCourse и банков <b>−' + RUB(rc.fee) + '</b>' + (rc.gross ? ' · ' + (rc.fee / rc.gross * 100).toFixed(1).replace('.', ',') + '%' : '') + '</span><span>На вывод <b>' + RUB(rc.sum) + '</b></span></div>') + '<div class="fss-ctl"><div class="fss-leg"><span><i></i>' + esc(human(p.a, p.b)) + '</span>' + (rp ? '<span><i class="p"></i>' + esc(cmp) + '</span>' : '') + '</div>'
+        var rc = paySum(PAY, p.a, p.b), rp = p.pa ? paySum(PAY, p.pa, p.pb) : null, cmp = cmpName(p);
+        var modes = PAY.gross ? ['gross', 'gc'] : ['net', 'gross', 'gc']; if (modes.indexOf(S.money) < 0) S.money = modes[0];
+        body.innerHTML = '<p class="fss-lead" id="fssLead"></p>'
+          + (PAY.gross ? '<div class="fss-note">Чистые деньги «на вывод» не подключены в этом браузере. Открой страницу по ссылке доступа — или вставь ключ: <input class="fss-key" placeholder="ключ доступа" style="margin-left:8px;width:220px;background:#0c0c0c;border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:8px;padding:5px 8px;font:inherit"> <button type="button" class="fss-btn pri fss-keygo" style="height:30px;padding:0 12px;display:inline-flex">Подключить</button></div>' : '')
+          + '<div class="fss-card"><div class="fss-mt" id="fssMT"></div>'
+          + '<div class="fss-strip" id="fssStrip"></div><div class="fss-ctl"><div class="fss-leg"><span><i></i>' + esc(human(p.a, p.b)) + '</span>' + (rp ? '<span><i class="p"></i>' + esc(cmp) + '</span>' : '') + '</div>'
           + '<div class="fss-seg" id="fssG">' + grans(n).map(function (x) { return '<button type="button" data-g="' + x[0] + '"' + (x[2] ? '' : ' disabled') + (x[0] === g ? ' class="on"' : '') + '>' + x[1] + '</button>' }).join('') + '</div></div><div class="fss-ch" id="fssC"></div></div>'
           + '<div class="fss-row"><div class="fss-card"><div class="fss-sec">Тарифы</div><p class="fss-sub">какие продукты покупали за период</p><div id="fssTar"><div class="fss-sk"></div><div class="fss-sk"></div><div class="fss-sk"></div></div></div>'
           + '<div class="fss-card"><div class="fss-sec">Последние оплаты</div><p class="fss-sub">оплаченные заказы, новые сверху</p><div id="fssLast"><div class="fss-sk"></div><div class="fss-sk"></div><div class="fss-sk"></div></div></div></div>';
+        var kg = body.querySelector('.fss-keygo'); if (kg) kg.onclick = function () { var v = (body.querySelector('.fss-key').value || '').trim(); if (!/^[0-9a-f]{16,64}$/.test(v)) return; try { localStorage.setItem('fsStatKey', v) } catch (e) {} C.pay = null; S.money = 'net'; renderSales() };
         if (PAY.last) setTimeout(function () { lastNet(PAY, p) }, 0);
         var st = { rc: rc, rp: rp, p: p, g: g, PAY: PAY, cur: null, prev: null, dl: null, dlp: null };
         S.view = st;
-        var metrics = function () { var t = st.cur, q = st.prev, mm = [
-            { k: 'rev', l: PAY.gross ? 'Оплачено' : 'На вывод', v: RUB(rc.sum), d: rp ? dchip(rc.sum, rp.sum, 'к ' + cmp) : '<span class="fss-dl">' + (PAY.gross ? 'до комиссий' : 'после всех комиссий') + '</span>', can: 1 },
+        var money = function (mode, which) { var r = which === 'p' ? rp : rc, t = which === 'p' ? st.prev : st.cur; if (!r) return null; return mode === 'net' ? r.sum : mode === 'gross' ? r.gross : t ? t.sum : null };
+        var lead = function () { var el = body.querySelector('#fssLead'); if (!el) return; var md = S.money, v = money(md), v0 = money(md, 'p'), t = st.cur;
+          el.innerHTML = leadP(p) + MODES[md].lead + '<em>' + (v == null ? '…' : RUB(v)) + '</em>' + (t ? ' и закрыто <em>' + NUM(t.n) + '</em> ' + pl(t.n, ['продажа', 'продажи', 'продаж']) : '')
+            + (rp && v != null && v0 != null ? '<br><span>' + (v0 ? (v >= v0 ? 'Это на ' + Math.round(pct(v, v0)) + '% больше' : 'Это на ' + Math.round(-pct(v, v0)) + '% меньше') + ', чем за ' + esc(cmp) + ' (' + RUB(v0) + ')' : 'За ' + esc(cmp) + ' оплат не было') + '</span>' : '') };
+        var strip = function () { var el = body.querySelector('#fssStrip'); if (!el) return; var it = [];
+          it.push(['gross', 'Клиенты заплатили', RUB(rc.gross)]); if (!PAY.gross) { it.push(['', 'Комиссии GetCourse и банков', '−' + RUB(rc.fee) + (rc.gross ? ' · ' + (rc.fee / rc.gross * 100).toFixed(1).replace('.', ',') + '%' : '')]); it.push(['net', 'На вывод', RUB(rc.sum)]) }
+          it.push(['gc', 'В статистике GetCourse', st.cur ? RUB(st.cur.sum) : '…']);
+          el.innerHTML = it.map(function (x) { return '<span' + (x[0] ? ' data-m="' + x[0] + '" class="sw' + (S.money === x[0] ? ' on' : '') + '"' : '') + '>' + x[1] + ' <b>' + x[2] + '</b></span>' }).join('')
+            + '<span class="fss-hint" title="Оплачено клиентами — все принятые платежи, включая предоплаты и доплаты. На вывод — то же за вычетом комиссий GetCourse и банков (рассрочки 18–30%, карты 3,5%). В статистике GetCourse — оплаты только по заказам, полностью оплаченным в этот период.">что есть что?</span>';
+          [].forEach.call(el.querySelectorAll('.sw'), function (s) { s.onclick = function () { S.money = s.getAttribute('data-m'); S.metric = 'rev'; refresh() } }) };
+        var metrics = function () { var t = st.cur, q = st.prev, md = S.money, v = money(md), v0 = money(md, 'p'), mm = [
+            { k: 'rev', l: MODES[md].l, v: v == null ? '…' : RUB(v), d: rp && v != null && v0 != null ? dchip(v, v0, 'к ' + cmp) : '<span class="fss-dl">' + MODES[md].s + '</span>', can: 1 },
             { k: 'cnt', l: 'Продажи', v: t ? NUM(t.n) : '…', d: t && q ? dchip(t.n, q.n, 'к ' + cmp) : '<span class="fss-dl">оплаченных заказов</span>', can: 1 },
             { k: 'avg', l: 'Средний чек', v: t ? RUB(t.avg) : '…', d: t && q ? dchip(t.avg, q.avg, 'к ' + cmp) : '<span class="fss-dl">&nbsp;</span>' },
             { k: 'buy', l: 'Покупатели', v: t ? NUM(t.buyers) : '…', d: t && q ? dchip(t.buyers, q.buyers, 'к ' + cmp) : '<span class="fss-dl">&nbsp;</span>' }];
           var mt = body.querySelector('#fssMT'); if (!mt) return;
-          mt.innerHTML = mm.map(function (m) { return '<button type="button" class="fss-m' + (m.can ? ' can' : '') + (S.metric === m.k ? ' on' : '') + '" data-k="' + m.k + '"' + (m.can ? '' : ' tabindex="-1" title="Итог за период"') + '><i>' + m.l + '</i><b>' + m.v + '</b>' + m.d + '</button>' }).join('');
-          [].forEach.call(mt.querySelectorAll('.fss-m.can'), function (b) { b.onclick = function () { S.metric = b.getAttribute('data-k'); metrics(); draw() } });
-          var ln = body.querySelector('#fssLeadN'); if (ln && t) ln.innerHTML = ' и закрыто <em>' + NUM(t.n) + '</em> ' + pl(t.n, ['продажа', 'продажи', 'продаж']) };
-        var draw = function () { var el = body.querySelector('#fssC'); if (!el) return; var dk = dayKeys(p.a, p.b), bk = bucket(dk, st.g), pk = p.pa ? bucket(dayKeys(p.pa, p.pb), st.g) : null;
-          var val = function (arr, list) { if (S.metric === 'rev') return arr.reduce(function (s, d) { var x = PAY.m[key(d)]; return s + (x ? x.sum : 0) }, 0);
-            if (!list) return null; var a = day0(arr[0]), z = addD(day0(arr[arr.length - 1]), 1); return list.filter(function (x) { return x.when && x.when >= a && x.when < z }).length };
-          if (S.metric === 'cnt' && !st.dl) { el.innerHTML = '<div class="fss-load">Считаю продажи по дням…</div>'; return }
-          var cur = bk.map(function (b) { var v = val(b, st.dl); return { v: v, ax: lbl(b, st.g, 1), t: lbl(b, st.g) } });
-          var prev = pk ? pk.map(function (b) { var v = val(b, st.dlp); return v == null ? null : { v: v, t: lbl(b, st.g) } }) : null;
-          if (prev && prev.every(function (x) { return !x })) prev = null;
-          line(el, cur, prev, S.metric === 'rev' ? { h: 300 } : { h: 300, int: 1, fmt: function (x) { return NUM(x) }, tf: function (x) { return NUM(x) + ' ' + pl(x, ['продажа', 'продажи', 'продаж']) } }) };
-        metrics(); draw();
+          mt.innerHTML = mm.map(function (m) { var sw = m.k === 'rev' ? '<span class="fss-sw" title="Нажми ещё раз, чтобы переключить: на вывод → оплачено → GetCourse">' + modes.map(function (x) { return '<i' + (x === md ? ' class="on"' : '') + '></i>' }).join('') + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></svg></span>' : '';
+            return '<button type="button" class="fss-m' + (m.can ? ' can' : '') + (S.metric === m.k ? ' on' : '') + '" data-k="' + m.k + '"' + (m.can ? '' : ' tabindex="-1" title="Итог за период"') + '><i>' + m.l + sw + '</i><b>' + m.v + '</b>' + m.d + '</button>' }).join('');
+          [].forEach.call(mt.querySelectorAll('.fss-m.can'), function (b) { b.onclick = function () { var k = b.getAttribute('data-k');
+            if (k === 'rev' && S.metric === 'rev') S.money = modes[(modes.indexOf(S.money) + 1) % modes.length]; S.metric = k; refresh() } }) };
+        var draw = function () { var el = body.querySelector('#fssC'); if (!el) return; var dk = dayKeys(p.a, p.b), bk = bucket(dk, st.g), pk = p.pa ? bucket(dayKeys(p.pa, p.pb), st.g) : null, md = S.money, dtok = st.dtok = Math.random();
+          var fin = function (cur, prev) { if (dtok !== st.dtok) return; if (prev && prev.every(function (x) { return !x })) prev = null;
+            line(el, cur, prev, S.metric === 'rev' ? { h: 300 } : { h: 300, int: 1, fmt: function (x) { return NUM(x) }, tf: function (x) { return NUM(x) + ' ' + pl(x, ['продажа', 'продажи', 'продаж']) } }) };
+          var mk = function (bks, vals, withAx) { return bks.map(function (b, i) { return vals[i] == null ? null : withAx ? { v: vals[i], ax: lbl(b, st.g, 1), t: lbl(b, st.g) } : { v: vals[i], t: lbl(b, st.g) } }) };
+          if (S.metric === 'rev' && md === 'gc') { el.innerHTML = '<div class="fss-load">Беру оплаты из статистики GetCourse…</div>';
+            Promise.all([pool(bk, gcBucket), pk ? pool(pk, gcBucket) : null]).then(function (r) { fin(mk(bk, r[0], 1), pk ? mk(pk, r[1]) : null) }).catch(function () { el.innerHTML = '<div class="fss-empty">GetCourse не отдал данные</div>' }); return }
+          if (S.metric === 'rev') { var f = function (arr) { return arr.reduce(function (s, d) { var x = PAY.m[key(d)]; return s + (x ? (md === 'gross' ? x.gross : x.sum) : 0) }, 0) };
+            return fin(mk(bk, bk.map(f), 1), pk ? mk(pk, pk.map(f)) : null) }
+          if (!st.dl) { el.innerHTML = '<div class="fss-load">Считаю продажи по дням…</div>'; return }
+          var cnt = function (list) { return function (arr) { if (!list) return null; var a = day0(arr[0]), z = addD(day0(arr[arr.length - 1]), 1); return list.filter(function (x) { return x.when && x.when >= a && x.when < z }).length } };
+          fin(mk(bk, bk.map(cnt(st.dl)), 1), pk ? mk(pk, pk.map(cnt(st.dlp))) : null) };
+        var refresh = function () { lead(); strip(); metrics(); draw() };
+        st.refresh = refresh; refresh();
         [].forEach.call(body.querySelectorAll('#fssG button'), function (b) { b.onclick = function () { if (b.disabled) return; S.gran = st.g = b.getAttribute('data-g'); [].forEach.call(body.querySelectorAll('#fssG button'), function (x) { x.classList.toggle('on', x === b) }); draw() } });
-        Promise.all([dealTot(p.a, p.b), p.pa ? dealTot(p.pa, p.pb) : null]).then(function (r) { if (tok !== S.tok) return; st.cur = r[0]; st.prev = r[1]; metrics(); setImg() }).catch(function () {});
+        Promise.all([dealTot(p.a, p.b), p.pa ? dealTot(p.pa, p.pb) : null]).then(function (r) { if (tok !== S.tok) return; st.cur = r[0]; st.prev = r[1]; lead(); strip(); metrics(); if (S.money === 'gc' && S.metric === 'rev') draw(); setImg() }).catch(function () {});
         deals(p.a, p.b).then(function (list) { if (tok !== S.tok) return; st.dl = list; tariffs(list); if (!PAY.last) lastPays(list); if (S.metric === 'cnt') draw(); setImg() }).catch(function () { var t = body.querySelector('#fssTar'); if (t) t.innerHTML = '<div class="fss-empty">Не удалось загрузить заказы</div>' });
         if (p.pa) deals(p.pa, p.pb).then(function (list) { if (tok !== S.tok) return; st.dlp = list; if (S.metric === 'cnt') draw() }).catch(function () {});
-        if (S.metric === 'cnt') draw();
       }).catch(fail) };
     var tariffList = function (list) { var m = {}; list.forEach(function (x) { (m[x.title] = m[x.title] || { name: x.title, n: 0, sum: 0 }), m[x.title].n++, m[x.title].sum += x.cost });
       return Object.keys(m).map(function (k) { return m[k] }).sort(function (a, b) { return b.n - a.n || b.sum - a.sum }) };
@@ -321,9 +340,9 @@
         x.font = '500 84px ' + F; x.fillStyle = '#fff'; x.fillText('Продажи', M, 214); x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(human(p.a, p.b), M, 304);
         /* главная карточка: выручка */
         cardBox(M, 340, W - 2 * M, 220);
-        x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(st.PAY.gross ? 'Оплачено клиентами — до комиссий' : 'На вывод — после комиссий GetCourse и банков', M + 40, 392);
-        x.font = '500 104px ' + F; x.fillStyle = '#fff'; x.fillText(RUB(rc.sum), M + 36, 496);
-        var d0 = rp ? dtxt(rc.sum, rp.sum) : null; if (d0) { x.font = '600 26px ' + F; x.fillStyle = d0.c; x.fillText(d0.s, M + 40, 538); var dw = x.measureText(d0.s).width; x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('к ' + human(p.pa, p.pb) + ' · было ' + RUB(rp.sum), M + 52 + dw, 538) }
+        x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; var md = S.money || 'net', mv = md === 'net' ? rc.sum : md === 'gross' ? rc.gross : c.sum, mv0 = !rp ? null : md === 'net' ? rp.sum : md === 'gross' ? rp.gross : q ? q.sum : null; x.fillText({ net: 'На вывод — после комиссий GetCourse и банков', gross: 'Оплачено клиентами — до комиссий', gc: 'Сумма оплат по статистике GetCourse' }[md], M + 40, 392);
+        x.font = '500 104px ' + F; x.fillStyle = '#fff'; x.fillText(RUB(mv), M + 36, 496);
+        var d0 = mv0 != null ? dtxt(mv, mv0) : null; if (d0) { x.font = '600 26px ' + F; x.fillStyle = d0.c; x.fillText(d0.s, M + 40, 538); var dw = x.measureText(d0.s).width; x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('к ' + human(p.pa, p.pb) + ' · было ' + RUB(mv0), M + 52 + dw, 538) }
         /* три карточки */
         var cw3 = (W - 2 * M - 32) / 3; [['Продажи', NUM(c.n), q ? dtxt(c.n, q.n) : null], ['Средний чек', RUB(c.avg), q ? dtxt(c.avg, q.avg) : null], ['Покупатели', NUM(c.buyers), q ? dtxt(c.buyers, q.buyers) : null]].forEach(function (t, i2) {
           var X = M + i2 * (cw3 + 16), Y = 576; cardBox(X, Y, cw3, 160); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(t[0], X + 32, Y + 48);
