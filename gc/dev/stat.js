@@ -30,7 +30,8 @@
     var delta = function (cur, prev) { if (!prev) return cur ? { t: 'новое', c: 'up' } : { t: '—', c: '' }; var p = (cur - prev) / prev * 100; return { t: (p > 0 ? '+' : '') + (Math.abs(p) < 10 ? p.toFixed(1) : Math.round(p)).toString().replace('.', ',') + '%', c: p > 0.05 ? 'up' : p < -0.05 ? 'down' : '' } };
     var catLabel = function (c) { var m;
       if ((m = String(c).match(/^(\d{4})\.(\d{2}) (\d{2})$/))) return { s: +m[3] + '', l: +m[3] + ' ' + MONS[+m[2] - 1], d: new Date(+m[1], +m[2] - 1, +m[3]) };
-      if ((m = String(c).match(/^(\d{4})-w(\d+)$/))) return { s: 'н' + m[2], l: m[2] + '-я неделя ' + m[1] };
+      if ((m = String(c).match(/^(\d{4})-w(\d+)$/))) { var j4 = new Date(+m[1], 0, 4), mon = addD(j4, -((j4.getDay() + 6) % 7) + (+m[2] - 1) * 7), sun = addD(mon, 6), f2 = function (d) { return d.getDate() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) };
+        return { s: f2(mon) + '–' + f2(sun), l: 'неделя ' + mon.getDate() + ' ' + MONS[mon.getMonth()] + ' — ' + sun.getDate() + ' ' + MONS[sun.getMonth()] } }
       if ((m = String(c).match(/^(\d{4})\.(\d{2})$/))) return { s: MONN[+m[2] - 1].slice(0, 3) + (m[2] === '01' ? ' ' + m[1].slice(2) : ''), l: MONN[+m[2] - 1] + ' ' + m[1], m: +m[2] - 1, y: +m[1] };
       return { s: c, l: c } };
 
@@ -78,7 +79,7 @@
     var uid = 0;
     var bars = function (el, pts, o) { o = o || {}; var W = el.clientWidth || 800, H = o.h || 240, L = 58, B = 26, T = 10, ser = o.series || [{ k: 'v', c: 'g' }];
       var mx = 1; pts.forEach(function (p) { ser.forEach(function (s) { mx = Math.max(mx, p[s.k] || 0) }) });
-      var nice = function (v) { var p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p }; mx = nice(mx);
+      var nice = function (v) { var p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; var st = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]; for (var i = 0; i < st.length; i++) if (f <= st[i]) return st[i] * p; return 10 * p }; mx = nice(mx);
       var id = 'fssG' + (++uid), g = '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d7b6ff"/><stop offset="1" stop-color="#8f4ff0"/></linearGradient></defs>';
       for (var i = 0; i <= 4; i++) { var y = T + (H - T - B) * (1 - i / 4); g += '<line class="gl" x1="' + L + '" x2="' + W + '" y1="' + y + '" y2="' + y + '"/><text x="' + (L - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + (o.fmt ? o.fmt(mx * i / 4) : SHORT(mx * i / 4)) + '</text>' }
       var bw = (W - L) / Math.max(1, pts.length), step = Math.ceil(pts.length / Math.max(1, Math.floor((W - L) / 40)));
@@ -157,7 +158,7 @@
       bars(body.querySelector('#fssC'), P.map(function (p) { return { s: p.s, l: p.l, v: p.avg } }), { h: 200, line: true }) }) };
     var renderCumulative = function () { monthly(function (P) { if (tab !== 'cumulative') return; var run = 0, C = P.map(function (p) { run += p.sum; return { s: p.s, l: p.l, v: run, m: p.sum } });
       var total = run, last = C[C.length - 1] || {}, before = C[C.length - 2] || {};
-      body.innerHTML = '<div class="fss-k3">' + kcard('Накоплено за всё время', RUB(total), null, 'с ' + esc((C[0] || {}).l || ''), 1) + kcard('Прирост в этом месяце', RUB(last.m), delta(last.v, before.v), 'к накопленному на конец прошлого') + kcard('В среднем за месяц', RUB(C.length ? total / C.length : 0), null, C.length + ' мес.') + '</div>'
+      body.innerHTML = '<div class="fss-k3">' + kcard('Накоплено за всё время', RUB(total), null, 'первый месяц — ' + esc((C[0] || {}).l || ''), 1) + kcard('Прирост в этом месяце', RUB(last.m), delta(last.v, before.v), 'к накопленному на конец прошлого') + kcard('В среднем за месяц', RUB(C.length ? total / C.length : 0), null, C.length + ' мес.') + '</div>'
         + '<div class="fss-box"><div class="fss-h"><b>Накопительная выручка</b><span>сумма оплат нарастающим итогом</span></div><div class="fss-ch" id="fssA"></div></div>'
         + '<div class="fss-box"><div class="fss-scroll"><table class="fss-t"><tr><th>Месяц</th><th>За месяц</th><th>Накоплено</th><th>Доля в итоге</th></tr>' + C.slice().reverse().map(function (p) { return '<tr><td>' + esc(p.l) + '</td><td>' + RUB(p.m) + '</td><td class="hl">' + RUB(p.v) + '</td><td class="mu">' + (total ? Math.round(p.m / total * 100) : 0) + '%</td></tr>' }).join('') + '</table></div></div>';
       bars(body.querySelector('#fssA'), C, { h: 280, line: true, extra: function (p) { return '<div style="color:rgba(255,255,255,.55);margin-top:2px">за месяц ' + RUB(p.m) + '</div>' } }) }) };
@@ -172,7 +173,7 @@
         + '<div class="fss-box"><div class="fss-h"><b>Выручка от новых клиентов и клиентов из базы</b><span>данные GetCourse на конец прошлого дня</span></div>'
         + '<div class="fss-seg">' + PN.map(function (p, j) { return S.periods[j] ? '<button type="button" class="fss-chip' + (j === stI ? ' on' : '') + '" data-i="' + j + '">' + p + '</button>' : '' }).join('') + '</div>'
         + (it.length ? '<div class="fss-stack">' + it.map(function (x, j) { return '<i style="width:' + Math.max(x.p, .5) + '%;background:' + COL[j] + '" title="' + esc(x.t) + ' — ' + x.p + '%"></i>' }).join('') + '</div>'
-          + '<div class="fss-k3">' + it.map(function (x, j) { return '<div class="fss-k"><i><span style="display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;background:' + COL[j] + '"></i>' + (j < 2 ? 'Новые клиенты' : 'Клиенты из базы') + '</i><b>' + esc(x.s.replace('M', ' млн').replace('K', ' тыс')) + ' ₽</b><div class="fss-d"><em>' + String(x.p).replace('.', ',') + '%</em>' + esc(x.t.toLowerCase()) + '</div></div>' }).join('') + '</div>' : '<div class="fss-empty">Нет данных</div>')
+          + '<div class="fss-k3">' + it.map(function (x, j) { return '<div class="fss-k"><i><span style="display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;background:' + COL[j] + '"></i>' + (j < 2 ? 'Новые клиенты' : 'Клиенты из базы') + '</i><b>' + esc(x.s.replace('.', ',').replace('M', ' млн').replace('K', ' тыс')) + ' ₽</b><div class="fss-d"><em>' + String(x.p).replace('.', ',') + '%</em>' + esc(x.t.toLowerCase()) + '</div></div>' }).join('') + '</div>' : '<div class="fss-empty">Нет данных</div>')
         + '<div class="fss-note">«Клиент из базы» — тот, кто заплатил на третий месяц или позже после попадания в базу. Чем больше эта доля, тем лучше школа работает с базой.</div></div>';
       bars(body.querySelector('#fssA'), S.growth.map(function (g) { return { s: g.m.replace(/\s*'\d+/, '').slice(0, 3).toLowerCase(), l: g.m, v: g.n } }), { h: 220, tf: function (x) { return NUM(x) + ' клиентов' }, fmt: function (x) { return NUM(x) } });
       [].forEach.call(body.querySelectorAll('.fss-chip'), function (b) { b.onclick = function () { stI = +b.getAttribute('data-i'); renderStructure() } }) };
