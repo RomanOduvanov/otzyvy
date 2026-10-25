@@ -161,7 +161,7 @@
       + '.fss-menu hr{border:0;border-top:1px solid var(--hair);margin:6px 4px}.fss-menu .lb{padding:8px 12px 4px;color:var(--ink3);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}'
       + '.fss-cus{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px 6px 6px}.fss-cus input{width:100%;background:var(--s1);border:1px solid var(--hair);color:#fff;border-radius:10px;padding:8px;font:inherit;font-size:13px;color-scheme:dark}.fss-cus .fss-btn{grid-column:1/3;justify-content:center;height:36px}'
       + '.fss-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:28px}.fss-tabs button{border:1px solid var(--hair);background:var(--s1);color:rgba(255,255,255,.75);height:40px;padding:0 18px;border-radius:12px;font:500 14px/1 inherit;cursor:pointer;transition:.15s}.fss-tabs button:hover{color:#fff;background:var(--s2)}.fss-tabs button.on{background:#fff;color:#000106;border-color:#fff}'
-      + '.fss-lead{margin:0 0 24px;font-size:28px;line-height:1.25;font-weight:500;letter-spacing:-.02em;max-width:980px}.fss-lead em{font-style:normal;color:var(--acc)}.fss-lead span{color:var(--ink2)}'
+      + '.fss-lead{text-wrap:balance;margin:0 0 24px;font-size:28px;line-height:1.25;font-weight:500;letter-spacing:-.02em;max-width:980px}.fss-lead em{font-style:normal;color:var(--acc)}.fss-lead span{color:var(--ink2)}'
       + '.fss-card{background:var(--s1);border:1px solid var(--hair);border-radius:22px;padding:24px;min-width:0}.fss-card+.fss-card,.fss-row+.fss-card,.fss-card+.fss-row{margin-top:16px}'
       + '.fss-sec{font-size:22px;font-weight:500;letter-spacing:-.02em;margin:0 0 4px}.fss-sub{color:var(--ink2);font-size:13px;margin:0 0 18px}'
       + '.fss-row{display:grid;grid-template-columns:1.35fr 1fr;gap:16px}.fss-row3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}@media(max-width:1000px){.fss-row,.fss-row3{grid-template-columns:1fr}}'
@@ -184,7 +184,7 @@
       + '.fss-strip{display:flex;flex-wrap:wrap;gap:6px 28px;margin:-6px 0 18px;padding:0 0 16px;border-bottom:1px solid var(--hair);font-size:13px;color:var(--ink2)}.fss-strip b{color:#fff;font-weight:600}.fss-note{margin:-8px 0 16px;padding:12px 16px;border-radius:14px;background:rgba(195,139,255,.08);border:1px solid rgba(195,139,255,.2);color:#e6d4ff;font-size:13px}.fss-sw{display:inline-flex;align-items:center;gap:4px;margin-left:8px;vertical-align:1px;color:var(--ink3)}.fss-sw i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.22)}.fss-sw i.on{background:var(--lil)}.fss-sw svg{width:13px;height:13px;margin-left:3px}.fss-m.on .fss-sw{color:#fff}.fss-strip .sw{cursor:pointer;border-bottom:1px dashed transparent}.fss-strip .sw:hover{color:#fff}.fss-strip .sw.on{color:#fff;border-bottom-color:var(--lil)}.fss-hint{margin-left:auto;color:var(--ink3);border-bottom:1px dashed rgba(255,255,255,.25);cursor:help}.fss-load{padding:80px 0;text-align:center;color:var(--ink2)}.fss-load:after{content:"";display:block;width:26px;height:26px;margin:16px auto 0;border-radius:50%;border:2px solid rgba(195,139,255,.18);border-top-color:var(--lil);animation:fssr .8s linear infinite}@keyframes fssr{to{transform:rotate(360deg)}}.fss-empty{padding:32px 0;text-align:center;color:var(--ink2)}'
       + '.fss-sk{height:16px;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));background-size:200% 100%;animation:fsss 1.2s ease infinite;margin:10px 0}@keyframes fsss{to{background-position:-200% 0}}'
       + '.fss-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px;margin:4px 0 20px}.fss-stack i{display:block;height:100%}.fss-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:0}'
-      + '.fss-modal{position:fixed;inset:0;background:rgba(0,1,6,.86);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}.fss-mw{display:flex;flex-direction:column;align-items:center;gap:16px;max-height:100%}.fss-mw img{max-height:calc(100vh - 120px);max-width:100%;border-radius:22px;border:1px solid rgba(255,255,255,.08)}.fss-mb{display:flex;gap:10px}';
+      + '.fss-modal{position:fixed;inset:0;background:rgba(0,1,6,.86);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}.fss-mw{display:flex;flex-direction:column;align-items:center;gap:16px;max-height:100%}.fss-mw img{max-height:calc(100vh - 120px);max-width:100%;border-radius:22px;border:1px solid rgba(255,255,255,.08)}.fss-mb{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}';
 
     var root, body;
     var loading = function (t) { body.innerHTML = '<div class="fss-load">' + (t || 'Загружаю данные GetCourse…') + '</div>' };
@@ -192,7 +192,7 @@
     var cmpName = function (p) { return p.pa ? human(p.pa, p.pb) : '' };
 
     /* ---------- вкладка «Продажи» ---------- */
-    var MODES = { net: { l: 'На вывод', s: 'после комиссий GetCourse и банков', lead: ' на вывод пришло ' }, gross: { l: 'Оплачено клиентами', s: 'до комиссий', lead: ' клиенты заплатили ' }, gc: { l: 'Сумма оплат GetCourse', s: 'как в стандартной статистике', lead: ' GetCourse засчитал оплат на ' } };
+    var MODES = { net: { l: 'На вывод', s: 'после комиссий GetCourse и банков', lead: ' на вывод пришло ' }, gross: { l: 'Оплачено клиентами', s: 'до комиссий', lead: ' клиенты заплатили ' }, gc: { l: 'Сумма оплат GetCourse', s: 'как в стандартной статистике', lead: ' по GetCourse оплачено на ' } };
     var gcBucket = function (b) { return dealTot(day0(b[0]), day0(b[b.length - 1])).then(function (t) { return t.sum }) };
     var pool = function (arr, fn) { var out = new Array(arr.length), i = 0; var w = function () { if (i >= arr.length) return Promise.resolve(); var j = i++; return fn(arr[j]).then(function (v) { out[j] = v; return w() }) }; var ws = []; for (var k = 0; k < 6; k++) ws.push(w()); return Promise.all(ws).then(function () { return out }) };
     var renderSales = function () { var tok = S.tok = Math.random(); loading();
@@ -213,7 +213,7 @@
         S.view = st;
         var money = function (mode, which) { var r = which === 'p' ? rp : rc, t = which === 'p' ? st.prev : st.cur; if (!r) return null; return mode === 'net' ? r.sum : mode === 'gross' ? r.gross : t ? t.sum : null };
         var lead = function () { var el = body.querySelector('#fssLead'); if (!el) return; var md = S.money, v = money(md), v0 = money(md, 'p'), t = st.cur;
-          el.innerHTML = leadP(p) + MODES[md].lead + '<em>' + (v == null ? '…' : RUB(v)) + '</em>' + (t ? ' и закрыто <em>' + NUM(t.n) + '</em> ' + pl(t.n, ['продажа', 'продажи', 'продаж']) : '')
+          el.innerHTML = leadP(p) + MODES[md].lead + '<em>' + (v == null ? '…' : RUB(v)) + '</em>' + (t ? ' и&nbsp;закрыто <em>' + NUM(t.n) + '</em>&nbsp;' + pl(t.n, ['продажа', 'продажи', 'продаж']) : '')
             + (rp && v != null && v0 != null ? '<br><span>' + (v0 ? (v >= v0 ? 'Это на ' + Math.round(pct(v, v0)) + '% больше' : 'Это на ' + Math.round(-pct(v, v0)) + '% меньше') + ', чем за ' + esc(cmp) + ' (' + RUB(v0) + ')' : 'За ' + esc(cmp) + ' оплат не было') + '</span>' : '') };
         var strip = function () { var el = body.querySelector('#fssStrip'); if (!el) return; var it = [];
           it.push(['gross', 'Клиенты заплатили', RUB(rc.gross)]); if (!PAY.gross) { it.push(['', 'Комиссии GetCourse и банков', '−' + RUB(rc.fee) + (rc.gross ? ' · ' + (rc.fee / rc.gross * 100).toFixed(1).replace('.', ',') + '%' : '')]); it.push(['net', 'На вывод', RUB(rc.sum)]) }
@@ -337,7 +337,8 @@
         rr(M, 64, cw + 36, 40, 20); x.fillStyle = '#c38bff'; x.fill(); x.fillStyle = '#000106'; trk(chipT, M + 18, 91, 2);
         x.font = '500 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.textAlign = 'right'; x.fillText('OduvanovSchool', W - M, 92); x.textAlign = 'left';
         /* двухтоновый заголовок */
-        x.font = '500 84px ' + F; x.fillStyle = '#fff'; x.fillText('Продажи', M, 214); x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(human(p.a, p.b), M, 304);
+        var hp = human(p.a, p.b), fs = 84; x.font = '500 ' + fs + 'px ' + F; while (fs > 44 && x.measureText(hp).width > W - 2 * M) { fs -= 2; x.font = '500 ' + fs + 'px ' + F }
+        x.fillStyle = '#fff'; x.fillText('Продажи', M, 214); x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(hp, M, 304);
         /* главная карточка: выручка */
         cardBox(M, 340, W - 2 * M, 220);
         x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; var md = S.money || 'net', mv = md === 'net' ? rc.sum : md === 'gross' ? rc.gross : c.sum, mv0 = !rp ? null : md === 'net' ? rp.sum : md === 'gross' ? rp.gross : q ? q.sum : null; x.fillText({ net: 'На вывод — после комиссий GetCourse и банков', gross: 'Оплачено клиентами — до комиссий', gc: 'Сумма оплат по статистике GetCourse' }[md], M + 40, 392);
@@ -353,7 +354,7 @@
         var bk = bucket(dayKeys(p.a, p.b), st.g), vals = bk.map(function (b) { return b.reduce(function (s, d) { var z = st.PAY.m[key(d)]; return s + (z ? z.sum : 0) }, 0) }), mx = Math.max.apply(null, vals.concat([1]));
         var cx0 = M + 40, cw0 = W - 2 * M - 80, ch0 = 90, cy0 = Y2 + 72, bw = cw0 / vals.length;
         vals.forEach(function (v, i3) { var h = v ? Math.max(6, ch0 * v / mx) : 4, w = Math.max(4, Math.min(bw - 6, 44)); rr(cx0 + bw * i3 + (bw - w) / 2, cy0 + ch0 - h, w, h, Math.min(5, w / 2)); x.fillStyle = v ? '#c38bff' : 'rgba(255,255,255,.08)'; x.fill() });
-        x.font = '400 18px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText(lbl(bk[0], st.g, 1), cx0, cy0 + ch0 + 30); x.textAlign = 'right'; x.fillText(lbl(bk[bk.length - 1], st.g, 1), cx0 + cw0, cy0 + ch0 + 30); x.textAlign = 'left';
+        x.font = '400 18px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; var axd = function (b, end) { var d = end ? b[b.length - 1] : b[0]; return st.g === 'month' ? MONN[d.getMonth()] : d.getDate() + ' ' + MONS3[d.getMonth()] }; x.fillText(axd(bk[0]), cx0, cy0 + ch0 + 30); x.textAlign = 'right'; x.fillText(axd(bk[bk.length - 1], 1), cx0 + cw0, cy0 + ch0 + 30); x.textAlign = 'left';
         /* тарифы */
         var Y3 = 968, top = T.slice(0, 4), tn = st.dl.length, h3 = 84 + Math.max(1, top.length) * 44; cardBox(M, Y3, W - 2 * M, h3);
         x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Что покупали', M + 40, Y3 + 46);
@@ -364,11 +365,14 @@
         return new Promise(function (res) { cv.toBlob(function (b) { res(URL.createObjectURL(b)) }, 'image/png') }) }) };
     var modal = function (url) { var p = S.view.p, m = document.createElement('div'); m.className = 'fss-modal fss';
       var name = 'Продажи ' + (key(p.a) === key(p.b) ? dd(p.a) : dd(p.a) + '–' + dd(p.b)) + '.png';
-      m.innerHTML = '<div class="fss-mw"><img alt="Отчёт" src="' + url + '"><div class="fss-mb"><button type="button" class="fss-btn pri fss-dl2">Скачать PNG</button><button type="button" class="fss-btn fss-cp">Копировать</button><button type="button" class="fss-btn fss-x">Закрыть</button></div></div>';
+      m.innerHTML = '<div class="fss-mw"><img alt="Отчёт" src="' + url + '"><div class="fss-mb"><button type="button" class="fss-btn pri fss-sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg>Поделиться</button><button type="button" class="fss-btn fss-dl2">Скачать PNG</button><button type="button" class="fss-btn fss-cp">Копировать</button><button type="button" class="fss-btn fss-x">Закрыть</button></div></div>';
       document.body.appendChild(m);
       var close = function () { m.remove(); document.removeEventListener('keydown', kd) }, kd = function (e) { if (e.key === 'Escape') close() }; document.addEventListener('keydown', kd);
       m.addEventListener('click', function (e) { if (e.target === m) close() }); m.querySelector('.fss-x').onclick = close;
       m.querySelector('.fss-dl2').onclick = function () { var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove() };
+      var sh = m.querySelector('.fss-sh'); sh.onclick = function () { fetch(url).then(function (r) { return r.blob() }).then(function (b) { var f = new File([b], name, { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f], title: 'Отчёт отдела продаж', text: 'Продажи ' + human(p.a, p.b) }).then(function () { return 'ok' });
+          return navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function () { return 'copied' }) }).then(function (r) { if (r === 'copied') sh.lastChild.textContent = 'Скопировано — вставь в чат' }).catch(function (e) { if (e && e.name === 'AbortError') return; sh.lastChild.textContent = 'Не вышло — скачай PNG' }) };
       var cp = m.querySelector('.fss-cp'); cp.onclick = function () { fetch(url).then(function (r) { return r.blob() }).then(function (b) { return navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]) }).then(function () { cp.textContent = 'Скопировано' }).catch(function () { cp.textContent = 'Не вышло — скачай' }) } };
 
     /* ---------- выбор периода ---------- */
@@ -397,7 +401,7 @@
       var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st); host.classList.add('fss-host');
       root = document.createElement('div'); root.className = 'fss';
       root.innerHTML = '<div class="fss-hd"><h1>Статистика</h1><div class="fss-acts"><div class="fss-per"><button type="button" class="fss-btn"></button></div>'
-        + '<button type="button" class="fss-btn pri fss-img" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Отчёт картинкой</button>'
+        + '<button type="button" class="fss-btn pri fss-img" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg>Поделиться отчётом</button>'
         + '<a class="fss-btn" href="/pl/sales/dealstat?fs=gc" title="Открыть стандартную страницу GetCourse">GetCourse</a></div></div>'
         + '<div class="fss-tabs">' + TABS.map(function (t) { return '<button type="button" data-t="' + t[0] + '">' + t[1] + '</button>' }).join('') + '</div><div class="fss-body"></div>';
       host.insertBefore(root, host.firstChild); body = root.querySelector('.fss-body'); document.title = 'Статистика';
