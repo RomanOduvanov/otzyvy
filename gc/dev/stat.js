@@ -513,11 +513,12 @@
       root = document.createElement('div'); root.className = 'fss';
       root.innerHTML = '<div class="fss-hd"><h1>Статистика</h1><div class="fss-acts"><div class="fss-per"><button type="button" class="fss-btn"></button></div>'
         + '<button type="button" class="fss-btn pri fss-img" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 12v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-6"/></svg>Поделиться отчётом</button>'
-        + '<a class="fss-btn" href="/pl/sales/dealstat?fs=gc" title="Открыть стандартную страницу GetCourse">GetCourse</a></div></div>'
+        + '<button type="button" class="fss-btn fss-gcv" title="Открыть стандартную страницу GetCourse">GetCourse</button></div></div>'
         + '<div class="fss-tabs">' + TABS.map(function (t) { return '<button type="button" data-t="' + t[0] + '">' + t[1] + '</button>' }).join('') + '</div><div class="fss-body"></div>';
       host.insertBefore(root, host.firstChild); body = root.querySelector('.fss-body'); document.title = 'Статистика';
       [].forEach.call(root.querySelectorAll('.fss-tabs button'), function (b) { b.onclick = function () { tab = b.getAttribute('data-t'); show() } });
       root.querySelector('.fss-per .fss-btn').onclick = perMenu;
+      root.querySelector('.fss-gcv').onclick = function () { location.href = '/pl/sales/dealstat?fs=gc' };
       root.querySelector('.fss-img').onclick = function () { var b = this; b.disabled = true; card().then(function (u) { setImg(); modal(u) }).catch(function () { setImg() }) };
       show(); return true };
     var tries = 0, go = function () { if (!mount() && ++tries < 40) setTimeout(go, 150) };
