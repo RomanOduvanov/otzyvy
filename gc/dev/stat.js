@@ -289,7 +289,7 @@
       return (document.fonts && document.fonts.load ? Promise.all(['500 40px "Inter Tight"', '600 40px "Inter Tight"', '700 20px "Inter Tight"', '400 20px "Inter Tight"'].map(function (f) { return document.fonts.load(f) })).catch(function () {}) : Promise.resolve()).then(function () {
         x.fillStyle = '#000106'; x.fillRect(0, 0, W, H);
         /* свет снизу: электрический фиолетовый → сирень у кромки */
-        var g1 = x.createRadialGradient(W / 2, H + 260, 0, W / 2, H + 260, 900); g1.addColorStop(0, 'rgba(150,87,232,.95)'); g1.addColorStop(.35, 'rgba(96,0,255,.55)'); g1.addColorStop(.7, 'rgba(28,8,56,.5)'); g1.addColorStop(1, 'rgba(0,1,6,0)');
+        var g1 = x.createRadialGradient(W / 2, (H + 140) / .55, 0, W / 2, (H + 140) / .55, 820); g1.addColorStop(0, 'rgba(150,87,232,.95)'); g1.addColorStop(.35, 'rgba(96,0,255,.55)'); g1.addColorStop(.7, 'rgba(28,8,56,.5)'); g1.addColorStop(1, 'rgba(0,1,6,0)');
         x.save(); x.scale(1, .55); x.fillStyle = g1; x.fillRect(0, 0, W, H / .55); x.restore();
         var g2 = x.createRadialGradient(W / 2, H + 40, 0, W / 2, H + 40, 420); g2.addColorStop(0, 'rgba(252,203,255,.75)'); g2.addColorStop(1, 'rgba(252,203,255,0)'); x.save(); x.translate(0, H * .78); x.scale(1, .22); x.fillStyle = g2; x.fillRect(0, (H * .22 - H * .78) / .22, W, H / .22); x.restore();
         /* световые колонны сверху */
