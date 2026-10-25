@@ -152,26 +152,26 @@
         x.fillStyle = '#fff'; x.font = '600 64px ' + F; x.fillText('Отчёт по продажам', 72, 184);
         x.fillStyle = '#d7b6ff'; x.font = '500 32px ' + F; x.fillText(human(state.a, state.b), 72, 234);
         var tiles = [['Продаж', NUM(cur.n), delta(cur.n, prev.n)], ['Выручка', RUB(cur.rev), delta(cur.rev, prev.rev)], ['Средний чек', RUB(cur.avg), delta(cur.avg, prev.avg)], ['Покупателей', NUM(cur.clients), delta(cur.clients, prev.clients)]];
-        tiles.forEach(function (t, i) { var X = 72 + (i % 2) * 476, Y = 284 + Math.floor(i / 2) * 196, w = 460, h = 180;
+        tiles.forEach(function (t, i) { var X = 72 + (i % 2) * 476, Y = 284 + Math.floor(i / 2) * 186, w = 460, h = 170;
           rr(X, Y, w, h, 28); x.fillStyle = 'rgba(255,255,255,.045)'; x.fill(); x.strokeStyle = 'rgba(255,255,255,.09)'; x.lineWidth = 2; x.stroke();
           x.fillStyle = 'rgba(255,255,255,.55)'; x.font = '500 22px ' + F; x.fillText(t[0].toUpperCase(), X + 32, Y + 52);
-          x.fillStyle = '#fff'; x.font = '600 ' + (t[1].length > 11 ? 50 : 60) + 'px ' + F; x.fillText(t[1], X + 32, Y + 122);
-          var d = t[2]; x.font = '600 22px ' + F; var dw = x.measureText(d.t).width + 24; rr(X + 32, Y + 140, dw, 30, 15); x.fillStyle = d.c === 'up' ? 'rgba(70,200,120,.18)' : d.c === 'down' ? 'rgba(255,90,90,.18)' : 'rgba(255,255,255,.1)'; x.fill();
-          x.fillStyle = d.c === 'up' ? '#7be3a5' : d.c === 'down' ? '#ff9a9a' : '#fff'; x.fillText(d.t, X + 44, Y + 163);
-          x.fillStyle = 'rgba(255,255,255,.4)'; x.font = '500 20px ' + F; x.fillText('к прошлому периоду', X + 32 + dw + 12, Y + 163) });
+          x.fillStyle = '#fff'; x.font = '600 ' + (t[1].length > 11 ? 50 : 60) + 'px ' + F; x.fillText(t[1], X + 32, Y + 116);
+          var d = t[2]; x.font = '600 22px ' + F; var dw = x.measureText(d.t).width + 24; rr(X + 32, Y + 130, dw, 30, 15); x.fillStyle = d.c === 'up' ? 'rgba(70,200,120,.18)' : d.c === 'down' ? 'rgba(255,90,90,.18)' : 'rgba(255,255,255,.1)'; x.fill();
+          x.fillStyle = d.c === 'up' ? '#7be3a5' : d.c === 'down' ? '#ff9a9a' : '#fff'; x.fillText(d.t, X + 44, Y + 153);
+          x.fillStyle = 'rgba(255,255,255,.4)'; x.font = '500 20px ' + F; x.fillText('к прошлому периоду', X + 32 + dw + 12, Y + 153) });
         /* мини-график */
-        var S = series(cur.paid, state.a, state.b), cy = 700, ch = 150, cw = W - 144, mx = Math.max.apply(null, S.map(function (s) { return s.s }).concat([1])), bw = cw / S.length;
+        var S = series(cur.paid, state.a, state.b), cy = 690, ch = 140, cw = W - 144, mx = Math.max.apply(null, S.map(function (s) { return s.s }).concat([1])), bw = cw / S.length;
         x.fillStyle = '#fff'; x.font = '600 28px ' + F; x.fillText('Выручка по дням', 72, cy);
         var bg = x.createLinearGradient(0, cy + 24, 0, cy + 24 + ch); bg.addColorStop(0, '#e2c9ff'); bg.addColorStop(1, '#8f4ff0');
         S.forEach(function (s, i) { var h = ch * s.s / mx, w = Math.max(3, Math.min(bw - 6, 48)); x.fillStyle = s.s ? bg : 'rgba(255,255,255,.08)'; rr(72 + bw * i + (bw - w) / 2, cy + 24 + ch - Math.max(h, 4), w, Math.max(h, 4), Math.min(6, w / 2)); x.fill() });
         /* тарифы */
-        var ty = 930; x.fillStyle = '#fff'; x.font = '600 28px ' + F; x.fillText('Тарифы', 72, ty);
-        var top = cur.tariffs.slice(0, 6), mT = top.length ? top[0].sum : 1;
+        var ty = 900; x.fillStyle = '#fff'; x.font = '600 28px ' + F; x.fillText('Тарифы', 72, ty);
+        var top = cur.tariffs.slice(0, 5), mT = top.length ? top[0].sum : 1;
         if (!top.length) { x.fillStyle = 'rgba(255,255,255,.5)'; x.font = '500 24px ' + F; x.fillText('Оплат за период нет', 72, ty + 56) }
-        top.forEach(function (t, i) { var Y = ty + 30 + i * 58; x.font = '500 23px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 600), 72, Y + 26);
+        top.forEach(function (t, i) { var Y = ty + 28 + i * 56; x.font = '500 23px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 600), 72, Y + 26);
           x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,.6)'; x.fillText(t.n + ' шт', 812, Y + 26); x.fillStyle = '#fff'; x.font = '600 23px ' + F; x.fillText(RUB(t.sum), W - 72, Y + 26); x.textAlign = 'left';
           rr(72, Y + 38, W - 144, 6, 3); x.fillStyle = 'rgba(255,255,255,.07)'; x.fill(); var lg = x.createLinearGradient(72, 0, W - 72, 0); lg.addColorStop(0, '#8f4ff0'); lg.addColorStop(1, '#d7b6ff'); rr(72, Y + 38, Math.max(8, (W - 144) * t.sum / mT), 6, 3); x.fillStyle = lg; x.fill() });
-        if (cur.tariffs.length > 6) { x.fillStyle = 'rgba(255,255,255,.45)'; x.font = '500 20px ' + F; x.fillText('и ещё ' + (cur.tariffs.length - 6) + ' — в кабинете', 72, ty + 30 + 6 * 58 + 18) }
+        if (cur.tariffs.length > 5) { x.fillStyle = 'rgba(255,255,255,.45)'; x.font = '500 20px ' + F; x.fillText('и ещё ' + (cur.tariffs.length - 5) + ' — в кабинете', 72, ty + 28 + 5 * 56 + 22) }
         var now = new Date(); x.fillStyle = 'rgba(255,255,255,.35)'; x.font = '500 20px ' + F; x.fillText('Сформировано ' + dd(now) + ' в ' + ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2), 72, H - 48);
         return new Promise(function (res) { c.toBlob(function (b) { res(URL.createObjectURL(b)) }, 'image/png') }) }) };
     var modal = function (url) { var m = document.createElement('div'); m.className = 'fsr-modal';
