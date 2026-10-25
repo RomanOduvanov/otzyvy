@@ -444,7 +444,7 @@
         var d0 = mv0 != null ? dl(mv, mv0) : null;
         if (d0) { var pw = pill(d0, M + P, Y + 236, 22); font(400, 20); T(fit('к ' + cmpS + ' · было ' + RUB(mv0), LW - 2 * P - pw - 14), M + P + pw + 14, Y + 237, 'rgba(255,255,255,.55)') }
         else if (mv0 === 0 && p.pa) { font(400, 20); T(cap(cmpS) + ' оплат не было', M + P, Y + 237, 'rgba(255,255,255,.55)') }
-        if (md !== 'gc' && !st.PAY.gross && rc.gross) { var bx = M + P, bw = LW - 2 * P, by = Y + 268, fp = rc.fee / rc.gross; rr(bx, by, Math.max(10, bw * (1 - fp) - 3), 10, 5); var bgd = x.createLinearGradient(bx, 0, bx + bw, 0); bgd.addColorStop(0, '#6724ad'); bgd.addColorStop(1, '#c38bff'); x.fillStyle = bgd; x.fill(); rr(bx + bw * (1 - fp), by, Math.max(6, bw * fp), 10, 5); x.fillStyle = 'rgba(255,107,107,.85)'; x.fill();
+        if (!st.PAY.gross && rc.gross) { var bx = M + P, bw = LW - 2 * P, by = Y + 268, fp = rc.fee / rc.gross; rr(bx, by, Math.max(10, bw * (1 - fp) - 3), 10, 5); var bgd = x.createLinearGradient(bx, 0, bx + bw, 0); bgd.addColorStop(0, '#6724ad'); bgd.addColorStop(1, '#c38bff'); x.fillStyle = bgd; x.fill(); rr(bx + bw * (1 - fp), by, Math.max(6, bw * fp), 10, 5); x.fillStyle = 'rgba(255,107,107,.85)'; x.fill();
           font(400, 17); T('клиенты заплатили ' + RUB(rc.gross), bx, by + 32, 'rgba(255,255,255,.55)'); x.textAlign = 'right'; T('комиссии −' + RUB(rc.fee) + ' · ' + (fp * 100).toFixed(1).replace('.', ',') + '%', bx + bw, by + 32, '#ff8a8a'); x.textAlign = 'left' }
         x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(M + P, Y + 332, LW - 2 * P, 1);
         var cw3 = (LW - 2 * P) / 3;[['bag', 'Продажи', NUM(c.n), q ? dl(c.n, q.n) : null], ['receipt', 'Средний чек', RUB(c.avg), q ? dl(c.avg, q.avg) : null], ['users', 'Покупатели', NUM(c.buyers), q ? dl(c.buyers, q.buyers) : null]].forEach(function (t, i) {
@@ -455,7 +455,7 @@
         /* нижняя левая карточка: план месяца или динамика */
         var Y3 = Y + hH + 20, h3 = YB - Y3;
         if (st.inMonth && !st.PAY.gross) { var pv = planOf(st.mk), got = rc.sum, last = new Date(p.a.getFullYear(), p.a.getMonth() + 1, 0), curM = key(p.b) === key(today) && p.b < last, fc = curM ? got / p.b.getDate() * last.getDate() : got, mx = Math.max(pv.ideal, fc, got) * 1.06, PX = function (v) { return Math.min(1, v / mx) };
-          cardB(M, Y3, LW, h3); IC('target', M + P, Y3 + P, 44); font(500, 24); T('План на ' + MONN[p.a.getMonth()], M + P + 60, Y3 + P + 22, '#fff');
+          cardB(M, Y3, LW, h3); IC('target', M + P, Y3 + P, 44); font(500, 24); T('План на ' + MONN[p.a.getMonth()], M + P + 60, Y3 + P + 22, '#fff'); var plw = tw('План на ' + MONN[p.a.getMonth()]); font(400, 18); T('· чистыми', M + P + 60 + plw + 10, Y3 + P + 23, 'rgba(255,255,255,.45)');
           x.textAlign = 'right'; font(500, 40); var ptx = Math.round(got / pv.ideal * 100) + '%'; T(ptx, M + LW - P, Y3 + P + 22, '#fff'); var ptw = tw(ptx); font(400, 18); T('от идеального плана', M + LW - P - ptw - 12, Y3 + P + 26, 'rgba(255,255,255,.5)'); x.textAlign = 'left';
           var px = M + P, pw2 = LW - 2 * P, py = Y3 + 100; rr(px, py, pw2, 14, 7); x.fillStyle = 'rgba(255,255,255,.07)'; x.fill(); var pg = x.createLinearGradient(px, 0, px + pw2, 0); pg.addColorStop(0, '#6724ad'); pg.addColorStop(1, '#c38bff'); rr(px, py, Math.max(14, pw2 * PX(got)), 14, 7); x.fillStyle = pg; x.fill();
           if (curM && fc > got) { x.save(); rr(px + pw2 * PX(got), py, pw2 * (PX(fc) - PX(got)), 14, 7); x.clip(); x.fillStyle = 'rgba(195,139,255,.22)'; x.fillRect(px, py, pw2, 14); x.restore() }
