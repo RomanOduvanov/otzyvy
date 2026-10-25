@@ -213,7 +213,7 @@
         S.view = st;
         var money = function (mode, which) { var r = which === 'p' ? rp : rc, t = which === 'p' ? st.prev : st.cur; if (!r) return null; return mode === 'net' ? r.sum : mode === 'gross' ? r.gross : t ? t.sum : null };
         var lead = function () { var el = body.querySelector('#fssLead'); if (!el) return; var md = S.money, v = money(md), v0 = money(md, 'p'), t = st.cur;
-          el.innerHTML = leadP(p) + MODES[md].lead + '<em>' + (v == null ? '…' : RUB(v)) + '</em>' + (t ? ' и&nbsp;закрыто <em>' + NUM(t.n) + '</em>&nbsp;' + pl(t.n, ['продажа', 'продажи', 'продаж']) : '')
+          el.innerHTML = leadP(p) + MODES[md].lead + '<em>' + (v == null ? '…' : RUB(v)) + '</em>' + (t ? ' и&nbsp;' + (pl(t.n, [1, 2, 2]) === 1 ? 'закрыта' : 'закрыто') + ' <em>' + NUM(t.n) + '</em>&nbsp;' + pl(t.n, ['продажа', 'продажи', 'продаж']) : '')
             + (rp && v != null && v0 != null ? '<br><span>' + (v0 ? (v >= v0 ? 'Это на ' + Math.round(pct(v, v0)) + '% больше' : 'Это на ' + Math.round(-pct(v, v0)) + '% меньше') + ', чем за ' + esc(cmp) + ' (' + RUB(v0) + ')' : 'За ' + esc(cmp) + ' оплат не было') + '</span>' : '') };
         var strip = function () { var el = body.querySelector('#fssStrip'); if (!el) return; var it = [];
           it.push(['gross', 'Клиенты заплатили', RUB(rc.gross)]); if (!PAY.gross) { it.push(['', 'Комиссии GetCourse и банков', '−' + RUB(rc.fee) + (rc.gross ? ' · ' + (rc.fee / rc.gross * 100).toFixed(1).replace('.', ',') + '%' : '')]); it.push(['net', 'На вывод', RUB(rc.sum)]) }
@@ -354,7 +354,7 @@
         var bk = bucket(dayKeys(p.a, p.b), st.g), vals = bk.map(function (b) { return b.reduce(function (s, d) { var z = st.PAY.m[key(d)]; return s + (z ? z.sum : 0) }, 0) }), mx = Math.max.apply(null, vals.concat([1]));
         var cx0 = M + 40, cw0 = W - 2 * M - 80, ch0 = 90, cy0 = Y2 + 72, bw = cw0 / vals.length;
         vals.forEach(function (v, i3) { var h = v ? Math.max(6, ch0 * v / mx) : 4, w = Math.max(4, Math.min(bw - 6, 44)); rr(cx0 + bw * i3 + (bw - w) / 2, cy0 + ch0 - h, w, h, Math.min(5, w / 2)); x.fillStyle = v ? '#c38bff' : 'rgba(255,255,255,.08)'; x.fill() });
-        x.font = '400 18px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; var axd = function (b, end) { var d = end ? b[b.length - 1] : b[0]; return st.g === 'month' ? MONN[d.getMonth()] : d.getDate() + ' ' + MONS3[d.getMonth()] }; x.fillText(axd(bk[0]), cx0, cy0 + ch0 + 30); x.textAlign = 'right'; x.fillText(axd(bk[bk.length - 1], 1), cx0 + cw0, cy0 + ch0 + 30); x.textAlign = 'left';
+        x.font = '400 18px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; var axd = function (b, end) { var d = end ? b[b.length - 1] : b[0]; return st.g === 'month' ? MONN[d.getMonth()] : d.getDate() + ' ' + MONS3[d.getMonth()] }; x.fillText(axd(bk[0]), cx0, cy0 + ch0 + 30); x.textAlign = 'right'; if (bk.length > 1) x.fillText(axd(bk[bk.length - 1], 1), cx0 + cw0, cy0 + ch0 + 30); x.textAlign = 'left';
         /* тарифы */
         var Y3 = 968, top = T.slice(0, 4), tn = st.dl.length, h3 = 84 + Math.max(1, top.length) * 44; cardBox(M, Y3, W - 2 * M, h3);
         x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Что покупали', M + 40, Y3 + 46);
