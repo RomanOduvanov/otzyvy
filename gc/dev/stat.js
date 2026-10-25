@@ -359,8 +359,8 @@
         var Y3 = 968, top = T.slice(0, 4), tn = st.dl.length, h3 = 84 + Math.max(1, top.length) * 44; cardBox(M, Y3, W - 2 * M, h3);
         x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Что покупали', M + 40, Y3 + 46);
         if (!top.length) { x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('Оплат за период не было', M + 40, Y3 + 96) }
-        top.forEach(function (t, i4) { var Y = Y3 + 90 + i4 * 44; x.font = '500 24px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 700), M + 40, Y);
-          x.textAlign = 'right'; x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(Math.round(t.n / tn * 100) + '%', W - M - 120, Y); x.font = '600 24px ' + F; x.fillStyle = '#fff'; x.fillText(t.n + ' шт', W - M - 40, Y); x.textAlign = 'left' });
+        top.forEach(function (t, i4) { var Y = Y3 + 90 + i4 * 44; x.font = '500 24px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 640), M + 40, Y);
+          x.textAlign = 'right'; x.font = '600 24px ' + F; x.fillStyle = '#fff'; var cs = NUM(t.n) + ' шт', cwid = x.measureText(cs).width; x.fillText(cs, W - M - 40, Y); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(Math.round(t.n / tn * 100) + '%', W - M - 64 - Math.max(cwid, 60), Y); x.textAlign = 'left' });
         var now = new Date(); x.font = '400 20px ' + F; x.fillStyle = 'rgba(255,255,255,.6)'; x.textAlign = 'center'; x.fillText('Данные GetCourse · ' + dd(now) + ', ' + ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2), W / 2, H - 40); x.textAlign = 'left';
         return new Promise(function (res) { cv.toBlob(function (b) { res(URL.createObjectURL(b)) }, 'image/png') }) }) };
     var modal = function (url) { var p = S.view.p, m = document.createElement('div'); m.className = 'fss-modal fss';
