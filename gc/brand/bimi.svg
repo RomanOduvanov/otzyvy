@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 640 640">
+<title>OduvanovSchool</title>
+<defs><radialGradient id="g" cx="320" cy="716" r="544" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a060f0"/><stop offset="0.42" stop-color="#8b45e6" stop-opacity="0.45"/><stop offset="0.75" stop-color="#07060b" stop-opacity="0"/></radialGradient></defs>
+<rect width="640" height="640" fill="#07060b"/><rect width="640" height="640" fill="url(#g)"/>
+<g transform="translate(180 132) scale(4.375)" fill="#ffffff"><rect x="0" y="0" width="20" height="20" rx="4"/><rect x="22" y="0" width="20" height="20" rx="4"/><rect x="0" y="22" width="20" height="20" rx="4"/><rect x="44" y="22" width="20" height="20" rx="4"/><rect x="0" y="44" width="20" height="20" rx="4"/><rect x="22" y="44" width="20" height="20" rx="4"/><rect x="44" y="44" width="20" height="20" rx="4"/><rect x="44" y="0" width="20" height="20" rx="4" fill="#c9a2ff"/></g>
+</svg>
