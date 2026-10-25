@@ -498,9 +498,10 @@
       var close = function () { m.remove(); document.removeEventListener('keydown', kd) }, kd = function (e) { if (e.key === 'Escape') close() }; document.addEventListener('keydown', kd);
       m.addEventListener('click', function (e) { if (e.target === m) close() }); m.querySelector('.fss-x').onclick = close;
       m.querySelector('.fss-dl2').onclick = function () { var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove() };
-      var sh = m.querySelector('.fss-sh'); sh.onclick = function () { fetch(url).then(function (r) { return r.blob() }).then(function (b) { var f = new File([b], name, { type: 'image/png' });
-          if (navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f], title: 'Отчёт отдела продаж', text: 'Продажи ' + human(p.a, p.b) }).then(function () { return 'ok' });
-          return navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function () { return 'copied' }) }).then(function (r) { if (r === 'copied') sh.lastChild.textContent = 'Скопировано — вставь в чат' }).catch(function (e) { if (e && e.name === 'AbortError') return; sh.lastChild.textContent = 'Не вышло — скачай PNG' }) };
+      /* как в «Поделиться» профиля: файл готовим заранее (share должен вызываться сразу по клику) и шлём ТОЛЬКО файл — с title/text Telegram отправляет один текст без картинки */
+      var sh = m.querySelector('.fss-sh'), shF = null; fetch(url).then(function (r) { return r.blob() }).then(function (b) { shF = new File([b], name, { type: 'image/png' }) });
+      sh.onclick = function () { if (!shF) return; if (navigator.canShare && navigator.canShare({ files: [shF] })) { navigator.share({ files: [shF] }).catch(function () {}); return }
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': shF })]).then(function () { sh.lastChild.textContent = 'Скопировано — вставь в чат' }).catch(function () { var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); sh.lastChild.textContent = 'Сохранено — прикрепи в чат' }) };
       var cp = m.querySelector('.fss-cp'); cp.onclick = function () { fetch(url).then(function (r) { return r.blob() }).then(function (b) { return navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]) }).then(function () { cp.textContent = 'Скопировано' }).catch(function () { cp.textContent = 'Не вышло — скачай' }) } };
 
     /* ---------- выбор периода ---------- */
