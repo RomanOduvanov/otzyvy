@@ -223,7 +223,7 @@
       return i > 0 ? { prod: c.slice(0, i).trim(), tar: c.slice(i + 3).trim(), inst: inst } : { prod: c || 'Без названия', tar: '', inst: inst } };
     var METHODS = [['card', 'Картой и СБП', '#8f6af0'], ['inst', 'Рассрочка и кредит', '#d95926'], ['direct', 'Другие сервисы (Appex, Продамус, РР)', '#199e70']];
     var methodOf = function (x) { if (!/геткурс|getcourse/i.test(x.type || 'Геткурс')) return 'direct'; return x.sum && x.fee / x.sum > .06 ? 'inst' : 'card' };
-    var shortProd = function (t) { return String(t).replace(/\s+с\s+0\s+до\s+PRO\s+/i, ' ').replace(/\s+/g, ' ').trim() };
+    var shortProd = function (t) { return String(t).replace(/\s+с\s+0\s+до\s+PRO\b\s*/i, ' ').replace(/\s+/g, ' ').trim() };
     var groupProducts = function (items) { var m = {}; items.forEach(function (x) { var s = splitTitle(x.title), nm = shortProd(s.prod) + (s.tar ? ' · ' + s.tar : ''), g = m[nm] = m[nm] || { name: nm, prod: s.prod, tar: s.tar, n: 0, v: 0, inst: 0, tars: [] }; g.n++; g.v += x.v; if (s.inst) g.inst++ });
       var arr = Object.keys(m).map(function (k) { return m[k] }).sort(function (a, b) { return b.v - a.v });
       if (arr.length > 6) { var rest = arr.slice(5), o = { name: 'Другое', n: 0, v: 0, inst: 0, tars: [], other: 1 }; rest.forEach(function (g) { o.n += g.n; o.v += g.v; o.tars.push({ name: g.name, n: g.n, v: g.v, inst: g.inst }) }); arr = arr.slice(0, 5).concat([o]) }
@@ -437,21 +437,21 @@
         var LW = 860, X1 = M + LW + 40, RW = W - M - X1, P = 40, Y = 248, YB = H - 88;
         var cmpS = !p.pa ? '' : n1 ? p.pa.getDate() + ' ' + MONS[p.pa.getMonth()] : human(p.pa, p.pb), cmpSh = !p.pa ? '' : n1 ? p.pa.getDate() + ' ' + MONS3[p.pa.getMonth()] : human(p.pa, p.pb, 1);
         /* главная карточка: сумма + три показателя */
-        var hH = 520; cardB(M, Y, LW, hH, 1);
+        var hasFlow = !st.PAY.gross && rc.gross, D = hasFlow ? 0 : -70, hH = 520 + D; cardB(M, Y, LW, hH, 1);
         IC('wallet', M + P, Y + P, 52, '#1a0b2e', '#c38bff'); font(500, 28); T({ net: 'На вывод', gross: 'Оплачено клиентами', gc: 'Сумма оплат по GetCourse' }[md], M + P + 68, Y + P + 14, '#fff');
         font(400, 19); T({ net: 'после комиссий GetCourse и банков', gross: 'все принятые платежи, до комиссий', gc: 'по полностью оплаченным заказам' }[md], M + P + 68, Y + P + 40, 'rgba(255,255,255,.5)');
         var vs = RUB(mv), vf = 100; font(500, vf); while (tw(vs) > LW - 2 * P && vf > 64) { vf -= 4; font(500, vf) } T(vs, M + P - 4, Y + 160, '#fff');
         var d0 = mv0 != null ? dl(mv, mv0) : null;
         if (d0) { var pw = pill(d0, M + P, Y + 236, 22); font(400, 20); T(fit('к ' + cmpS + ' · было ' + RUB(mv0), LW - 2 * P - pw - 14), M + P + pw + 14, Y + 237, 'rgba(255,255,255,.55)') }
         else if (mv0 === 0 && p.pa) { font(400, 20); T(cap(cmpS) + ' оплат не было', M + P, Y + 237, 'rgba(255,255,255,.55)') }
-        if (!st.PAY.gross && rc.gross) { var bx = M + P, bw = LW - 2 * P, by = Y + 268, fp = rc.fee / rc.gross; rr(bx, by, Math.max(10, bw * (1 - fp) - 3), 10, 5); var bgd = x.createLinearGradient(bx, 0, bx + bw, 0); bgd.addColorStop(0, '#6724ad'); bgd.addColorStop(1, '#c38bff'); x.fillStyle = bgd; x.fill(); rr(bx + bw * (1 - fp), by, Math.max(6, bw * fp), 10, 5); x.fillStyle = 'rgba(255,107,107,.85)'; x.fill();
+        if (hasFlow) { var bx = M + P, bw = LW - 2 * P, by = Y + 268, fp = rc.fee / rc.gross; rr(bx, by, Math.max(10, bw * (1 - fp) - 3), 10, 5); var bgd = x.createLinearGradient(bx, 0, bx + bw, 0); bgd.addColorStop(0, '#6724ad'); bgd.addColorStop(1, '#c38bff'); x.fillStyle = bgd; x.fill(); rr(bx + bw * (1 - fp), by, Math.max(6, bw * fp), 10, 5); x.fillStyle = 'rgba(255,107,107,.85)'; x.fill();
           font(400, 17); T('клиенты заплатили ' + RUB(rc.gross), bx, by + 32, 'rgba(255,255,255,.55)'); x.textAlign = 'right'; T('комиссии −' + RUB(rc.fee) + ' · ' + (fp * 100).toFixed(1).replace('.', ',') + '%', bx + bw, by + 32, '#ff8a8a'); x.textAlign = 'left' }
-        x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(M + P, Y + 332, LW - 2 * P, 1);
+        x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(M + P, Y + 332 + D, LW - 2 * P, 1);
         var cw3 = (LW - 2 * P) / 3;[['bag', 'Продажи', NUM(c.n), q ? dl(c.n, q.n) : null], ['receipt', 'Средний чек', RUB(c.avg), q ? dl(c.avg, q.avg) : null], ['users', 'Покупатели', NUM(c.buyers), q ? dl(c.buyers, q.buyers) : null]].forEach(function (t, i) {
-          var X = M + P + i * cw3, ix = X + (i ? 32 : 0), iw = cw3 - (i ? 32 : 0) - 16; if (i) { x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(X, Y + 356, 1, 128) }
-          IC(t[0], ix, Y + 356, 32); font(500, 20); T(t[1], ix + 44, Y + 373, 'rgba(255,255,255,.65)');
-          var f2 = 46; font(500, f2); while (tw(t[2]) > iw && f2 > 30) { f2 -= 2; font(500, f2) } T(t[2], ix - 2, Y + 424, '#fff');
-          if (t[3]) { var pw3 = pill(t[3], ix, Y + 466, 17); font(400, 16); var ct = 'к ' + cmpSh; if (tw(ct) < iw - pw3 - 10) T(ct, ix + pw3 + 10, Y + 467, 'rgba(255,255,255,.45)') } });
+          var X = M + P + i * cw3, ix = X + (i ? 32 : 0), iw = cw3 - (i ? 32 : 0) - 16; if (i) { x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(X, Y + 356 + D, 1, 128) }
+          IC(t[0], ix, Y + 356 + D, 32); font(500, 20); T(t[1], ix + 44, Y + 373 + D, 'rgba(255,255,255,.65)');
+          var f2 = 46; font(500, f2); while (tw(t[2]) > iw && f2 > 30) { f2 -= 2; font(500, f2) } T(t[2], ix - 2, Y + 424 + D, '#fff');
+          if (t[3]) { var pw3 = pill(t[3], ix, Y + 466 + D, 17); font(400, 16); var ct = 'к ' + cmpSh; if (tw(ct) < iw - pw3 - 10) T(ct, ix + pw3 + 10, Y + 467 + D, 'rgba(255,255,255,.45)') } });
         /* нижняя левая карточка: план месяца или динамика */
         var Y3 = Y + hH + 20, h3 = YB - Y3;
         if (st.inMonth && !st.PAY.gross) { var pv = planOf(st.mk), got = rc.sum, last = new Date(p.a.getFullYear(), p.a.getMonth() + 1, 0), curM = key(p.b) === key(today) && p.b < last, fc = curM ? got / p.b.getDate() * last.getDate() : got, mx = Math.max(pv.ideal, fc, got) * 1.06, PX = function (v) { return Math.min(1, v / mx) };
@@ -469,7 +469,8 @@
           x.textAlign = 'right'; font(400, 17); T(md === 'gross' ? 'оплачено по дням' : 'на вывод' + (n1 || st.g === 'day' ? ' по дням' : ''), M + LW - P, Y3 + P + 8, 'rgba(255,255,255,.5)'); x.textAlign = 'left';
           vals.forEach(function (v, i) { var hh = v ? Math.max(6, ch0 * v / bmx) : 4, ww = Math.max(4, Math.min(bwd - 10, 72)), isL = i === vals.length - 1 && n1, bx2 = cx0 + bwd * i + (bwd - ww) / 2; rr(bx2, base - hh, ww, hh, Math.min(8, ww / 2)); x.fillStyle = v ? (isL || !n1 ? '#c38bff' : 'rgba(195,139,255,.38)') : 'rgba(255,255,255,.08)'; x.fill();
             if (n1) { x.textAlign = 'center'; font(500, 15); if (v) T(SHORT(v), cx0 + bwd * i + bwd / 2, base - hh - 12, isL ? '#fff' : 'rgba(255,255,255,.55)'); font(400, 15); T(WD[bars[i][0].getDay()] + ' ' + bars[i][0].getDate(), cx0 + bwd * i + bwd / 2, base + 18, isL ? '#fff' : 'rgba(255,255,255,.45)'); x.textAlign = 'left' } });
-          if (!n1) { font(400, 16); var ax = function (b) { var d = b[0]; return st.g === 'month' ? MONN[d.getMonth()] : d.getDate() + ' ' + MONS3[d.getMonth()] }; T(ax(bars[0]), cx0, base + 18, 'rgba(255,255,255,.45)'); if (bars.length > 1) { x.textAlign = 'right'; T(ax(bars[bars.length - 1]), cx0 + cw0, base + 18, 'rgba(255,255,255,.45)'); x.textAlign = 'left' } } }
+          if (!n1 && st.g === 'day' && bars.length <= 14) { x.textAlign = 'center'; font(400, 15); bars.forEach(function (b, i) { T(b[0].getDate() + ' ' + MONS3[b[0].getMonth()], cx0 + bwd * i + bwd / 2, base + 18, 'rgba(255,255,255,.45)') }); x.textAlign = 'left' }
+          else if (!n1) { font(400, 16); var ax = function (b) { var d = b[0]; return st.g === 'month' ? MONN[d.getMonth()] : d.getDate() + ' ' + MONS3[d.getMonth()] }; T(ax(bars[0]), cx0, base + 18, 'rgba(255,255,255,.45)'); if (bars.length > 1) { x.textAlign = 'right'; T(ax(bars[bars.length - 1]), cx0 + cw0, base + 18, 'rgba(255,255,255,.45)'); x.textAlign = 'left' } } }
         /* что продали */
         var hP = st.fl ? 492 : YB - Y; cardB(X1, Y, RW, hP); IC('bag', X1 + P, Y + P, 44); font(500, 24); T('Что продали', X1 + P + 60, Y + P + 10, '#fff'); font(400, 17); T(st.fl ? 'продукты и тарифы · суммы ' + (md === 'gross' ? 'до комиссий' : 'на вывод') : 'продукты и тарифы · стоимость заказов', X1 + P + 60, Y + P + 36, 'rgba(255,255,255,.5)');
         if (!G.length) { font(400, 22); T('За период продаж не было', X1 + P, Y + 150, 'rgba(255,255,255,.5)') }
