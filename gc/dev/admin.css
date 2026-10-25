@@ -80,3 +80,63 @@
 :root body:has(.standard-page-content) .logic-rule-widget label{color:#fff!important}
 /* теги */
 :root body:has(.standard-page-content) .gc-tags span,:root body:has(.standard-page-content) .gc-tags a{border-radius:8px!important}
+/* v2: вкладки, итоговая строка, конструктор правил */
+:root body:has(.standard-page-content) .standard-page-menu li,:root body:has(.standard-page-content) .nav-tabs>li{background:transparent!important}
+:root body:has(.standard-page-content) .table tr{background:transparent!important}
+:root body:has(.standard-page-content) .table tr.summary>td{background:rgba(195,139,255,.12)!important;color:#fff!important;font-weight:600}
+:root body:has(.standard-page-content) .logic-rule-widget{border-color:rgba(255,255,255,.1)!important;border-radius:14px!important}
+:root body:has(.standard-page-content) .logic-rule-widget .symbol{background:rgba(195,139,255,.14)!important;border-color:rgba(195,139,255,.3)!important;color:#d7b6ff!important;border-radius:8px!important}
+:root body:has(.standard-page-content) .logic-rule-widget .control-buttons .btn{background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.12)!important;color:#fff!important;border-radius:8px!important;box-shadow:none!important}
+:root body:has(.standard-page-content) .logic-rule-widget .invert-label{background:rgba(255,80,80,.12)!important;color:#ff9a9a!important}
+:root body:has(.standard-page-content) .nothing-found-label{background:transparent!important;color:rgba(255,255,255,.5)!important}
+:root body:has(.standard-page-content) .logic-rule-widget input[type=radio]{accent-color:#c38bff}
+/* облако тегов */
+:root body:has(.standard-page-content) .gc-tags-cloud{background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:16px!important;padding:10px 14px!important;color:#fff!important}
+:root body:has(.standard-page-content) .gc-tags-cloud .tag-editor,:root body:has(.standard-page-content) ul.tag-editor{background:rgba(255,255,255,.05)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:10px!important;color:#fff!important}
+:root body:has(.standard-page-content) .tag-editor .placeholder{color:rgba(255,255,255,.4)!important}
+:root body:has(.standard-page-content) .tag-editor .tag-editor-tag,:root body:has(.standard-page-content) .tag-editor .tag-editor-delete{background:rgba(195,139,255,.18)!important;color:#fff!important}
+:root body:has(.standard-page-content) .gc-tags-cloud select{background:rgba(255,255,255,.06)!important;color:#fff!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:8px!important}
+:root body:has(.standard-page-content) .gc-close-btn{color:rgba(255,255,255,.5)!important}
+:root body:has(.standard-page-content) .gc-tags span,:root body:has(.standard-page-content) .gc-tag-filter,:root body:has(.standard-page-content) .gc-tags-list .gc-tag{background:rgba(195,139,255,.16)!important;color:#e6d4ff!important;border:0!important;border-radius:999px!important}
+:root body:has(.standard-page-content) .gc-tag-settings a{color:rgba(255,255,255,.5)!important}
+/* реклама GetCourse в процессах */
+:root body .funnels-banner{display:none!important}
+/* процессы: мультиселект, тип задачи, подсказки, редактор */
+:root body:has(.standard-page-content) .select2-container-multi .select2-choices{background:rgba(255,255,255,.05)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:10px!important;background-image:none!important}
+:root body:has(.standard-page-content) .select2-container-multi .select2-choices .select2-search-choice{background:rgba(195,139,255,.2)!important;background-image:none!important;border:0!important;color:#fff!important;box-shadow:none!important;border-radius:8px!important}
+:root body:has(.standard-page-content) .select2-container-multi .select2-search-field input{color:#fff!important;background:transparent!important}
+:root body:has(.standard-page-content) .type-selector li{background:rgba(255,255,255,.03)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:12px!important;color:#fff!important}
+:root body:has(.standard-page-content) .type-selector li.selected{background:rgba(195,139,255,.12)!important;border-color:rgba(195,139,255,.35)!important}
+:root body:has(.standard-page-content) .text-muted{color:rgba(255,255,255,.5)!important}
+:root body:has(.standard-page-content) .bg-info,:root body:has(.standard-page-content) .bg-warning,:root body:has(.standard-page-content) .bg-success,:root body:has(.standard-page-content) .bg-danger{background:rgba(195,139,255,.1)!important;color:#fff!important;border-radius:12px!important;border:1px solid rgba(195,139,255,.2)!important}
+:root body:has(.standard-page-content) .mission-update{background:transparent!important}
+:root body:has(.standard-page-content) .panzoom-container{border-radius:18px!important;overflow:hidden!important;background:#fff!important}
+:root body:has(.standard-page-content) .standard-page-actions label{color:rgba(255,255,255,.75)!important}
+/* беседы */
+:root body:has(.standard-page-content) .talks-widget-window{background:#0b0a10!important;color:#fff!important}
+:root body:has(.standard-page-content) .talks-widget-header,:root body:has(.standard-page-content) .conversation-list-footer,:root body:has(.standard-page-content) .talks-widget-window .footer,:root body:has(.standard-page-content) .talks-widget-window [class*=footer]{background:#14111c!important;border-color:rgba(255,255,255,.08)!important;color:#fff!important}
+:root body:has(.standard-page-content) .talks-widget-header .caption{color:#fff!important;font-weight:600}
+:root body:has(.standard-page-content) .conversation-annotate{border-bottom:1px solid rgba(255,255,255,.06)!important;transition:background .15s}
+:root body:has(.standard-page-content) .conversation-annotate:hover{background:rgba(195,139,255,.08)!important}
+:root body:has(.standard-page-content) .conversation-annotate,:root body:has(.standard-page-content) .conversation-title,:root body:has(.standard-page-content) .conversation-text{color:#fff!important}
+:root body:has(.standard-page-content) .conversation-text{color:rgba(255,255,255,.65)!important}
+:root body:has(.standard-page-content) .conversation-time{color:rgba(255,255,255,.4)!important}
+:root body:has(.standard-page-content) .talks-widget-window .btn-new{background:var(--fs-btn,#c38bff)!important;color:#1a0b2e!important;border:0!important;border-radius:999px!important}
+:root body:has(.standard-page-content) .conversation-widget{background:#0b0a10!important;color:#fff!important}
+:root body:has(.standard-page-content) .conversation-widget .text-content{background:#1c1826!important;color:#fff!important;border-radius:16px!important;border:1px solid rgba(255,255,255,.06)!important}
+:root body:has(.standard-page-content) .conversation-widget .my-comment .text-content{background:linear-gradient(135deg,#7a3fd1,#a35cf0)!important;border-color:transparent!important}
+:root body:has(.standard-page-content) .conversation-widget .text-content a{color:#e2c9ff!important}
+:root body:has(.standard-page-content) .conversation-widget .comment-date,:root body:has(.standard-page-content) .conversation-widget .info,:root body:has(.standard-page-content) .conversation-widget small{color:rgba(255,255,255,.4)!important}
+:root body:has(.standard-page-content) .talks-widget-header a{color:#d7b6ff!important}
+:root body:has(.standard-page-content) .talks-widget-header .glyphicon,:root body:has(.standard-page-content) .talks-widget-header [class*=close],:root body:has(.standard-page-content) .talks-widget-header [class*=menu]{color:#fff!important}
+/* группы, заголовки таблиц, кнопки, панели сайта */
+:root body:has(.standard-page-content) .dd-handle{background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important;color:#fff!important;border-radius:10px!important}
+:root body:has(.standard-page-content) .dd-handle:hover{background:rgba(195,139,255,.1)!important}
+:root body:has(.standard-page-content) .dd-handle a{color:#e6d4ff!important}
+:root body:has(.standard-page-content) .table thead,:root body:has(.standard-page-content) .table thead tr,:root body:has(.standard-page-content) .table thead th,:root body:has(.standard-page-content) .table>thead>tr>td{background:#15121d!important;color:rgba(255,255,255,.6)!important}
+:root body:has(.standard-page-content) .metrika-data-table td,:root body:has(.standard-page-content) .metrika-data-table th{border-color:rgba(255,255,255,.06)!important}
+:root body:has(.standard-page-content) .btn-default{background:rgba(255,255,255,.07)!important;color:#fff!important;border:1px solid rgba(255,255,255,.12)!important;box-shadow:none!important;background-image:none!important}
+:root body:has(.standard-page-content) .btn-default:hover{background:rgba(195,139,255,.18)!important}
+:root body:has(.standard-page-content) .part-panel{background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;color:#fff!important}
+:root body:has(.standard-page-content) .part-panel .panel-title{color:#fff!important}
+:root body:has(.standard-page-content) .part-panel a{color:#d7b6ff!important}
