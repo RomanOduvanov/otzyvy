@@ -136,7 +136,7 @@
     var notice = function () { if (noticeOff || document.querySelector('.fs-tgn')) return;
       getMe().then(function (j) { if (!j || !j.ok || j.tg_ok || document.querySelector('.fs-tgn')) return;
         var n = document.createElement('div'); n.className = 'notice-top-panel fs-tgn'; n.setAttribute('data-fs-kind', 'tg'); n.setAttribute('role', 'status');
-        n.innerHTML = '<div class="redesigned-notice-content"><div class="redesigned-notice-text"><b>Подключи Telegram-бот школы</b> — напоминания об эфирах и x2-баллах, ответы куратора и проверка домашек сразу в телефон</div>'
+        n.innerHTML = '<div class="redesigned-notice-content"><div class="redesigned-notice-text"><b>Подключи Telegram-бот школы</b> — эфиры, x2-баллы и ответы куратора сразу в&nbsp;телефоне</div>'
           + '<a class="btn rd-btn-notice" href="' + esc(j.tg_link) + '" target="_blank" rel="noopener">' + TGI + 'Подключить</a></div>'
           + '<a class="close-link" href="javascript:void(0)" aria-label="Скрыть"><svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg></a>';
         var host = document.querySelector('#redesignedNoticeTopPanel'); var first = document.querySelector('.notice-top-panel:not(.fs-tgn)');
@@ -191,7 +191,10 @@
       var st = document.createElement('div'); st.innerHTML = STORIES; wrap.appendChild(st.firstChild);
       right.appendChild(wrap);
       getMe().then(function () { renderCur() }) };
-    var go = function () { course(); notice() };
+    /* рекламный баннер GetCourse (видят только админы) — убираем */
+    var killAd = function () { [].forEach.call(document.querySelectorAll('.banner-frame, iframe[src*="banner"]'), function (f) { var w = f.closest('[style*="position: fixed"], [style*="position:fixed"]') || f; w.remove() }) };
+    try { var mo = new MutationObserver(killAd); mo.observe(document.documentElement, { childList: true, subtree: true }); setTimeout(function () { mo.disconnect() }, 20000) } catch (e) {}
+    var go = function () { course(); notice(); killAd() };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
   })();
   /* брендинг OduvanovSchool: знак «кладка» в сайдбаре + подвал на страницах кабинета */
