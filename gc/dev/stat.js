@@ -304,26 +304,26 @@
         /* двухтоновый заголовок */
         x.font = '500 84px ' + F; x.fillStyle = '#fff'; x.fillText('Продажи', M, 214); x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(human(p.a, p.b), M, 304);
         /* главная карточка: выручка */
-        cardBox(M, 352, W - 2 * M, 236);
-        x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Выручка — все поступившие платежи', M + 40, 404);
-        x.font = '500 104px ' + F; x.fillStyle = '#fff'; x.fillText(RUB(rc.sum), M + 36, 514);
-        var d0 = rp ? dtxt(rc.sum, rp.sum) : null; if (d0) { x.font = '600 26px ' + F; x.fillStyle = d0.c; x.fillText(d0.s, M + 40, 560); var dw = x.measureText(d0.s).width; x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('к ' + human(p.pa, p.pb) + ' · было ' + RUB(rp.sum), M + 52 + dw, 560) }
+        cardBox(M, 340, W - 2 * M, 220);
+        x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Выручка — все поступившие платежи', M + 40, 392);
+        x.font = '500 104px ' + F; x.fillStyle = '#fff'; x.fillText(RUB(rc.sum), M + 36, 496);
+        var d0 = rp ? dtxt(rc.sum, rp.sum) : null; if (d0) { x.font = '600 26px ' + F; x.fillStyle = d0.c; x.fillText(d0.s, M + 40, 538); var dw = x.measureText(d0.s).width; x.font = '400 26px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('к ' + human(p.pa, p.pb) + ' · было ' + RUB(rp.sum), M + 52 + dw, 538) }
         /* три карточки */
         var cw3 = (W - 2 * M - 32) / 3; [['Продажи', NUM(c.n), q ? dtxt(c.n, q.n) : null], ['Средний чек', RUB(c.avg), q ? dtxt(c.avg, q.avg) : null], ['Покупатели', NUM(c.buyers), q ? dtxt(c.buyers, q.buyers) : null]].forEach(function (t, i2) {
-          var X = M + i2 * (cw3 + 16), Y = 604; cardBox(X, Y, cw3, 176); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(t[0], X + 32, Y + 50);
-          x.font = '500 ' + (t[1].length > 9 ? 44 : 56) + 'px ' + F; x.fillStyle = '#fff'; x.fillText(t[1], X + 30, Y + 118);
-          if (t[2]) { x.font = '600 22px ' + F; x.fillStyle = t[2].c; x.fillText(t[2].s, X + 32, Y + 152) } });
+          var X = M + i2 * (cw3 + 16), Y = 576; cardBox(X, Y, cw3, 160); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(t[0], X + 32, Y + 48);
+          x.font = '500 ' + (t[1].length > 9 ? 44 : 56) + 'px ' + F; x.fillStyle = '#fff'; x.fillText(t[1], X + 30, Y + 108);
+          if (t[2]) { x.font = '600 22px ' + F; x.fillStyle = t[2].c; x.fillText(t[2].s, X + 32, Y + 140) } });
         /* график по дням */
-        var Y2 = 796, h2 = 230; cardBox(M, Y2, W - 2 * M, h2); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Поступления ' + ({ day: 'по дням', week: 'по неделям', month: 'по месяцам' })[st.g], M + 40, Y2 + 48);
+        var Y2 = 752, h2 = 200; cardBox(M, Y2, W - 2 * M, h2); x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Поступления ' + ({ day: 'по дням', week: 'по неделям', month: 'по месяцам' })[st.g], M + 40, Y2 + 46);
         var bk = bucket(dayKeys(p.a, p.b), st.g), vals = bk.map(function (b) { return b.reduce(function (s, d) { var z = st.PAY.m[key(d)]; return s + (z ? z.sum : 0) }, 0) }), mx = Math.max.apply(null, vals.concat([1]));
-        var cx0 = M + 40, cw0 = W - 2 * M - 80, ch0 = 120, cy0 = Y2 + 80, bw = cw0 / vals.length;
+        var cx0 = M + 40, cw0 = W - 2 * M - 80, ch0 = 90, cy0 = Y2 + 72, bw = cw0 / vals.length;
         vals.forEach(function (v, i3) { var h = v ? Math.max(6, ch0 * v / mx) : 4, w = Math.max(4, Math.min(bw - 6, 44)); rr(cx0 + bw * i3 + (bw - w) / 2, cy0 + ch0 - h, w, h, Math.min(5, w / 2)); x.fillStyle = v ? '#c38bff' : 'rgba(255,255,255,.08)'; x.fill() });
         x.font = '400 18px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText(lbl(bk[0], st.g, 1), cx0, cy0 + ch0 + 30); x.textAlign = 'right'; x.fillText(lbl(bk[bk.length - 1], st.g, 1), cx0 + cw0, cy0 + ch0 + 30); x.textAlign = 'left';
         /* тарифы */
-        var Y3 = 1042, top = T.slice(0, 4), tn = st.dl.length, h3 = 92 + Math.max(1, top.length) * 46; cardBox(M, Y3, W - 2 * M, h3);
-        x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Что покупали', M + 40, Y3 + 48);
+        var Y3 = 968, top = T.slice(0, 4), tn = st.dl.length, h3 = 84 + Math.max(1, top.length) * 44; cardBox(M, Y3, W - 2 * M, h3);
+        x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText('Что покупали', M + 40, Y3 + 46);
         if (!top.length) { x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.44)'; x.fillText('Оплат за период не было', M + 40, Y3 + 96) }
-        top.forEach(function (t, i4) { var Y = Y3 + 92 + i4 * 46; x.font = '500 24px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 700), M + 40, Y);
+        top.forEach(function (t, i4) { var Y = Y3 + 90 + i4 * 44; x.font = '500 24px ' + F; x.fillStyle = '#fff'; x.fillText(fit(t.name, 700), M + 40, Y);
           x.textAlign = 'right'; x.font = '400 24px ' + F; x.fillStyle = 'rgba(255,255,255,.55)'; x.fillText(Math.round(t.n / tn * 100) + '%', W - M - 120, Y); x.font = '600 24px ' + F; x.fillStyle = '#fff'; x.fillText(t.n + ' шт', W - M - 40, Y); x.textAlign = 'left' });
         var now = new Date(); x.font = '400 20px ' + F; x.fillStyle = 'rgba(255,255,255,.6)'; x.textAlign = 'center'; x.fillText('Данные GetCourse · ' + dd(now) + ', ' + ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2), W / 2, H - 40); x.textAlign = 'left';
         return new Promise(function (res) { cv.toBlob(function (b) { res(URL.createObjectURL(b)) }, 'image/png') }) }) };
