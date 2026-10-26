@@ -1493,6 +1493,9 @@ async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin')
     const today = new Date(dayStr() + 'T00:00:00+03:00').toISOString(), errToday = errs.filter(e => e.at >= today).length;
     const cost = (await env.DB.prepare("SELECT COUNT(*) n FROM log WHERE kind='ai-ma' AND at >= ?").bind(new Date(now - 7 * 864e5).toISOString()).first()).n | 0;
     return ajson({ ok: true, cfg: C, filtered: { today: fil, week: fil7, saved_rub: Math.round(fil7 * 0.35) }, asked7: cost, errors: { today: errToday, last: errs.slice(0, 12) }, students: list, valog: ((await kvGet(env, 'valog')) || []).slice(0, 40) }) }
+  if (path === '/app/api/neuro/cwclear' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(String(o.cid || ''), String(o.chat || '')).first(); if (!w) return ajson({ ok: false }, 404);
+    await env.DB.batch([env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(w.cid, w.chat), env.DB.prepare('INSERT INTO cack (cid, chat, uid, kind, since, at) VALUES (?,?,?,?,?,?)').bind(w.cid, w.chat, w.uid, 'admin-clear', w.since, Date.now() / 1000 | 0)]); await logIt(env, 'cw-clear', w.uid, w.cid); return ajson({ ok: true }) }
   if (path === '/app/api/neuro/act' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const uid = +o.uid, k = 'mod:' + uid, M = await modState(env, uid);
     if (o.act === 'lift') { M.until = 0; M.banned = false } else if (o.act === 'reset') { M.n = 0; M.step = 0; M.until = 0; M.banned = false; M.hist = [] } else if (o.act === 'ban') { M.banned = true } else return ajson({ ok: false }, 400);
     await kvPut(env, k, M); const idx = (await kvGet(env, 'modidx')) || []; if (!idx.includes(uid)) { idx.push(uid); await kvPut(env, 'modidx', idx) }
