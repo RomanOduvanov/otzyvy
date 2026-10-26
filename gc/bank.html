@@ -20,7 +20,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 16p
 <button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
 <div id="bank"></div>
 </div>
-<script src="bank.js?v=2"></script>
+<script src="bank.js?v=3"></script>
 <script>
 (function(){
 var EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post);document.querySelector('.hd').classList.add('hid')}
@@ -29,7 +29,7 @@ function $(i){return document.getElementById(i)}
 function out(){T=null;try{localStorage.removeItem('ebTok')}catch(e){}$('bank').innerHTML='';$('login').classList.remove('hid')}
 function api(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+T;
   return fetch(API+p,o).then(function(r){if(r.status===401){out();throw new Error('auth')}return r.json()})}
-function start(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{api:api,file:function(id){return API+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}
+function start(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{view:/[?&]view=orders/.test(location.search)?'orders':'bank',api:api,file:function(id){return API+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
   fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){
     var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').innerHTML='Нажми «Старт» в&nbsp;боте. Жду подтверждения…';var n=0;
