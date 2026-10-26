@@ -107,6 +107,14 @@ html.va #scr{padding-top:calc(60px + var(--st))}html.va #v-ai{top:calc(48px + va
 /* 26.10 правки Романа: поле ввода выше выступающей кнопки «Нейро» (отступ внутри блока — фон чата тянется до панели); ответы нейросети — в блоке, как сообщения ученика */
 #v-ai{padding-bottom:26px}
 .ai .tx{flex:0 1 auto;max-width:calc(100% - 40px);background:#161616;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);border-radius:18px 18px 18px 6px;padding:10px 14px}
+/* ---------- оценка ответа Нейро (ночь 27.10) ---------- */
+.aifb{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 6px 36px;font-size:13px;color:rgba(255,255,255,.5)}
+.aifb button{height:30px;min-width:38px;padding:0 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:transparent;color:rgba(255,255,255,.72);font-family:inherit;font-size:14px;cursor:pointer}
+.aifb button.on{background:rgba(195,139,255,.16);border-color:rgba(195,139,255,.4);color:#e2c9ff}
+.aifb .fbt{margin-left:4px}
+.aifb .why{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:4px}
+.aifb .why button{font-size:13px}
+.aifb .why input{flex:1 1 160px;min-width:0;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#161616;color:#fff;padding:0 10px;font-family:inherit;font-size:16px}
 </style></head><body>
 <div id="scr">
 <div id="v-load" class="v"><div class="sk" style="height:60px"></div><div class="sk" style="height:230px"></div><div class="sk"></div><div class="sk"></div></div>
@@ -303,7 +311,7 @@ function fmt(t){var s=esc(t).replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/
 function addMsg(role,text,img){var d=document.createElement('div');if(role==='user'){d.className='me';d.innerHTML=(img?'<img src="'+img+'" alt="">':'')+esc(text)}else{d.className='ai';d.innerHTML='<img class="face" src="ma/neuro.jpg" width="28" height="28" alt=""><div class="tx">'+(text==null?'<span class="typing"><i></i><i></i><i></i></span>':fmt(text))+'</div>'}$('msgs').appendChild(d);$('msgs').scrollTop=1e9;return d}
 var SUG=['Когда кончится доступ?','Как быстрее набрать баллы?','Что сейчас открыто?','Разбери мою работу'];
 var aiLoaded=false;function rAI(){if(aiLoaded)return;aiLoaded=true;$('sug').innerHTML=SUG.map(function(s){return '<button>'+s+'</button>'}).join('');
-  api('/ma/hist').then(function(j){var H=j.hist||[];if(!H.length)addMsg('ai','Привет! Я Нейро-Одуванов, ИИ-версия Романа. Знаю твой прогресс, расписание и баллы, разбираю работы — кидай картинку через скрепку.');H.forEach(function(x){var d=addMsg(x.role==='user'?'user':'ai',x.role==='user'?x.text:String(x.text||'').replace(/\n?\s*\[\[[^\]]*\]\]\s*$/,''));if(x.test)d.classList.add('test')});$('sug').classList.toggle('hid',H.length>2);
+  api('/ma/hist').then(function(j){var H=j.hist||[];if(!H.length)addMsg('ai','Привет! Я Нейро-Одуванов, ИИ-версия Романа. Знаю твой прогресс, расписание и баллы, разбираю работы — кидай картинку через скрепку.');H.forEach(function(x){var d=addMsg(x.role==='user'?'user':'ai',x.role==='user'?x.text:String(x.text||'').replace(/\n?\s*\[\[[^\]]*\]\]\s*$/,''));if(x.test)d.classList.add('test');if(x.mid&&x.role!=='user')aiFb(d,x.mid)});$('sug').classList.toggle('hid',H.length>2);
     if(VW)addMsg('ai','👁 Ты смотришь историю '+(VW.who.name||'ученика')+'. Твои вопросы сейчас идут в&nbsp;отдельный тестовый диалог и&nbsp;не&nbsp;попадут к&nbsp;ученику.'.replace(/&nbsp;/g,'\u00a0'));
     if(HOME&&HOME.mod)aiPause(HOME.mod)})}
 $('sug').onclick=function(e){if(e.target.tagName!=='BUTTON')return;var t=e.target.textContent;if(t==='Разбери мою работу'){$('file').click();return}$('q').value=t;send()};
@@ -332,7 +340,7 @@ function send(again){if(BUSY)return;var t,img;if(again&&again.t!==undefined){t=a
     if(!j.ok&&(j.err==='pause'||j.err==='banned')){w.querySelector('.tx').textContent=j.text||'Нейро на паузе.';aiPause({until:j.until,left:j.left,banned:j.err==='banned'});return}
     w.querySelector('.tx').innerHTML=fmt(j.text||'Не получилось ответить, попробуй ещё раз.');if(VW)w.classList.add('test');
     if(j.curator&&j.curator.tg)w.querySelector('.tx').insertAdjacentHTML('beforeend','<br><a class="pill" style="margin-top:8px" href="#" data-go="https://t.me/'+esc(j.curator.tg)+'">Написать '+esc(j.curator.name)+'у</a>');
-    aiQR(w,j.quick);try{TGW.HapticFeedback.notificationOccurred('success')}catch(e){}}).catch(function(){clearTimeout(to);aiErrCard(w,null)}).then(function(){BUSY=false;$('msgs').scrollTop=1e9})}
+    aiQR(w,j.quick);if(j.mid)aiFb(w,j.mid);try{TGW.HapticFeedback.notificationOccurred('success')}catch(e){}}).catch(function(){clearTimeout(to);aiErrCard(w,null)}).then(function(){BUSY=false;$('msgs').scrollTop=1e9})}
 /* ---------- вкладки ---------- */
 var R={learn:rLearn,rate:rRate,bank:rBank,more:rMore,ai:rAI};
 function tab(t,noHash){CUR=t;hap();if(PG.length){PG=[]}$('v-page').classList.add('hid');try{if(t==='learn'||!(STB&&t==='bank'&&document.querySelector('.ebro')))TGW.BackButton[t==='learn'?'hide':'show']()}catch(e){}['learn','rate','bank','more'].forEach(function(k){$('v-'+k).classList.toggle('hid',k!==t)});$('v-ai').classList.toggle('hid',t!=='ai');$('scr').classList.toggle('hid',t==='ai');
@@ -349,4 +357,19 @@ if(TGW){try{TGW.ready();TGW.expand();TGW.setHeaderColor('#000106');TGW.setBackgr
 try{var s=JSON.parse(sessionStorage.getItem('maT')||'null');if(s&&s.t)T=s}catch(e){}
 (T?Promise.resolve(T):auth()).then(start).catch(function(){});
 })();
+/* ---------- оценка ответа Нейро (ночь 27.10): 👍/👎 под ответом, у 👎 причина по желанию → сервер /ma/aifb ---------- */
+var FBW=['Не по делу','Неверно','Не помогло','Слишком длинно'];
+function aiFb(w,mid){if(!mid||!w)return;var r=document.createElement('div'),saved=null;r.className='aifb';try{saved=localStorage.getItem('aifb:'+mid)}catch(e){}
+  r.innerHTML='<button data-v="1" aria-label="Хороший ответ">👍</button><button data-v="-1" aria-label="Плохой ответ">👎</button><span class="fbt"></span>';
+  var mark=function(v){r.querySelectorAll('[data-v]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-v')===String(v))})};
+  var post=function(v,why){return api('/ma/aifb',{method:'POST',body:JSON.stringify({mid:mid,v:v,why:why||''})}).catch(function(){})};
+  var reason=function(why){if(!why)return;post(-1,why);var d=r.querySelector('.why');if(d)d.remove();r.querySelector('.fbt').textContent='Спасибо, разберёмся'};
+  if(saved){mark(saved);r.querySelector('.fbt').textContent='Спасибо за оценку'}
+  r.onclick=function(e){var b=e.target.closest('button');if(!b)return;
+    if(b.hasAttribute('data-v')){var v=+b.getAttribute('data-v'),t=r.querySelector('.fbt'),d=r.querySelector('.why');mark(v);hap();try{localStorage.setItem('aifb:'+mid,String(v))}catch(x){}post(v);if(d)d.remove();
+      if(v>0){t.textContent='Спасибо!';return}
+      t.textContent='Что не так? (по желанию)';d=document.createElement('div');d.className='why';d.innerHTML=FBW.map(function(x){return '<button data-w="'+x+'">'+x+'</button>'}).join('')+'<input placeholder="Своими словами" maxlength="300"><button data-w="_">Отправить</button>';r.appendChild(d);
+      d.querySelector('input').onkeydown=function(k){if(k.key==='Enter'){k.preventDefault();reason(this.value.trim())}};return}
+    if(b.hasAttribute('data-w')){var w0=b.getAttribute('data-w'),inp=r.querySelector('.why input');reason(w0==='_'?(inp&&inp.value.trim()):w0)}};
+  w.after(r);return r}
 </script></body></html>

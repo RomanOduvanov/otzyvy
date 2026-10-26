@@ -229,4 +229,17 @@ function start(){api('me').then(function(m){ME=m;$('login').classList.add('hid')
 $('login').classList.add('hid');
 (T?Promise.resolve(T):viaSite()).then(function(t){if(t)start();else $('login').classList.remove('hid')});
 })();
+/* ---------- оценка ответов Нейро (ночь 27.10): доля 👍, последние 👎 с вопросом и ответом. Отдельный блок под #nrBox, nrLoad не трогает ---------- */
+(function(){var _nr=nrLoad;nrLoad=function(){_nr.apply(this,arguments);nrFb()};
+  function nrFb(){var F=$('nrFb');if(!F){F=document.createElement('div');F.id='nrFb';F.style.cssText='display:flex;flex-direction:column;gap:16px;margin-top:16px';$('nrBox').after(F)}
+    F.innerHTML='<div class="card muted">Загружаю оценки ответов…</div>';
+    api('neuro/fb?n=60').then(function(S){var pc=function(x){return x.share==null?'—':x.share+'%'},dn=(S.last||[]).filter(function(x){return x.vote<0}),h='';
+      h+='<div class="kpis">'+kp('c','Ответами довольны',pc(S.all),'👍 '+S.all.up+' · 👎 '+S.all.down+' за всё время',S.all.share!=null&&S.all.share<70?'bad':'')+kp('c','За 7 дней',pc(S.week),'👍 '+S.week.up+' · 👎 '+S.week.down)+'</div>';
+      h+='<div class="card"><div class="ctl"><b style="font-weight:500">Последние 👎 — вопрос и ответ для разбора</b><button class="sb" id="nrFbCp">Скопировать для разбора</button></div><div class="log" style="margin-top:10px;flex-direction:column">'
+        +(dn.map(function(x){return '<details style="border-top:1px solid var(--hair);padding:10px 0"><summary style="cursor:pointer;list-style:none"><span class="muted">'+nrT(x.at)+' · '+esc(x.name||('ученик '+x.uid))+(x.view?' · тест команды':'')+'</span><br><b style="font-weight:500">'+esc(x.q||'')+'</b>'+(x.why?'<br><span class="chip bad" style="margin-top:6px">'+esc(x.why)+'</span>':'')+'</summary><div style="white-space:pre-wrap;margin-top:8px;color:var(--ink2);font-size:14px">'+esc(x.a||'')+(x.tools?'\n\nинструменты: '+esc(x.tools):'')+'</div></details>'}).join('')||'<span class="muted">Пока ни одного 👎</span>')+'</div></div>';
+      F.innerHTML=h;
+      $('nrFbCp').onclick=function(){var t=dn.map(function(x,i){return '#'+(i+1)+' '+new Date(x.at).toISOString().slice(0,16)+(x.why?' · причина: '+x.why:'')+'\nВопрос: '+x.q+'\nОтвет Нейро: '+x.a}).join('\n\n---\n\n');
+        var ok=function(){toast('Скопировано: '+dn.length+' ответов')};try{navigator.clipboard.writeText(t).then(ok,function(){fb(t)})}catch(e){fb(t)}
+        function fb(s){var a=document.createElement('textarea');a.value=s;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}}
+    }).catch(function(e){F.innerHTML='<div class="card dn">Оценки не загрузились: '+esc(e.message||'')+'</div>'})}})();
 </script></body></html>
