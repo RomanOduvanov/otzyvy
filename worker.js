@@ -368,6 +368,7 @@ function workSec(a, b, h) { if (!(b > a)) return 0; let s = 0, t = a; const end 
 async function saveTgUser(env, u) { if (!u || !u.id) return; await env.DB.prepare('INSERT OR REPLACE INTO tg_user (chat, username, name, at) VALUES (?,?,?,?)').bind(String(u.id), u.username || null, [u.first_name, u.last_name].filter(Boolean).join(' ') || null, new Date().toISOString()).run() }
 const admins = async env => ((await env.DB.prepare('SELECT chat FROM tg_admin').all()).results || []).map(a => a.chat);
 async function bizConnection(env, bc) {
+  if (isCareConn(bc, env)) return careConnection(env, bc);
   const owner = String(bc.user.id), uname = bc.user.username || null, nm = [bc.user.first_name, bc.user.last_name].filter(Boolean).join(' ');
   let row = await env.DB.prepare('SELECT * FROM cur_tg WHERE tg_id=?').bind(owner).first();
   if (!row) { const s = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(owner).first(); const c = s && CURATORS.find(x => x.uid === s.uid);
@@ -381,6 +382,7 @@ async function bizConnection(env, bc) {
   for (const a of await admins(env)) await tgSend(env, a, (on ? '✅ ' : '⛔️ ') + th(c ? c.full : row.cid) + (on ? ' подключил бота к своему Telegram — время ответов теперь считается.' : ' отключил бота от своего Telegram.'));
   return tgSend(env, owner, on ? '✅ <b>Готово!</b> Ученики пишут тебе в личку, а я только отмечаю время: когда пришёл вопрос и когда ты ответил. Тексты переписки не сохраняются.\n\nЕсли ученик ждёт ответа 2 часа в твоё рабочее время — напомню.' : 'Бот отключён от твоего Telegram — время ответов больше не считается.') }
 async function bizMessage(env, m) {
+  { const cc = await kvGet(env, 'care:conf'); if (cc && cc.conn && m.business_connection_id === cc.conn) return careMessage(env, m) }
   const row = await env.DB.prepare('SELECT * FROM cur_tg WHERE conn=? AND enabled=1').bind(m.business_connection_id).first(); if (!row || !m.chat || m.chat.type !== 'private') return;
   const chat = String(m.chat.id); if (chat === row.tg_id || m.sender_business_bot) return;
   const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(); if (!st) return; /* не ученик — ничего не храним */
@@ -412,8 +414,8 @@ async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days
   return { ok: true, days, curators: res } }
 /* вебхук сам добавляет бизнес-события (без ручной ссылки /tg/setup) */
 async function ensureBizHook(env) { const i = await tg(env, 'getWebhookInfo', {}); const w = i && i.result; if (!w || !w.url) return false;
-  if ((w.allowed_updates || []).includes('business_message')) return true;
-  const r = await tg(env, 'setWebhook', { url: w.url, secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message'] });
+  if ((w.allowed_updates || []).includes('deleted_business_messages')) return true;
+  const r = await tg(env, 'setWebhook', { url: w.url, secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message', 'edited_business_message', 'deleted_business_messages'] });
   await logIt(env, 'biz-hook', 0, String(!!(r && r.ok))); return !!(r && r.ok) }
 async function curInvites(env) { const ok = await ensureBizHook(env); let t = '<b>Кураторы · подключение к личке</b>\n' + (ok ? '✅ Бот готов принимать сообщения из личек кураторов.' : '⚠️ Не получилось обновить вебхук — напиши в чат с Claude.') + '\n\nПерешли каждому куратору его ссылку. Он жмёт «Старт», бот пришлёт инструкцию.\n';
   for (const c of CURATORS) { const ct = await env.DB.prepare('SELECT username, enabled FROM cur_tg WHERE cid=?').bind(c.id).first();
@@ -427,6 +429,8 @@ const FQT = { 1: 'каждый день', 2: 'раз в 2 дня', 3: 'раз в
 async function tgUpdate(env, up) {
   if (up.business_connection) return bizConnection(env, up.business_connection);
   if (up.business_message) return bizMessage(env, up.business_message);
+  if (up.edited_business_message) return careMessage(env, up.edited_business_message, true);
+  if (up.deleted_business_messages) return careDeleted(env, up.deleted_business_messages);
   if (up.callback_query) { const q = up.callback_query, chat = String(q.message && q.message.chat.id);
     if (q.data === 'off') { const p = await env.DB.prepare('SELECT uid, student FROM parent WHERE tg_chat=? AND active=1').bind(chat).first();
       if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'tg-off', p.uid, '') }
@@ -737,7 +741,7 @@ export default {
       if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 });
         const up = await req.json(); ctx.waitUntil(tgUpdate(env, up).catch(e => logIt(env, 'tg-ex', 0, String(e && e.message || e)))); return new Response('ok') }
       if (path === '/tg/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const base = env.BASE_URL || u.origin;
-        const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message'], drop_pending_updates: true });
+        const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message', 'edited_business_message', 'deleted_business_messages'], drop_pending_updates: true });
         const b = await tg(env, 'setMyCommands', { commands: [{ command: 'report', description: 'Прислать отчёт сейчас' }, { command: 'stop', description: 'Отключить уведомления' }] });
         const c = await tg(env, 'setMyDescription', { description: 'OduvanovSchool — вся учёба в одном боте 💜\n\n🔔 Напомню об эфирах и открытии модулей, чтобы ты не пропустил ×2 баллы\n✅ Сообщу, когда куратор ответил или проверил домашку\n🧠 AI-помощник ответит по курсу 24/7: что смотреть, когда дедлайн, как сдать работу\n📱 Кабинет, расписание и рейтинг потока — прямо в Telegram\n🏆 Новые места в рейтинге и достижения — сразу, как получишь\n👨‍👩‍👦 Отчёты об учёбе для тебя или родителей\n\nЖми «Старт» — и ни один балл не пройдёт мимо.' });
         const d = await tg(env, 'setMyShortDescription', { short_description: 'Эфиры, ×2 баллы, AI-помощник 24/7 и кабинет школы — всё в Telegram. Ни один балл мимо.' });
@@ -797,11 +801,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['report'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'pay', 'report'] };
+const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'care', 'pay', 'report'] };
 async function cronRun(env, cron) {
-  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'pay'], out = {};
+  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'care', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'care' ? careTick(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1024,6 +1028,7 @@ async function appApi(env, req, path) {
   const s = await appSession(env, req); if (!s) return ajson({ ok: false, err: 'auth' }, 401);
   if (path === '/app/api/logout' && req.method === 'POST') { await kvDel(env, 'sess:' + s.tok); return ajson({ ok: true }) }
   if (s.role === 'student') return path === '/app/api/me' ? ajson({ ok: true, role: 'student', uid: s.uid, name: s.name }) : ajson({ ok: false, err: 'forbidden' }, 403);
+  if (path.startsWith('/app/api/care/')) return careApi(env, s, path, req, u, ajson);
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
@@ -1079,6 +1084,10 @@ async function maApi(env, req, path) {
     const s = await env.DB.prepare('SELECT uid, name FROM student WHERE tg_chat=?').bind(String(tu.id)).first();
     if (!s) return json(req, { ok: false, err: 'nolink', name: tu.first_name || '' });
     return json(req, { ok: true, u: s.uid, t: await mkToken(env, 'a', String(s.uid)), v: await mkToken(env, 'v', String(s.uid)), name: s.name || tu.first_name || '' }, 200, { 'Cache-Control': 'no-store' }) }
+  /* диагностика «случайного выхода»: страница кабинета в мини-аппе показала вход (без личных данных, ключи в адресе вырезаны) */
+  if (path === '/ma/diag' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    await logIt(env, 'tg-diag', +o.u || 0, JSON.stringify({ k: String(o.kind || '').slice(0, 20), p: String(o.page || '').slice(0, 200), r: String(o.ref || '').slice(0, 200), hl: +o.hl || 0, ua: String(o.ua || '').slice(0, 160) }));
+    return json(req, { ok: true }) }
   const uid = await authUid(env, u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), 'av'); if (!uid) return deny(req);
   if (path === '/ma/home') { const D = await loadData(env), r = await rowFor(D, uid) || {}, now = Date.now();
     const s = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first() || {}; const c = s.curator && CURATORS.find(x => x.id === s.curator);
@@ -1111,9 +1120,13 @@ async function maApi(env, req, path) {
   return json(req, { ok: false, err: 'not found' }, 404);
 }
 
-/* ---------- Мой банк и Мои заказы (gc/bank.html, вкладка «Банк» мини-аппа) ----------
-   Кто: ученик по токену мини-аппа (v42, область 'a') или по сессии сайта (вход через бота, role 'student').
-   Деньги — целые рубли. Файлы (скрин оплаты, ТЗ) — в D1 base64, до ~650 КБ на файл. */
+
+/* ---------- Мой банк и Мои заказы (gc/bank.html, вкладка «Банк» мини-аппа, пульт) ----------
+   Кто: ученик по токену мини-аппа (v42, 'a') или по сессии сайта (role 'student') — свой банк, запись и чтение.
+        Команда (сессия пульта или мини-аппа: admin / curator) — банк ученика ?u=<uid> только для чтения; куратор — только своих.
+   Приватность: клиент, Telegram клиента, ТЗ/заметки и файлы видит только сам ученик. Команде сервер отдаёт «скрыто».
+   Валюта: RUB / USD / EUR. Сумма хранится в своей валюте + rub — пересчёт по курсу ЦБ РФ на дату оплаты (кеш курса в kv на день).
+   Дедлайн: 'YYYY-MM-DD' или 'YYYY-MM-DDTHH:MM' (местное время ученика) + dl_tz (IANA-пояс ученика). */
 const BANK_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS bank_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, amount INTEGER NOT NULL, day TEXT NOT NULL, what TEXT, src TEXT, client TEXT, order_id INTEGER, file_id INTEGER, at TEXT)',
   'CREATE INDEX IF NOT EXISTS bank_tx_uid ON bank_tx (uid, day)',
@@ -1121,13 +1134,30 @@ const BANK_SCHEMA = [
   'CREATE INDEX IF NOT EXISTS bank_order_uid ON bank_order (uid, status)',
   'CREATE TABLE IF NOT EXISTS bank_file (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, kind TEXT, ref INTEGER, name TEXT, mime TEXT, size INTEGER, data TEXT, at TEXT)',
   'CREATE INDEX IF NOT EXISTS bank_file_ref ON bank_file (uid, kind, ref)'];
+const BANK_ALTER = ["ALTER TABLE bank_tx ADD COLUMN cur TEXT", "ALTER TABLE bank_tx ADD COLUMN rub INTEGER", "ALTER TABLE bank_tx ADD COLUMN rate REAL",
+  "ALTER TABLE bank_order ADD COLUMN cur TEXT", "ALTER TABLE bank_order ADD COLUMN dl_tz TEXT"];
 let BANK_OK = false;
-async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.map(s => env.DB.prepare(s))); BANK_OK = true }
-const B_ST = ['new', 'work', 'review', 'done', 'cancel'];
+async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.map(s => env.DB.prepare(s)));
+  const [c1, c2] = await env.DB.batch([env.DB.prepare("SELECT name FROM pragma_table_info('bank_tx')"), env.DB.prepare("SELECT name FROM pragma_table_info('bank_order')")]);
+  const has = { bank_tx: (c1.results || []).map(r => r.name), bank_order: (c2.results || []).map(r => r.name) };
+  for (const a of BANK_ALTER) { const t = a.split(' ')[2], c = a.split(' ADD COLUMN ')[1].split(' ')[0]; if (!has[t].includes(c)) { try { await env.DB.prepare(a).run() } catch (e) {} } }
+  BANK_OK = true }
+const B_ST = ['new', 'work', 'review', 'done', 'cancel'], B_CUR = ['RUB', 'USD', 'EUR'], B_HIDDEN = 'скрыто';
 const bInt = v => Math.max(0, Math.min(1e9, Math.round(+String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.') || 0)));
 const bStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const bDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : dayStr();
-/* Кто смотрит банк: ученик — свой (запись и чтение); админ — любого ученика (?u=), куратор — только своих (?u=); команда — только чтение. Проверка на сервере. */
+const bCur = v => B_CUR.includes(String(v || '').toUpperCase()) ? String(v).toUpperCase() : 'RUB';
+const bDl = v => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(v || '')) ? String(v) : null;
+const bTz = v => /^[A-Za-z_]+(\/[A-Za-z0-9_+\-]+){0,2}$/.test(String(v || '')) ? String(v).slice(0, 40) : null;
+/* курс ЦБ РФ на дату: cbr-xml-daily (зеркало ЦБ); на выходные и праздники — ближайший предыдущий рабочий день. Кеш в kv на день. */
+async function cbrRate(env, day, cur) { if (cur === 'RUB') return 1; const k = 'cbr:' + day; let r = await kvGet(env, k);
+  if (!r) { r = null; let d = day;
+    for (let i = 0; i < 6 && !r; i++) { const [y, m, dd] = d.split('-'); const url = d >= dayStr() ? 'https://www.cbr-xml-daily.ru/daily_json.js' : 'https://www.cbr-xml-daily.ru/archive/' + y + '/' + m + '/' + dd + '/daily_json.js';
+      try { const res = await fetch(url, { cf: { cacheTtl: 3600 } }); if (res.ok) { const j = await res.json(); r = { USD: j.Valute.USD.Value / j.Valute.USD.Nominal, EUR: j.Valute.EUR.Value / j.Valute.EUR.Nominal, day: d } } } catch (e) {}
+      d = addDays(d, -1) }
+    if (r) await kvPut(env, k, r) }
+  return r ? r[cur] : null }
+/* Кто смотрит банк. Ученик — свой; админ — любой (?u=), куратор — только свои (?u=); команда — только чтение. Проверка на сервере. */
 async function bankWho(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || '';
   if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) return { uid: await authUid(env, t, 'a') };
   if (!/^[0-9a-f]{32}$/.test(t)) return { uid: 0 };
@@ -1144,40 +1174,66 @@ async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 's
   if (m[2].length > 900000) throw new Error('Файл больше 650 КБ — сожми или сделай скрин');
   const r = await env.DB.prepare('INSERT INTO bank_file (uid, kind, ref, name, mime, size, data, at) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(uid, kind, ref, bStr(f.name, 120) || 'файл', m[1], Math.round(m[2].length * 0.75), m[2], new Date().toISOString()).first();
   return r && r.id }
+/* Список учеников для команды: имя, тариф, куратор, поток — из данных рейтинга и таблицы student; доход в рублях. Куратор — только свои. */
+async function bankStaffList(env, st) {
+  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT uid, name, curator FROM student').all()).results || []), byU = {};
+  for (const s of studs) byU[s.uid] = s;
+  const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COUNT(id) n, MAX(day) last FROM bank_tx GROUP BY uid').all()).results || [])) sums[r.uid] = r;
+  const ords = {}; for (const r of ((await env.DB.prepare("SELECT uid, COUNT(id) n, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order GROUP BY uid").all()).results || [])) ords[r.uid] = r;
+  const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
+  const add = (uid, name, tar, place) => { if (!uid || seen[uid]) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
+    const m = sums[uid] || {}, o = ords[uid] || {};
+    out.push({ uid, name: name || s.name || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
+  for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
+  for (const s of studs) add(+s.uid, s.name, null, null);
+  for (const uid in sums) add(+uid, null, null, null);
+  out.sort((a, b) => b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+  return { ok: true, role: st.role, cid: st.cid || null, curators: st.role === 'admin' ? CURATORS.map(c => ({ id: c.id, full: c.full })) : CURATORS.filter(c => c.id === st.cid).map(c => ({ id: c.id, full: c.full })), students: out } }
 async function bankApi(env, req, path) {
   const u = new URL(req.url); await bankEnsure(env);
+  const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
   const W = await bankWho(env, req, u);
-  if (path === '/bank/staff/list') { const st = W.staff; if (!st) return deny(req);
-    const q = st.role === 'admin' ? env.DB.prepare('SELECT s.uid, s.name, s.curator, COALESCE(SUM(t.amount),0) total, COUNT(t.id) n, MAX(t.day) last FROM student s LEFT JOIN bank_tx t ON t.uid=s.uid GROUP BY s.uid ORDER BY total DESC, s.name LIMIT 2000')
-      : env.DB.prepare('SELECT s.uid, s.name, s.curator, COALESCE(SUM(t.amount),0) total, COUNT(t.id) n, MAX(t.day) last FROM student s LEFT JOIN bank_tx t ON t.uid=s.uid WHERE s.curator=? GROUP BY s.uid ORDER BY total DESC, s.name LIMIT 2000').bind(st.cid || '-');
-    const r = (await q.all()).results || []; return json(req, { ok: true, role: st.role, cid: st.cid || null, students: r }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/staff/list') { if (!W.staff) return deny(req); return json(req, await bankStaffList(env, W.staff), 200, { 'Cache-Control': 'no-store' }) }
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
   const uid = W.uid; if (!uid) return deny(req);
-  if (W.ro && path !== '/bank/summary' && path !== '/bank/file') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения' }, 403);
-  const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
+  if (W.ro && path !== '/bank/summary') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения, без контактов клиентов и файлов' }, 403);
   if (path === '/bank/summary') {
-    const [tx, od, fl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, day, what, src, client, order_id, file_id FROM bank_tx WHERE uid=? ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
-      env.DB.prepare('SELECT id, client, tg, product, price, deadline, status, brief, src, at, upd FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
+    const [tx, od, fl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id FROM bank_tx WHERE uid=? ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
+      env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
       env.DB.prepare('SELECT id, kind, ref, name, mime, size FROM bank_file WHERE uid=? AND kind=\'order\'').bind(uid)]);
-    const T = tx.results || [], months = {}; let total = 0; for (const x of T) { total += x.amount; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.amount }
+    const T = (tx.results || []).map(x => Object.assign(x, { cur: x.cur || 'RUB', rub: x.rub != null ? x.rub : x.amount })), months = {}; let total = 0;
+    for (const x of T) { total += x.rub; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.rub }
     const files = {}; for (const f of fl.results || []) (files[f.ref] = files[f.ref] || []).push({ id: f.id, name: f.name, mime: f.mime, size: f.size });
-    const paid = {}; for (const x of T) if (x.order_id) paid[x.order_id] = (paid[x.order_id] || 0) + x.amount;
-    return json(req, { ok: true, total, months, tx: T, orders: (od.results || []).map(o => Object.assign(o, { files: files[o.id] || [], paid: paid[o.id] || 0 })), today: dayStr(), ro: !!W.ro, who: W.ro ? await env.DB.prepare('SELECT uid, name FROM student WHERE uid=?').bind(uid).first() : null }, 200, { 'Cache-Control': 'no-store' }) }
+    const paid = {}, paidRub = {}; for (const x of T) if (x.order_id) { paidRub[x.order_id] = (paidRub[x.order_id] || 0) + x.rub; (paid[x.order_id] = paid[x.order_id] || {})[x.cur] = (paid[x.order_id][x.cur] || 0) + x.amount }
+    let orders = (od.results || []).map(o => { const c = o.cur || 'RUB'; return Object.assign(o, { cur: c, files: files[o.id] || [], paid: (paid[o.id] || {})[c] || 0, paid_rub: paidRub[o.id] || 0 }) });
+    /* для «ждёт оплаты» в рублях: цена заказа в валюте → по курсу сегодня */
+    const need = {}; for (const o of orders) if (o.cur !== 'RUB' && o.status !== 'done' && o.status !== 'cancel') need[o.cur] = 1;
+    const rates = { RUB: 1 }; for (const c of Object.keys(need)) rates[c] = await cbrRate(env, dayStr(), c);
+    for (const o of orders) o.price_rub = rates[o.cur] ? Math.round((o.price || 0) * rates[o.cur]) : null;
+    let tx2 = T;
+    if (W.ro) { /* команде — без контактов клиента, ТЗ и файлов */
+      tx2 = T.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : null, file_id: null, hidden: true }));
+      orders = orders.map(o => Object.assign({}, o, { client: o.client ? B_HIDDEN : null, tg: null, brief: o.brief ? B_HIDDEN : null, files: [], files_n: o.files.length, hidden: true })) }
+    const who = W.ro ? await (async () => { const D = await loadData(env), r = (D.rows || []).find(x => +x.uid === uid) || {}, s = await env.DB.prepare('SELECT name, curator FROM student WHERE uid=?').bind(uid).first() || {}, c = s.curator && CURATORS.find(x => x.id === s.curator);
+      return { uid, name: r.name || s.name || null, tar: r.tar || null, curName: c ? c.full : null } })() : null;
+    return json(req, { ok: true, total, months, tx: tx2, orders, today: dayStr(), ro: !!W.ro, who }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/bank/tx' && req.method === 'POST') { const o = await body(); const amount = bInt(o.amount); if (!amount) return json(req, { ok: false, err: 'Укажи сумму' }, 400);
+    const cur = bCur(o.cur), day = bDay(o.day);
+    let rate = 1; if (cur !== 'RUB') { rate = await cbrRate(env, day, cur); if (!rate) return json(req, { ok: false, err: 'Не получилось взять курс ЦБ. Попробуй через минуту' }, 503) }
     const oid = o.order_id ? +o.order_id : null; if (oid && !(await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(oid, uid).first())) return json(req, { ok: false, err: 'нет заказа' }, 400);
     let fid = null; try { fid = await bankFile(env, uid, 'tx', 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
-    const r = await env.DB.prepare('INSERT INTO bank_tx (uid, amount, day, what, src, client, order_id, file_id, at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, amount, bDay(o.day), bStr(o.what, 200), bStr(o.src, 60), bStr(o.client, 120), oid, fid, new Date().toISOString()).first();
+    const r = await env.DB.prepare('INSERT INTO bank_tx (uid, amount, cur, rub, rate, day, what, src, client, order_id, file_id, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, amount, cur, Math.round(amount * rate), cur === 'RUB' ? null : Math.round(rate * 10000) / 10000, day, bStr(o.what, 200), bStr(o.src, 60), bStr(o.client, 120), oid, fid, new Date().toISOString()).first();
     if (fid) await env.DB.prepare('UPDATE bank_file SET ref=? WHERE id=?').bind(r.id, fid).run();
-    await logIt(env, 'bank-tx', uid, String(amount)); return json(req, { ok: true, id: r.id }) }
+    await logIt(env, 'bank-tx', uid, amount + ' ' + cur); return json(req, { ok: true, id: r.id, rub: Math.round(amount * rate) }) }
   if (path === '/bank/tx/del' && req.method === 'POST') { const o = await body(); const x = await env.DB.prepare('SELECT file_id FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid).first(); if (!x) return json(req, { ok: false }, 404);
     await env.DB.batch([env.DB.prepare('DELETE FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid), env.DB.prepare('DELETE FROM bank_file WHERE uid=? AND kind=\'tx\' AND ref=?').bind(uid, +o.id)]); return json(req, { ok: true }) }
   if (path === '/bank/order' && req.method === 'POST') { const o = await body(), now = new Date().toISOString();
-    const f = { client: bStr(o.client, 120), tg: bStr(o.tg, 64).replace(/^https?:\/\/t\.me\//, '').replace(/^@/, ''), product: bStr(o.product, 200), price: bInt(o.price), deadline: /^\d{4}-\d{2}-\d{2}$/.test(o.deadline || '') ? o.deadline : null, status: B_ST.includes(o.status) ? o.status : 'new', brief: bStr(o.brief, 4000), src: bStr(o.src, 60) };
+    const f = { client: bStr(o.client, 120), tg: bStr(o.tg, 64).replace(/^https?:\/\/t\.me\//, '').replace(/^@/, ''), product: bStr(o.product, 200), price: bInt(o.price), cur: bCur(o.cur), deadline: bDl(o.deadline), dl_tz: bTz(o.dl_tz), status: B_ST.includes(o.status) ? o.status : 'new', brief: bStr(o.brief, 4000), src: bStr(o.src, 60) };
     if (!f.client && !f.product) return json(req, { ok: false, err: 'Укажи клиента или что за заказ' }, 400);
     let id = +o.id || 0;
     if (id) { const ex = await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(id, uid).first(); if (!ex) return json(req, { ok: false }, 404);
-      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, deadline=?, status=?, brief=?, src=?, upd=? WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.deadline, f.status, f.brief, f.src, now, id, uid).run() }
-    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, deadline, status, brief, src, at, upd) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.deadline, f.status, f.brief, f.src, now, now).first(); id = r.id }
+      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, cur=?, deadline=?, dl_tz=?, status=?, brief=?, src=?, upd=? WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, id, uid).run() }
+    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, now).first(); id = r.id }
     if (o.tx_id) await env.DB.prepare('UPDATE bank_tx SET order_id=? WHERE id=? AND uid=?').bind(id, +o.tx_id, uid).run();
     const fs = Array.isArray(o.files) ? o.files.slice(0, 5) : [];
     const cnt = (await env.DB.prepare('SELECT COUNT(*) n FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, id).first()).n;
@@ -1193,3 +1249,85 @@ async function bankApi(env, req, path) {
     return new Response(bin, { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
   return json(req, { ok: false, err: 'not found' }, 404);
 }
+
+/* ---------- Служба заботы: контроль качества ответов (Telegram Business) ----------
+   Аккаунт службы заботы (CARE_USERNAME, по умолчанию zabota_oduvanov) подключает бота школы: Настройки → Telegram для бизнеса → Чат-боты.
+   Бот только читает (права на ответ снять). Видит только новые сообщения.
+   Храним тексты диалогов 90 дней. Раздел в пульте — только админу (tg_admin). Раз в полчаса: долгое молчание → Роману в Telegram,
+   оценка ответов ИИ (вежливость, решён ли вопрос, ошибки и лишние обещания) — плохой ответ → Роману. */
+const CARE_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS care_msg (id INTEGER PRIMARY KEY AUTOINCREMENT, chat TEXT NOT NULL, mid INTEGER, dir TEXT, text TEXT, at INTEGER, del INTEGER DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS care_msg_chat ON care_msg (chat, at)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS care_msg_mid ON care_msg (chat, mid)',
+  'CREATE TABLE IF NOT EXISTS care_dlg (chat TEXT PRIMARY KEY, name TEXT, username TEXT, uid INTEGER, first_at INTEGER, last_in INTEGER, last_out INTEGER, wait_since INTEGER, n_in INTEGER DEFAULT 0, n_out INTEGER DEFAULT 0, resp_sec INTEGER, resp_n INTEGER DEFAULT 0, grade TEXT, graded_at INTEGER, notified INTEGER DEFAULT 0)',
+  'CREATE TABLE IF NOT EXISTS care_resp (id INTEGER PRIMARY KEY AUTOINCREMENT, chat TEXT, asked INTEGER, answered INTEGER, sec INTEGER, wsec INTEGER, day TEXT)'];
+let CARE_OK = false;
+async function careEnsure(env) { if (CARE_OK) return; await env.DB.batch(CARE_SCHEMA.map(s => env.DB.prepare(s))); CARE_OK = true }
+const CARE_USER = env => String(env.CARE_USERNAME || 'zabota_oduvanov').replace(/^@/, '').toLowerCase();
+async function careConf(env) { return Object.assign({ wait: 30, hours: [10, 20], conn: null, enabled: false }, (await kvGet(env, 'care:conf')) || {}) }
+function isCareConn(bc, env) { return bc && bc.user && String(bc.user.username || '').toLowerCase() === CARE_USER(env) }
+async function careConnection(env, bc) { await careEnsure(env); const c = await careConf(env), on = bc.is_enabled !== false;
+  Object.assign(c, { conn: bc.id, enabled: on, owner: String(bc.user.id), username: bc.user.username || null, name: [bc.user.first_name, bc.user.last_name].filter(Boolean).join(' '), at: new Date().toISOString(), canReply: !!(bc.rights ? bc.rights.can_reply : bc.can_reply) });
+  await kvPut(env, 'care:conf', c); await logIt(env, on ? 'care-on' : 'care-off', 0, '@' + c.username);
+  for (const a of await admins(env)) await tgSend(env, a, on ? '✅ <b>Служба заботы подключена.</b> Бот читает новые диалоги @' + th(c.username) + ' и проверяет ответы. Раздел — в пульте, вкладка «Служба заботы».' + (c.canReply ? '\n⚠️ У бота есть право отвечать — сними его в настройках «Чат-боты», боту нужно только читать.' : '') : '⛔️ Служба заботы отключила бота — проверка ответов остановлена.') }
+async function careMessage(env, m, edited) { await careEnsure(env); const c = await careConf(env); if (!c.enabled || m.business_connection_id !== c.conn || !m.chat || m.chat.type !== 'private') return;
+  const chat = String(m.chat.id); if (chat === c.owner) return;
+  const out = m.from && String(m.from.id) === c.owner, t = m.date | 0, text = String(m.text || m.caption || (m.photo ? '[фото]' : m.document ? '[файл ' + (m.document.file_name || '') + ']' : m.voice ? '[голосовое]' : m.video ? '[видео]' : m.sticker ? '[стикер]' : '[сообщение]')).slice(0, 4000);
+  if (edited) { await env.DB.prepare('UPDATE care_msg SET text=? WHERE chat=? AND mid=?').bind(text + ' (изм.)', chat, m.message_id).run(); return }
+  const nm = [m.chat.first_name, m.chat.last_name].filter(Boolean).join(' ') || null, st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first();
+  const d = await env.DB.prepare('SELECT * FROM care_dlg WHERE chat=?').bind(chat).first();
+  const q = [env.DB.prepare('INSERT OR IGNORE INTO care_msg (chat, mid, dir, text, at) VALUES (?,?,?,?,?)').bind(chat, m.message_id, out ? 'out' : 'in', text, t)];
+  if (!d) q.push(env.DB.prepare('INSERT INTO care_dlg (chat, name, username, uid, first_at, last_in, last_out, wait_since, n_in, n_out) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(chat, nm, m.chat.username || null, st ? st.uid : null, t, out ? null : t, out ? t : null, out ? null : t, out ? 0 : 1, out ? 1 : 0));
+  else if (!out) q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, t, chat));
+  else { q.push(env.DB.prepare('UPDATE care_dlg SET last_out=?, wait_since=NULL, n_out=n_out+1 WHERE chat=?').bind(t, chat));
+    if (d.wait_since) { const ws = workSec(d.wait_since, t, c.hours); q.push(env.DB.prepare('INSERT INTO care_resp (chat, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?)').bind(chat, d.wait_since, t, t - d.wait_since, ws, dayStr(new Date(t * 1000))));
+      q.push(env.DB.prepare('UPDATE care_dlg SET resp_sec=COALESCE(resp_sec,0)+?, resp_n=resp_n+1 WHERE chat=?').bind(ws, chat)) } }
+  await env.DB.batch(q) }
+async function careDeleted(env, dm) { await careEnsure(env); const c = await careConf(env); if (dm.business_connection_id !== c.conn || !dm.chat) return;
+  const st = env.DB.prepare('UPDATE care_msg SET del=1 WHERE chat=? AND mid=?'); await env.DB.batch((dm.message_ids || []).slice(0, 50).map(id => st.bind(String(dm.chat.id), id))) }
+/* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
+async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 40').bind(chat).all()).results || []).reverse();
+  if (!ms.some(x => x.dir === 'out') || !env.ANTHROPIC_API_KEY) return null;
+  const tr = ms.map(x => (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text).join('\n').slice(-9000);
+  const sys = 'Ты проверяешь ответы службы заботы онлайн-школы OduvanovSchool (курс по дизайну карточек маркетплейсов и ИИ). Оцени ответы сотрудника в диалоге. Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"кратко, ошибки или неверные факты, иначе пусто","promises":"кратко, лишние или опасные обещания (возвраты, сроки, скидки без оснований), иначе пусто","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и ответа одной фразой"}. check=true, если есть ошибки, грубость, лишние обещания, вопрос не решён или ответ не по делу.';
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 400, system: sys, messages: [{ role: 'user', content: tr }] }) });
+  const j = await r.json(); const t = ((j.content || []).find(x => x.type === 'text') || {}).text || ''; const m = t.match(/\{[\s\S]*\}/); if (!m) return null;
+  try { const g = JSON.parse(m[0]); g.at = Date.now(); return g } catch (e) { return null } }
+async function careTick(env, B) { await careEnsure(env); const c = await careConf(env), out = { notified: 0, graded: 0 }; if (!c.enabled) return { skip: 'off' };
+  const now = Date.now() / 1000 | 0, hr = msk().getUTCHours(), work = hr >= c.hours[0] && hr < c.hours[1];
+  /* долгое молчание в рабочее время */
+  if (work) { const ws = (await env.DB.prepare('SELECT * FROM care_dlg WHERE wait_since IS NOT NULL AND notified=0').all()).results || [];
+    for (const d of ws) { if (B && !B.ok(2)) break; const sec = workSec(d.wait_since, now, c.hours); if (sec < c.wait * 60) continue;
+      for (const a of await admins(env)) await tgSend(env, a, '🟠 <b>Служба заботы молчит ' + hrs(sec) + '</b>\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ' ждёт ответа. Порог — ' + c.wait + ' мин в рабочее время.');
+      await env.DB.prepare('UPDATE care_dlg SET notified=1 WHERE chat=?').bind(d.chat).run(); out.notified++; if (B) B.use(2) } }
+  /* оценка: диалоги с новым ответом, где последнее сообщение старше 10 минут */
+  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 4').bind(now - 600).all()).results || [];
+  for (const d of tg) { if (B && !B.ok(3)) break; const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
+    await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), now, d.chat).run(); out.graded++;
+    if (g.check) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '')); if (B) B.use(1) } }
+  /* хранение 90 дней */
+  if (Math.random() < 0.1) { const lim = now - 90 * 86400; await env.DB.batch([env.DB.prepare('DELETE FROM care_msg WHERE at < ?').bind(lim), env.DB.prepare('DELETE FROM care_resp WHERE answered < ?').bind(lim), env.DB.prepare('DELETE FROM care_dlg WHERE COALESCE(last_in,0) < ? AND COALESCE(last_out,0) < ?').bind(lim, lim)]) }
+  return out }
+/* API пульта (только админ): /app/api/care/* */
+async function careApi(env, s, path, req, u, ajson) { if (s.role !== 'admin') return ajson({ ok: false, err: 'Раздел только для Романа' }, 403); await careEnsure(env);
+  const c = await careConf(env);
+  if (path === '/app/api/care/status') { const now = Date.now() / 1000 | 0, d7 = dayStr(new Date(Date.now() - 6 * 864e5)), d1 = dayStr();
+    const [rs, dl, wt] = await env.DB.batch([env.DB.prepare('SELECT day, wsec FROM care_resp WHERE day >= ?').bind(d7), env.DB.prepare('SELECT grade FROM care_dlg WHERE graded_at > ?').bind(now - 7 * 86400), env.DB.prepare('SELECT COUNT(*) n FROM care_dlg WHERE wait_since IS NOT NULL')]);
+    const R = rs.results || [], G = (dl.results || []).map(x => { try { return JSON.parse(x.grade) } catch (e) { return null } }).filter(Boolean);
+    const med = a => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1] }, avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;
+    const day = R.filter(x => x.day === d1).map(x => x.wsec), week = R.map(x => x.wsec);
+    return ajson({ ok: true, conf: { enabled: !!c.enabled, username: c.username || null, at: c.at || null, wait: c.wait, hours: c.hours, canReply: !!c.canReply, care: CARE_USER(env), bot: BOT(env) },
+      day: { n: day.length, avg: avg(day), med: med(day) }, week: { n: week.length, avg: avg(week), med: med(week), graded: G.length, solved: G.length ? Math.round(G.filter(g => g.solved === 'yes').length / G.length * 100) : null, score: G.length ? Math.round(G.reduce((a, g) => a + (+g.score || 0), 0) / G.length * 10) / 10 : null, check: G.filter(g => g.check).length }, waiting: (wt.results || [{}])[0].n || 0 }) }
+  if (path === '/app/api/care/dialogs') { const r = ((await env.DB.prepare('SELECT chat, name, username, uid, first_at, last_in, last_out, wait_since, n_in, n_out, resp_sec, resp_n, grade FROM care_dlg ORDER BY MAX(COALESCE(last_in,0), COALESCE(last_out,0)) DESC LIMIT 300').all()).results || [])
+      .map(d => Object.assign(d, { grade: d.grade ? (() => { try { return JSON.parse(d.grade) } catch (e) { return null } })() : null, avg: d.resp_n ? Math.round(d.resp_sec / d.resp_n) : null }));
+    return ajson({ ok: true, dialogs: r }) }
+  if (path === '/app/api/care/dialog') { const chat = String(u.searchParams.get('chat') || ''); const d = await env.DB.prepare('SELECT * FROM care_dlg WHERE chat=?').bind(chat).first(); if (!d) return ajson({ ok: false }, 404);
+    const ms = (await env.DB.prepare('SELECT dir, text, at, del FROM care_msg WHERE chat=? ORDER BY at, id LIMIT 500').bind(chat).all()).results || [];
+    try { d.grade = d.grade ? JSON.parse(d.grade) : null } catch (e) { d.grade = null } return ajson({ ok: true, dialog: d, messages: ms }) }
+  if (path === '/app/api/care/settings' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const w = Math.max(5, Math.min(480, +o.wait || c.wait)), h0 = Math.max(0, Math.min(23, +o.from)), h1 = Math.max(1, Math.min(24, +o.to));
+    c.wait = w; if (h1 > h0) c.hours = [h0, h1]; await kvPut(env, 'care:conf', c); return ajson({ ok: true, wait: c.wait, hours: c.hours }) }
+  if (path === '/app/api/care/grade' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const g = await careGrade(env, String(o.chat || '')); if (!g) return ajson({ ok: false, err: 'Нечего оценивать' });
+    await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), Date.now() / 1000 | 0, String(o.chat)).run(); return ajson({ ok: true, grade: g }) }
+  return ajson({ ok: false, err: 'not found' }, 404) }
