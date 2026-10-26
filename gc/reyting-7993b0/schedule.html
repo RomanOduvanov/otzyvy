@@ -23,7 +23,7 @@
 .k-b:hover{filter:brightness(1.04);transform:translateY(-1px)}.k-b i{font-style:normal;transition:transform .15s}.k-b:hover i{transform:translateX(3px)}
 .k-n{text-wrap:pretty;font-size:12.5px;line-height:1.45;color:rgba(255,255,255,.5);margin-top:12px}
 html.na .c{display:none}html.na .k{margin-top:0}</style></head><body>
-<div class="c"><div class="s">Поток AI-креатор 2.0 · первые 48 часов после открытия — x2&nbsp;к&nbsp;баллам</div><div id="l"></div>
+<div class="c"><div class="s">Поток AI-креатор 2.0 · модули открываются в&nbsp;12:00 МСК, первые 48&nbsp;часов&nbsp;— ×2&nbsp;к&nbsp;баллам</div><div id="l"></div>
 <a class="all" href="https://oduvanovroman.getcourse.ru/pl/teach/control/schedule" target="_top" id="all"><span>Полное расписание <small id="cnt"></small></span><i>→</i></a></div>
 
 <div class="k">
@@ -39,8 +39,8 @@ html.na .c{display:none}html.na .k{margin-top:0}</style></head><body>
  <div class="k-n">Пришли в&nbsp;службу заботы 2–3&nbsp;скриншота и&nbsp;пару предложений: что сделал и&nbsp;что это тебе дало. Остальное мы&nbsp;оформим сами.</div>
 </div>
 <script>const NA=()=>document.documentElement.classList.toggle('na',/na=1/.test(location.hash));NA();addEventListener('hashchange',()=>{NA();post()});const M=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
-const post=()=>{try{parent.postMessage({fsSchedH:Math.ceil(document.body.getBoundingClientRect().height)+2},'*')}catch(e){}};
+let ready=false;const post=r=>{if(r===true)ready=true;try{parent.postMessage({fsSchedH:Math.ceil(document.body.getBoundingClientRect().height)+2,fsSchedReady:ready},'*')}catch(e){}};
 fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(D=>{const now=new Date();const all=(D.schedule||[]).map(s=>({t:new Date(s.at),n:s.name})).filter(x=>x.t>now-48*36e5);const it=all.slice(0,2);
-document.getElementById('l').innerHTML=it.length?it.map(x=>{const live=x.t<=now;const d=live?'идёт x2':x.t.getDate()+' '+M[x.t.getMonth()]+', '+String(x.t.getHours()).padStart(2,'0')+':'+String(x.t.getMinutes()).padStart(2,'0');return`<div class="i${live?' now':''}"><b>${d}</b><span>${x.n.replace(/[<>&]/g,'')}</span></div>`}).join(''):'<div class="e">Все модули уже открыты</div>';
-const rest=all.length-it.length;document.getElementById('cnt').textContent=rest>0?'· ещё '+rest+' '+(rest%10==1&&rest%100!=11?'модуль':rest%10>=2&&rest%10<=4&&(rest%100<10||rest%100>=20)?'модуля':'модулей'):'';post()}).catch(post);
+document.getElementById('l').innerHTML=it.length?it.map(x=>{const live=x.t<=now;const k=new Date(+x.t+3*36e5),d=live?'идёт ×2':k.getUTCDate()+'\u00a0'+M[k.getUTCMonth()]+', '+String(k.getUTCHours()).padStart(2,'0')+':'+String(k.getUTCMinutes()).padStart(2,'0')+'\u00a0МСК';return`<div class="i${live?' now':''}"><b>${d}</b><span>${x.n.replace(/[<>&]/g,'')}</span></div>`}).join(''):'<div class="e">Все модули уже открыты</div>';
+const rest=all.length-it.length;document.getElementById('cnt').textContent=rest>0?'· ещё '+rest+' '+(rest%10==1&&rest%100!=11?'модуль':rest%10>=2&&rest%10<=4&&(rest%100<10||rest%100>=20)?'модуля':'модулей'):'';post(true)}).catch(()=>post(true));
 addEventListener('load',post);addEventListener('resize',post);try{new ResizeObserver(post).observe(document.body)}catch(e){}document.fonts&&document.fonts.ready.then(post);</script></body></html>
