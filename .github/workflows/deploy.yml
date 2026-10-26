@@ -19,8 +19,22 @@ jobs:
           S=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME/settings" -H "Authorization: Bearer $CF_API_TOKEN")
           CD=$(echo "$S" | jq -r '.result.compatibility_date // "2024-09-23"')
           CF=$(echo "$S" | jq -c '.result.compatibility_flags // []')
-          META=$(jq -nc --arg cd "$CD" --argjson cf "$CF" '{main_module:"worker.js",compatibility_date:$cd,compatibility_flags:$cf,placement:{mode:"smart"},keep_bindings:["plain_text","secret_text","d1","browser","kv_namespace","service","r2_bucket","queue","durable_object_namespace","analytics_engine","ai","version_metadata"]}')
+          META=$(jq -nc --arg cd "$CD" --argjson cf "$CF" '{main_module:"worker.js",compatibility_date:$cd,compatibility_flags:($cf + ["global_fetch_strictly_public"] | unique),placement:{mode:"smart"},keep_bindings:["plain_text","secret_text","d1","browser","kv_namespace","service","r2_bucket","queue","durable_object_namespace","analytics_engine","ai","version_metadata"]}')
           R=$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME" -H "Authorization: Bearer $CF_API_TOKEN" -F "metadata=$META;type=application/json" -F "worker.js=@worker.js;type=application/javascript+module")
           echo "$R" | jq '{success, errors, etag: .result.etag}'
           echo "$R" | jq -e '.success' > /dev/null
           sleep 5; curl -fsS https://oduvanov-api.romanoduvanov52.workers.dev/ && echo
+      - name: Upload AI proxy (oduvanov-ai, pinned to US)
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          ACC: 3544f71e7e7fd1a3544f2f335165a199
+          NAME: oduvanov-ai
+        run: |
+          set -e
+          node --check ai-proxy.js
+          META='{"main_module":"ai-proxy.js","compatibility_date":"2025-09-01","placement":{"region":"aws:us-east-1"}}'
+          R=$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME" -H "Authorization: Bearer $CF_API_TOKEN" -F "metadata=$META;type=application/json" -F "ai-proxy.js=@ai-proxy.js;type=application/javascript+module")
+          echo "$R" | jq '{success, errors, placement: .result.placement}'
+          echo "$R" | jq -e '.success' > /dev/null
+          curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME/subdomain" -H "Authorization: Bearer $CF_API_TOKEN" -H "content-type: application/json" -d '{"enabled":true,"previews_enabled":false}' | jq '{success, errors}'
+          sleep 8; curl -sS https://oduvanov-ai.romanoduvanov52.workers.dev/health; echo
