@@ -1,0 +1,1099 @@
+/* OduvanovSchool API (Cloudflare Worker + D1)
+   — учёт времени: активное время в кабинете и время просмотра видео уроков;
+   — ежедневные снимки рейтинга (data.json с GitHub Pages) для сравнения периодов;
+   — отчёты родителям: настройки, сборка письма, рассылка по расписанию, отписка.
+   — Telegram-бот экосистемы (@oduvanov_school_bot): отчёты родителям, уведомления команде об оплатах.
+   Переменные окружения: DB (D1), GC_KEY (секрет, ключ API GetCourse «только чтение» — для денег «на вывод»), STAT_KEY (опц.), RESEND_KEY (опц.), MAIL_FROM (опц.), ADMIN_KEY, BASE_URL, TG_TOKEN (секрет), TG_BOT (опц.), CF_ACCOUNT + CF_API_TOKEN (секрет) — картинка отчёта через Browser Rendering. GC_KEY_OLD (секрет) — ключ API старого аккаунта школы oduvanovschool: один раз забирает оттуда суммы оплат и оплаченных заказов в статистику.
+   v42 (авторизация и рейтинг): AUTH_SECRET (секрет, рекомендуется; без него ключи выводятся из ADMIN_KEY) — подпись ключей и токенов учеников и соль h рейтинга;
+   GC_HOOK_KEY (опц.) — ключ для процесса GetCourse «Вызвать URL» → /auth/gc; RATING_KEY (опц.) — ключ загрузки рейтинга gamify.py → /rating/put;
+   ADMIN_UIDS (опц., через запятую, по умолчанию 499631257) — кто видит в рейтинге ссылки на профили; AUTH_STRICT=1 — после перехода: /t без токена не принимается;
+   DATA_URL=off — не брать рейтинг с GitHub Pages, только загруженный на сервер. Ключи и пути: GET /auth/setup?k=ADMIN_KEY. */
+
+const DATA_URL = 'https://romanoduvanov.github.io/otzyvy/gc/reyting-7993b0/data.json';
+/* отчёты родителям идут 4 месяца на текущей версии продукта (старт потока 12.10.2026); срок меняется через env.REPORT_UNTIL */
+const REPORT_UNTIL = '2027-02-12';
+const until = env => (env && env.REPORT_UNTIL) || REPORT_UNTIL;
+const ORIGINS = ['https://oduvanovroman.getcourse.ru', 'https://romanoduvanov.github.io'];
+const SITE = 'https://oduvanovroman.getcourse.ru';
+const CARE = 'https://t.me/zabota_oduvanov';
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+
+/* ---------- утилиты ---------- */
+const msk = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3); // «московские» часы в UTC-полях
+const dayStr = d => msk(d).toISOString().slice(0, 10);
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) };
+const human = s => { const d = new Date(s + 'T00:00:00Z'); return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] };
+const pl = (n, f) => { n = Math.abs(n) % 100; const a = n % 10; return n > 10 && n < 20 ? f[2] : a > 1 && a < 5 ? f[1] : a === 1 ? f[0] : f[2] };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const nb = s => String(s).replace(/(^|[\s(«—])(в|во|и|к|ко|с|со|о|об|у|а|но|по|на|до|от|за|из|не|ни|для|без|при|про)\s+/gi, (m, a, b) => a + b + ' ');
+async function hashUid(uid) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('gc2:' + uid)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 16) }
+const rnd = () => [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
+const hrs = sec => { const m = Math.round(sec / 60); if (m < 60) return m + ' мин'; const h = Math.floor(m / 60), r = m % 60; return h + ' ч' + (r ? ' ' + r + ' мин' : '') };
+const hrsShort = sec => { const h = sec / 3600; return h >= 10 ? Math.round(h) + ' ч' : (Math.round(h * 10) / 10).toString().replace('.', ',') + ' ч' };
+
+function cors(req) { const o = req.headers.get('Origin'); return { 'Access-Control-Allow-Origin': ORIGINS.includes(o) ? o : ORIGINS[0], 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Vary': 'Origin' } }
+const json = (req, obj, st = 200, hd = {}) => new Response(JSON.stringify(obj), { status: st, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(req), ...hd } });
+const html = (body, st = 200) => new Response(body, { status: st, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+
+export const SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS time (uid INTEGER NOT NULL, day TEXT NOT NULL, site INTEGER NOT NULL DEFAULT 0, video INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (uid, day))',
+  'CREATE TABLE IF NOT EXISTS uidmap (uid INTEGER PRIMARY KEY, h TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS uidmap_h ON uidmap (h)',
+  'CREATE TABLE IF NOT EXISTS snap (h TEXT NOT NULL, day TEXT NOT NULL, pts INTEGER, lessons INTEGER, hw INTEGER, place INTEGER, PRIMARY KEY (h, day))',
+  'CREATE TABLE IF NOT EXISTS parent (uid INTEGER PRIMARY KEY, h TEXT, student TEXT, email TEXT, name TEXT, freq INTEGER, hour INTEGER, channel TEXT, active INTEGER DEFAULT 1, token TEXT, created TEXT, updated TEXT, last_sent TEXT, tg_chat TEXT)',
+  'CREATE TABLE IF NOT EXISTS log (at TEXT, kind TEXT, uid INTEGER, info TEXT)',
+  'CREATE TABLE IF NOT EXISTS tg_admin (chat TEXT PRIMARY KEY, name TEXT, added TEXT)',
+  'CREATE TABLE IF NOT EXISTS student (uid INTEGER PRIMARY KEY, name TEXT, tg_chat TEXT, tg_token TEXT, tg_at TEXT, curator TEXT, cur_at TEXT)',
+  'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
+  'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
+  'CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)',
+  'CREATE TABLE IF NOT EXISTS odeal (id INTEGER PRIMARY KEY, day TEXT, eh TEXT, cost REAL, title TEXT)',
+  /* кураторы в личке Telegram (Telegram Business): только время сообщений, без текстов */
+  'CREATE TABLE IF NOT EXISTS tg_user (chat TEXT PRIMARY KEY, username TEXT, name TEXT, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS cur_tg (cid TEXT PRIMARY KEY, tg_id TEXT, username TEXT, name TEXT, conn TEXT, enabled INTEGER DEFAULT 0, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS cwait (cid TEXT NOT NULL, chat TEXT NOT NULL, uid INTEGER, since INTEGER, reminded INTEGER DEFAULT 0, PRIMARY KEY (cid, chat))',
+  'CREATE TABLE IF NOT EXISTS cresp (id INTEGER PRIMARY KEY AUTOINCREMENT, cid TEXT, chat TEXT, uid INTEGER, asked INTEGER, answered INTEGER, sec INTEGER, wsec INTEGER, day TEXT)',
+  'CREATE INDEX IF NOT EXISTS cresp_cid ON cresp (cid, answered)',
+  /* v42: кому GetCourse выдал ключ (issued) и кто уже вошёл с ним (seen) */
+  'CREATE TABLE IF NOT EXISTS authuid (uid INTEGER PRIMARY KEY, issued TEXT, seen TEXT)',
+  /* v42: скрытые незавершённые заказы «Мои покупки» (STU-12) — на сервере, а не в localStorage */
+  'CREATE TABLE IF NOT EXISTS fmp_hidden (uid INTEGER NOT NULL, num TEXT NOT NULL, at TEXT, PRIMARY KEY (uid, num))'
+];
+async function ensureAll(env) { await env.DB.batch(SCHEMA.map(s => env.DB.prepare(s))) }
+/* CODE-11: DDL не на каждый запрос. Версия схемы считается из самого SCHEMA: добавили таблицу — на первом запросе после деплоя DDL выполнится сам.
+   Дальше — флаг в памяти изолята; на холодном старте одно чтение kv. */
+const SCHEMA_V = (() => { let h = 5381; const s = SCHEMA.join('|'); for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return SCHEMA.length + ':' + h.toString(36) })();
+let SCHEMA_OK = false;
+async function ensure(env) { if (SCHEMA_OK) return;
+  try { const r = await env.DB.prepare("SELECT v FROM kv WHERE k='schema_v'").first(); if (r && r.v === SCHEMA_V) { SCHEMA_OK = true; return } } catch (e) {}
+  await ensureAll(env); await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('schema_v', ?)").bind(SCHEMA_V).run(); SCHEMA_OK = true }
+async function kvGet(env, k) { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind(k).first(); if (!r) return null; try { return JSON.parse(r.v) } catch (e) { return r.v } }
+const kvPut = (env, k, v) => env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind(k, typeof v === 'string' ? v : JSON.stringify(v)).run();
+const kvDel = (env, k) => env.DB.prepare('DELETE FROM kv WHERE k=?').bind(k).run();
+
+/* ---------- авторизация учеников (v42: CODE-01/02/03/09, PROF-34) ----------
+   Ключ ученика fs1.<32 hex> = HMAC(AUTH_SECRET, 'k1|' + uid). Сервер отдаёт его только GetCourse: процесс по пользователям,
+   операция «Вызвать URL» → /auth/gc?k=<GC_HOOK_KEY>&uid={object.id}, ответ сохраняется в доп. поле пользователя fs_key.
+   Значение поля видит только сам ученик (служебная страница /fs-key с HTML-блоком «Заменять переменные» или профиль) и команда школы.
+   layout.js меняет ключ на токены: t — запись (/me, /cur, /parent, /t), 3 суток; v — только чтение (/rating, /preview, /hours), 24 часа.
+   Токен есть, но неверный или просрочен → 401 {err:'auth'} (клиент берёт новый). Токена нет → только безопасные данные. */
+const enc = s => new TextEncoder().encode(s);
+const hexOf = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+let HK = null;
+async function hmacHex(env, msg) { const sec = env.AUTH_SECRET || ('auth:' + env.ADMIN_KEY);
+  if (!HK || HK.s !== sec) HK = { s: sec, k: await crypto.subtle.importKey('raw', enc(sec), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']) };
+  return hexOf(await crypto.subtle.sign('HMAC', HK.k, enc(msg))) }
+const same = (a, b) => { a = String(a == null ? '' : a); b = String(b == null ? '' : b); if (!a || a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0 };
+const okUid = v => /^\d{1,11}$/.test(String(v == null ? '' : v)) && +v > 0 && +v < 1e11;
+const userKey = async (env, uid) => 'fs1.' + (await hmacHex(env, 'k1|' + uid)).slice(0, 32);
+const pubH = async (env, uid) => (await hmacHex(env, 'rh|' + uid)).slice(0, 16); /* h ученика в рейтинге для клиента: соль — секрет сервера (CODE-04) */
+const hookKey = async env => env.GC_HOOK_KEY || (await sha('gc-auth:' + env.ADMIN_KEY)).slice(0, 24);
+const ratingKey = async env => env.RATING_KEY || (await sha('rating:' + env.ADMIN_KEY)).slice(0, 32);
+const TTL = { a: 3 * 86400, v: 86400 };
+async function mkToken(env, scope, uid) { const exp = (Math.floor(Date.now() / 1000) + TTL[scope]).toString(36); return uid + '.' + exp + '.' + scope + '.' + (await hmacHex(env, 't|' + scope + '|' + uid + '|' + exp)).slice(0, 32) }
+/* uid из токена или 0; scopes — допустимые области: 'a' — запись, 'v' — чтение */
+async function authUid(env, tok, scopes = 'a') { const m = String(tok || '').match(/^(\d{1,11})\.([0-9a-z]{1,8})\.([av])\.([0-9a-f]{32})$/); if (!m || !scopes.includes(m[3])) return 0;
+  if (parseInt(m[2], 36) * 1000 < Date.now()) return 0;
+  return same(m[4], (await hmacHex(env, 't|' + m[3] + '|' + m[1] + '|' + m[2])).slice(0, 32)) ? +m[1] : 0 }
+/* запрос ученика: {uid, tok}. tok=false — токена не было, tok=true — был и верный; токен был, но неверный → uid=0, bad=true */
+/* переходный режим (пока не включён AUTH_STRICT=1): запрос без токена от ученика, который ещё ни разу не входил с ключом, работает как раньше — по u.
+   Так сервер можно выкатить до того, как GetCourse раздаст ключи, и ничего у учеников не сломается */
+/* загрузка рейтинга из gamify.py без отдельного ключа: тот же GitHub-токен, которым Роман публикует сайт (право push в RomanOduvanov/otzyvy) */
+async function ghOk(env, req) { const t = String(req.headers.get('X-GH-Token') || '').trim(); if (!/^[A-Za-z0-9_]{20,255}$/.test(t)) return false;
+  const hk = 'gh:' + (await sha(t)).slice(0, 24); if ((await kvGet(env, hk)) === dayStr()) return true;
+  try { const r = await fetch('https://api.github.com/repos/RomanOduvanov/otzyvy', { headers: { Authorization: 'Bearer ' + t, 'User-Agent': 'oduvanov-api', Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return false; const j = await r.json(); const ok = !!(j && j.permissions && j.permissions.push); if (ok) await kvPut(env, hk, dayStr()); return ok } catch (e) { return false } }
+async function softUid(env, w, uid) { if (w.tok || env.AUTH_STRICT === '1' || !okUid(uid)) return 0; try { const sn = await env.DB.prepare('SELECT seen FROM authuid WHERE uid=?').bind(uid).first(); if (sn && sn.seen) return 0 } catch (e) {} return +uid }
+async function who(env, tok, scopes = 'a') { if (!tok) return { uid: 0, tok: false, bad: false }; const uid = await authUid(env, tok, scopes); return { uid, tok: true, bad: !uid } }
+const deny = req => json(req, { ok: false, err: 'auth' }, 401);
+/* пример отчёта без входа (CODE-02): обезличенные цифры вместо данных ученика */
+function demoReport(freq) { const N = [1, 2, 3, 7].includes(freq) ? freq : 7, end = addDays(dayStr(), -1), start = addDays(end, -(N - 1)), days = [], byDay = {}, k = N / 7;
+  for (let i = 6; i >= 0; i--) days.push(addDays(end, -i));
+  days.forEach((d, i) => { byDay[d] = { site: [1800, 0, 2400, 3600, 1200, 0, 2700][i], video: [1500, 0, 2100, 3000, 900, 0, 2400][i] } });
+  const D2 = { name: 'Анна (пример)', N, start, end, r: { pts: 640, lessons: 18, hw: 5, place: 12 }, cur: { lessons: Math.max(1, Math.round(9 * k)), hw: Math.round(3 * k), pts: Math.round(180 * k) }, prev: { lessons: Math.max(1, Math.round(6 * k)), hw: Math.round(2 * k), pts: Math.round(120 * k) },
+    tCur: { site: Math.round(14400 * k), video: Math.round(11800 * k) }, tPrev: { site: Math.round(10800 * k), video: Math.round(8600 * k) }, place: 12, placePrev: 15, n: 99, total: 40, days, byDay, sched: [], parentName: '' };
+  return { html: renderReport(D2, { preview: true }) } }
+
+/* ---------- данные рейтинга и снимки ---------- */
+let RC = null; /* кэш рейтинга в памяти изолята, 60 с */
+async function loadData(env) { if (RC && Date.now() - RC.at < 60e3) return RC.D;
+  let row = null; try { row = await env.DB.prepare("SELECT v FROM kv WHERE k='rating'").first() } catch (e) {}
+  if (row && row.v) { const D = JSON.parse(row.v); RC = { at: Date.now(), D }; return D }
+  if (env && env.DATA_URL === 'off') throw new Error('нет рейтинга: gamify.py ещё не загрузил его на сервер (/rating/put)');
+  const r = await fetch(((env && env.DATA_URL) || DATA_URL) + '?t=' + Date.now()); if (!r.ok) throw new Error('data.json ' + r.status); const D = await r.json(); RC = { at: Date.now(), D }; return D }
+/* рейтинг для вошедшего ученика (CODE-04): без uid, h с серверной солью, срок доступа (acc) — только в своей строке; часы на платформе — внутри */
+async function ratingFor(env, me, forU) {
+  const D = await loadData(env), priv = !!(D.rows.length && D.rows[0].uid != null), oldMe = priv ? null : await hashUid(me);
+  const T = {}; if (priv) for (const r of ((await env.DB.prepare('SELECT uid, SUM(site) s, SUM(video) v FROM time GROUP BY uid').all()).results || [])) T[String(r.uid)] = [r.s | 0, r.v | 0];
+  const adm = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(me)), rows = [], hours = {}, ids = {};
+  for (const x of D.rows) { const o = Object.assign({}, x), xu = String(x.uid == null ? '' : x.uid); delete o.uid; delete o.k;
+    if (priv) o.h = await pubH(env, xu);
+    if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc;
+    if (T[xu]) hours[o.h] = T[xu]; if (adm && xu) ids[o.h] = +xu; rows.push(o) }
+  const hOf = async v => priv ? pubH(env, String(v)) : hashUid(v);
+  const out = Object.assign({}, D, { ok: true, rows, hours, me: await hOf(me), fh: okUid(forU) ? await hOf(forU) : null }); delete out.ah; if (adm) out.ids = ids; return out }
+async function snapshot(env, D) {
+  const day = dayStr(); const st = env.DB.prepare('INSERT OR REPLACE INTO snap (h, day, pts, lessons, hw, place) VALUES (?,?,?,?,?,?)');
+  await env.DB.batch(D.rows.map(r => st.bind(r.h, day, r.pts | 0, r.lessons | 0, r.hw | 0, r.place | 0)));
+}
+async function snapAt(env, h, day) { return env.DB.prepare('SELECT * FROM snap WHERE h=? AND day<=? AND day>=? ORDER BY day DESC LIMIT 1').bind(h, day, addDays(day, -1)).first() } // снимок не старше суток до границы, иначе сравнение было бы неверным
+async function timeSum(env, uid, from, to) { const r = await env.DB.prepare('SELECT COALESCE(SUM(site),0) s, COALESCE(SUM(video),0) v FROM time WHERE uid=? AND day>=? AND day<=?').bind(uid, from, to).first(); return { site: r.s | 0, video: r.v | 0 } }
+
+/* ---------- отчёт ---------- */
+async function buildReport(env, uid, opts = {}) {
+  const D = opts.D || await loadData(env);
+  const h = await hashUid(uid); const r = D.rows.find(x => x.h === h);
+  const p = opts.p || await env.DB.prepare('SELECT * FROM parent WHERE uid=?').bind(uid).first() || {};
+  const N = Math.max(1, Math.min(7, opts.freq || p.freq || 7));
+  const today = dayStr(), end = addDays(today, -1), start = addDays(end, -(N - 1)), pEnd = addDays(start, -1), pStart = addDays(pEnd, -(N - 1));
+  const name = (r && r.name) || p.student || 'Ученик';
+  // показатели периода: разница снимков на конец периода и на его начало
+  const sNow = r ? { pts: r.pts, lessons: r.lessons, hw: r.hw, place: r.place } : null;
+  const sEnd = r && await snapAt(env, h, today) || sNow;
+  const sStart = r && await snapAt(env, h, pEnd);
+  const sPrev = r && await snapAt(env, h, addDays(pStart, -1));
+  const cur = sEnd && sStart ? { lessons: sEnd.lessons - sStart.lessons, hw: sEnd.hw - sStart.hw, pts: sEnd.pts - sStart.pts } : null;
+  const prev = sStart && sPrev ? { lessons: sStart.lessons - sPrev.lessons, hw: sStart.hw - sPrev.hw, pts: sStart.pts - sPrev.pts } : null;
+  const tCur = await timeSum(env, uid, start, end), tPrev = await timeSum(env, uid, pStart, pEnd);
+  // активность по дням (последние 7 дней): видео + сайт
+  const days = []; for (let i = 6; i >= 0; i--) days.push(addDays(end, -i));
+  const tr = await env.DB.prepare('SELECT day, site, video FROM time WHERE uid=? AND day>=? AND day<=?').bind(uid, days[0], end).all();
+  const byDay = Object.fromEntries((tr.results || []).map(x => [x.day, x]));
+  const D2 = { name, N, start, end, r, cur, prev, tCur, tPrev, place: sEnd && sEnd.place, placePrev: sStart && sStart.place, n: D.n, total: D.total_lessons, days, byDay, sched: D.schedule || [], parentName: p.name || '' };
+  return { subject: subjectOf(D2), html: renderReport(D2, { token: p.token, preview: !!opts.preview }), D: D2, token: p.token };
+}
+function delta(a, b) { if (b == null || a == null) return null; if (b === 0) return a === 0 ? { t: 'eq', s: '= 0' } : { t: 'up', s: '▲ +' + a }; const d = Math.round((a - b) / b * 100); return d === 0 ? { t: 'eq', s: '= 0%' } : { t: d > 0 ? 'up' : 'dn', s: (d > 0 ? '▲ +' : '▼ −') + Math.abs(d) + '%' } }
+function verdictOf(D) {
+  if (!D.cur) return { k: 'ok', t: 'Первый отчёт', s: 'Со следующего отчёта будем сравнивать, как меняется темп. Сейчас у ' + D.name + ' ' + (D.r ? D.r.pts + ' ' + pl(D.r.pts, ['балл', 'балла', 'баллов']) + ' и ' + D.r.lessons + ' ' + pl(D.r.lessons, ['пройденный урок', 'пройденных урока', 'пройденных уроков']) : 'пока нет баллов') + '.' };
+  const L = D.cur ? D.cur.lessons : 0, Lp = D.prev ? D.prev.lessons : null, V = D.tCur.video;
+  const per = D.N === 1 ? 'день' : D.N === 7 ? 'неделя' : 'период';
+  if (L <= 0 && (!D.cur || D.cur.hw <= 0) && V < 300) return { k: 'none', t: D.N === 1 ? 'Вчера занятий не было' : 'Пока не было занятий', s: D.name + ' ещё не возвращался к урокам в этом периоде. Небольшое напоминание обычно помогает вернуться в ритм.' };
+  if (Lp != null && Lp > 0 && L < Lp * 0.7) return { k: 'down', t: 'Темп немного снизился', s: (D.N === 1 ? 'Вчера ' : 'За этот период ') + D.name + ' ' + pass(D.name) + ' ' + L + ' ' + pl(L, ['урок', 'урока', 'уроков']) + ' — до этого было ' + Lp + '. Такое бывает, главное — не выпасть из ритма.' };
+  if (Lp == null || L >= Lp * 1.15 || L >= 3 * D.N) return { k: 'good', t: per === 'неделя' ? 'Отличная неделя' : per === 'день' ? 'Отличный день' : 'Отличный период', s: D.name + ' ' + pass(D.name) + ' ' + L + ' ' + pl(L, ['урок', 'урока', 'уроков']) + (V >= 600 ? ' и ' + hrs(V) + ' смотрел' + fem(D.name) + ' видео' : '') + (Lp ? ' — это ' + (L >= Lp * 2 ? 'вдвое больше' : 'больше') + ', чем в прошлый раз.' : '.') };
+  return { k: 'ok', t: 'Стабильный темп', s: D.name + ' занимается в ровном темпе: ' + L + ' ' + pl(L, ['урок', 'урока', 'уроков']) + ' за ' + (D.N === 1 ? 'день' : D.N + ' ' + pl(D.N, ['день', 'дня', 'дней'])) + '.' };
+}
+const fem = n => /[аяь]$/i.test(n.trim().split(' ')[0]) && !/^(никита|илья|кузьма|фома|лёва|саша|женя|валера)$/i.test(n.trim().split(' ')[0]) ? 'а' : '';
+const pass = n => 'прош' + (fem(n) ? 'ла' : 'ёл');
+function tipsOf(D, v) {
+  const nm = D.name, he = fem(nm) ? 'она' : 'он', him = fem(nm) ? 'её' : 'его';
+  const next = D.sched.map(s => ({ t: new Date(s.at), n: s.name })).filter(s => s.t > new Date()).sort((a, b) => a.t - b.t)[0];
+  if (v.k === 'good') {
+    let why = 'Скажите, что заметили ' + him + ' старания: признание близких мотивирует сильнее любых баллов.';
+    if (D.place && D.place <= 3) why = nm + ' на ' + D.place + '-м месте в потоке из ' + D.n + ' учеников. ' + why;
+    else if (D.placePrev && D.place && D.placePrev - D.place >= 3) why = nm + (fem(nm) ? ' поднялась' : ' поднялся') + ' в рейтинге на ' + (D.placePrev - D.place) + ' ' + pl(D.placePrev - D.place, ['место', 'места', 'мест']) + '. ' + why;
+    return { praise: why };
+  }
+  const t = [];
+  t.push(['Спросите, что ' + he + ' сейчас изучает', ' — а не «почему мало занимаешься». Интерес к делу поддерживает лучше контроля.']);
+  t.push(['Помогите выделить время:', ' 30–40 минут в одно и то же время каждый день дают больше, чем марафон раз в неделю.']);
+  if (next) t.push(['Напомните про бонус:', ' ' + next.t.getUTCDate() + ' ' + MONTHS[next.t.getUTCMonth()] + ' открывается «' + next.n.replace(/^Модуль\s*\d+\s*[—-]\s*/, '') + '» — в первые 48 часов баллы за уроки удваиваются.']);
+  else t.push(['Отметьте маленькую победу:', ' даже один пройденный урок — шаг вперёд. Похвала за процесс работает лучше упрёков за паузу.']);
+  if (v.k === 'none') t[0] = ['Мягко напомните об обучении', ' — например, спросите, какой урок следующий. Без давления: цель — вернуть интерес, а не отчитать.'];
+  return { tips: t.slice(0, 3) };
+}
+function subjectOf(D) { return 'Отчёт об обучении · ' + D.name + ' · ' + (D.N === 1 ? human(D.end) : human(D.start).replace(/ .*/, '') + '–' + human(D.end)) }
+
+function renderReport(D, o) {
+  const v = verdictOf(D), T = tipsOf(D, v);
+  const per = D.N === 1 ? human(D.end) + ' · день' : (D.start.slice(5, 7) === D.end.slice(5, 7) ? human(D.start).split(' ')[0] : human(D.start)) + '–' + human(D.end) + ' · ' + (D.N === 7 ? 'неделя' : D.N + ' ' + pl(D.N, ['день', 'дня', 'дней']));
+  const prevLbl = D.N === 1 ? 'позавчера' : D.N === 7 ? 'прошлая неделя' : 'прошлый период';
+  const vc = { good: ['#e9f8ef', '#145c36', '#1a9f5c', '↑'], ok: ['#eef0ff', '#2b3576', '#4b5bd6', '→'], down: ['#fff3e6', '#7a3d00', '#e8780c', '↓'], none: ['#f1eef7', '#3d3552', '#8a7fa8', '·'] }[v.k];
+  const C = D.cur || { lessons: 0, hw: 0, pts: 0 }, P = D.prev;
+  const met = (title, val, d, sub) => `<td width="50%" style="padding:6px"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:18px"><tr><td style="padding:16px 18px">
+    <div style="font-size:13px;color:#6b6780">${title}</div>
+    <div style="margin-top:6px"><span style="font-size:30px;font-weight:600;letter-spacing:-.5px;color:#141220">${val}</span>${d ? ` <span style="display:inline-block;vertical-align:6px;margin-left:6px;font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;${d.t === 'up' ? 'color:#137a45;background:#e3f6ea' : d.t === 'dn' ? 'color:#c5302f;background:#fde9e8' : 'color:#6b6780;background:#efeef3'}">${d.s}</span>` : ''}</div>
+    <div style="margin-top:4px;font-size:12px;color:#8a86a0">${sub}</div></td></tr></table></td>`;
+  const pd = D.placePrev && D.place ? (D.placePrev - D.place) : null;
+  const placeD = pd == null ? null : pd === 0 ? { t: 'eq', s: '= 0' } : { t: pd > 0 ? 'up' : 'dn', s: (pd > 0 ? '▲ +' : '▼ −') + Math.abs(pd) };
+  const mx = Math.max(1, ...D.days.map(d => ((D.byDay[d] || {}).video || 0) + ((D.byDay[d] || {}).site || 0) * .25));
+  const bars = D.days.map((d, i) => { const x = D.byDay[d] || {}; const val = (x.video || 0) + (x.site || 0) * .25; const hgt = Math.round(70 * val / mx); const wd = WD[new Date(d + 'T00:00:00Z').getUTCDay()];
+    return `<td align="center" valign="bottom" style="padding:0 4px"><div style="height:${Math.max(hgt, 3)}px;border-radius:7px;background:${i === 6 ? '#8b45e6' : val ? '#d9c6f7' : '#ece8f4'}"></div><div style="margin-top:6px;font-size:11px;color:#8a86a0">${wd}</div></td>` }).join('');
+  const prog = D.r && D.total ? Math.round(100 * D.r.lessons / D.total) : 0;
+  const tipsHtml = T.praise ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#f1e8fd,#fde9f7);background-color:#f4ebfd;border-radius:18px"><tr><td width="50" valign="top" style="padding:16px 0 16px 16px"><div style="width:34px;height:34px;border-radius:11px;background:#8b45e6;color:#fff;font-size:17px;line-height:34px;text-align:center">★</div></td><td style="padding:16px 16px 16px 12px;font-size:14px;line-height:1.55;color:#35314a"><b style="color:#141220">Самое время похвалить.</b> ${nb(esc(T.praise))}</td></tr></table>`
+    : `<div style="font-size:16px;font-weight:600;color:#141220;margin-bottom:4px">Три идеи, как поддержать</div>` + T.tips.map((t, i) => `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px"><tr><td width="38" valign="top"><div style="width:26px;height:26px;border-radius:13px;background:#f1e8fd;color:#8b45e6;font-size:13px;font-weight:700;line-height:26px;text-align:center">${i + 1}</div></td><td style="font-size:14px;line-height:1.55;color:#35314a"><b style="color:#141220">${nb(esc(t[0]))}</b>${nb(esc(t[1]))}</td></tr></table>`).join('');
+  const greet = D.parentName ? `<div style="font-size:14px;color:#35314a;margin-bottom:10px">${esc(D.parentName)}, здравствуйте!</div>` : '';
+  const foot = o.token ? `<a href="{{BASE}}/unsub?t=${o.token}" style="color:#8b45e6;text-decoration:none">Отписаться</a> · <a href="${CARE}" style="color:#8b45e6;text-decoration:none">Служба заботы</a>` : `<a href="${CARE}" style="color:#8b45e6;text-decoration:none">Служба заботы</a>`;
+  const mark = `<img src="https://romanoduvanov.github.io/otzyvy/gc/brand/email-logo.png" width="164" height="23" alt="OduvanovSchool" style="display:block;border:0">`;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(subjectOf(D))}</title></head>
+<body style="margin:0;padding:0;background:#e9e6f0;font-family:'Inter Tight',Inter,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#e9e6f0"><tr><td align="center" style="padding:24px 12px">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#f3f1f7;border-radius:28px"><tr><td style="padding:26px 24px 22px">
+ <table width="100%" cellpadding="0" cellspacing="0"><tr><td>${mark}</td><td align="right"><span style="font-size:12.5px;color:#6b6780;background:#fff;border-radius:99px;padding:6px 12px;white-space:nowrap">${per}</span></td></tr></table>
+ <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;background:#fff;border-radius:22px"><tr><td style="padding:22px">
+  ${greet}<div style="font-size:13px;color:#6b6780">Отчёт об обучении · курс «AI-креатор»</div>
+  <div style="margin-top:4px;font-size:30px;font-weight:600;letter-spacing:-.8px;color:#141220">${esc(D.name)}</div>
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;background:${vc[0]};border-radius:16px"><tr><td width="44" valign="top" style="padding:14px 0 14px 16px"><div style="width:30px;height:30px;border-radius:10px;background:${vc[2]};color:#fff;font-weight:700;line-height:30px;text-align:center">${vc[3]}</div></td>
+  <td style="padding:14px 16px 14px 10px;font-size:14px;line-height:1.5;color:${vc[1]}"><b style="display:block;font-size:15px;margin-bottom:2px">${esc(v.t)}</b>${nb(esc(v.s))}</td></tr></table>
+ </td></tr></table>
+ <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px"><tr>
+  ${met('Время за уроками', hrs(D.tCur.video), delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null)), prevLbl + ': ' + (D.tPrev.video || D.tPrev.site ? hrs(D.tPrev.video) : 'нет данных'))}
+  ${met('Уроков пройдено', D.cur ? C.lessons : (D.r ? D.r.lessons : 0), P ? delta(C.lessons, P.lessons) : null, P ? prevLbl + ': ' + P.lessons : D.cur ? 'за период' : 'всего на курсе')}
+ </tr><tr>
+  ${met('Домашек сдано', D.cur ? C.hw : (D.r ? D.r.hw : 0), P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ': ' + P.hw : D.cur ? 'за период' : 'всего на курсе')}
+  ${met('Место в потоке', D.place || '—', placeD, 'из ' + D.n + ' учеников')}
+ </tr></table>
+ <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background:#fff;border-radius:22px"><tr><td style="padding:22px">
+  <div style="font-size:13px;color:#6b6780">Активность по дням · всего на платформе ${hrs(D.tCur.site)}</div>
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;height:96px"><tr>${bars}</tr></table>
+  <div style="margin-top:16px;font-size:13px;color:#6b6780">Прогресс курса · ${D.r ? D.r.lessons : 0} из ${D.total || '—'} открытых ${pl(D.total || 0, ['урока', 'уроков', 'уроков'])}</div>
+  <div style="margin-top:8px;height:10px;border-radius:5px;background:#ece8f4"><div style="width:${prog}%;height:10px;border-radius:5px;background:#8b45e6"></div></div>
+ </td></tr></table>
+ <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background:#fff;border-radius:22px"><tr><td style="padding:22px">${tipsHtml}</td></tr></table>
+ <div style="margin-top:16px;font-size:12px;line-height:1.6;color:#8a86a0;text-align:center">${nb('Отчёт ' + (fem(D.name) ? 'настроила ' : 'настроил ') + esc(D.name) + ' в личном кабинете OduvanovSchool.')}<br>${foot}</div>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
+/* ---------- письма ---------- */
+async function sendMail(env, to, subject, body) {
+  if (!env.RESEND_KEY) { await logIt(env, 'mail-skip', 0, to + ' · ' + subject); return { ok: false, reason: 'no-mail-provider' } }
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [to], subject, html: body }) });
+  const t = await r.text(); await logIt(env, r.ok ? 'mail-ok' : 'mail-err', 0, to + ' · ' + t.slice(0, 300)); return { ok: r.ok, reason: t.slice(0, 200) };
+}
+/* ---------- Telegram ---------- */
+const BOT = env => (env && env.TG_BOT) || 'oduvanov_school_bot';
+const sha = async s => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(x => x.toString(16).padStart(2, '0')).join('');
+const tgSecret = async env => (await sha('tg-hook:' + env.ADMIN_KEY)).slice(0, 40);
+const admKey = async env => (await sha('tg-adm:' + env.ADMIN_KEY)).slice(0, 20);
+const payKey = async env => (await sha('pay:' + env.ADMIN_KEY)).slice(0, 24);
+async function tg(env, method, body) {
+  if (!env.TG_TOKEN) return { ok: false, description: 'no TG_TOKEN' };
+  const r = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/' + method, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ ok: false })); if (!j.ok) await logIt(env, 'tg-err', 0, method + ' ' + (j.description || r.status)); return j;
+}
+const tgSend = (env, chat, text, buttons) => tg(env, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) });
+const th = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function tgReport(D, base, token) {
+  const v = verdictOf(D), T = tipsOf(D, v), C = D.cur || { lessons: 0, hw: 0 }, P = D.prev;
+  const per = D.N === 1 ? human(D.end) : (D.start.slice(5, 7) === D.end.slice(5, 7) ? human(D.start).split(' ')[0] : human(D.start)) + '–' + human(D.end);
+  const em = { good: '🟢', ok: '🔵', down: '🟠', none: '⚪️' }[v.k];
+  const dd = d => d ? ' <i>(' + d.s.replace('▲ ', '↑').replace('▼ ', '↓') + ')</i>' : '';
+  const prevLbl = D.N === 1 ? 'позавчера' : D.N === 7 ? 'прошлая неделя' : 'прошлый период';
+  const pd = D.placePrev && D.place ? D.placePrev - D.place : null;
+  let t = (D.parentName ? th(D.parentName) + ', здравствуйте!\n\n' : '') + '<b>Отчёт об обучении · ' + th(D.name) + '</b>\n' + per + (D.N === 7 ? ' · неделя' : D.N === 1 ? ' · день' : ' · ' + D.N + ' ' + pl(D.N, ['день', 'дня', 'дней'])) + '\n\n'
+    + em + ' <b>' + th(v.t) + '</b>\n' + th(v.s) + '\n\n'
+    + '⏱ Время за уроками: <b>' + hrs(D.tCur.video) + '</b>' + dd(delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null))) + '\n'
+    + '📚 Уроков пройдено: <b>' + (D.cur ? C.lessons : (D.r ? D.r.lessons : 0)) + '</b>' + (P ? dd(delta(C.lessons, P.lessons)) : '') + '\n'
+    + '✍️ Домашек сдано: <b>' + (D.cur ? C.hw : (D.r ? D.r.hw : 0)) + '</b>' + (P ? ' <i>(' + prevLbl + ': ' + P.hw + ')</i>' : '') + '\n'
+    + '🏆 Место в потоке: <b>' + (D.place || '—') + '</b> из ' + D.n + (pd ? ' <i>(' + (pd > 0 ? '↑' : '↓') + Math.abs(pd) + ')</i>' : '') + '\n'
+    + '🖥 Всего на платформе: ' + hrs(D.tCur.site) + '\n\n';
+  if (T.praise) t += '⭐️ <b>Самое время похвалить.</b> ' + th(T.praise);
+  else t += '<b>Три идеи, как поддержать</b>\n' + T.tips.map((x, i) => (i + 1) + '. <b>' + th(x[0]) + '</b>' + th(x[1])).join('\n');
+  const btn = token ? [[{ text: 'Полный отчёт', url: base + '/r?t=' + token }], [{ text: 'Служба заботы', url: CARE }, { text: 'Отписаться', callback_data: 'off' }]] : null;
+  return { text: t, buttons: btn };
+}
+/* карточка отчёта для Telegram: 540×675 CSS px → PNG 1080×1350 (4:5 — целиком видна в ленте на телефоне и компьютере) */
+function renderCard(D) {
+  const v = verdictOf(D), C = D.cur || { lessons: 0, hw: 0, pts: 0 }, P = D.prev;
+  const per = D.N === 1 ? human(D.end) : (D.start.slice(5, 7) === D.end.slice(5, 7) ? human(D.start).split(' ')[0] : human(D.start)) + '–' + human(D.end);
+  const vc = { good: ['#e9f8ef', '#145c36', '#1a9f5c', '↑'], ok: ['#eef0ff', '#2b3576', '#4b5bd6', '→'], down: ['#fff3e6', '#7a3d00', '#e8780c', '↓'], none: ['#f1eef7', '#3d3552', '#8a7fa8', '·'] }[v.k];
+  const chip = d => d ? `<span class="d ${d.t}">${d.s.replace('▲ ', '↑ ').replace('▼ ', '↓ ')}</span>` : '';
+  const prevLbl = D.N === 1 ? 'позавчера' : D.N === 7 ? 'прошлая неделя' : 'прошлый период';
+  const pd = D.placePrev && D.place ? (D.placePrev - D.place) : null;
+  const tile = (t, val, d, sub) => `<div class="t"><div class="tl">${t}</div><div class="tv"><b>${val}</b>${chip(d)}</div><div class="ts">${sub}</div></div>`;
+  const mx = Math.max(1, ...D.days.map(d => ((D.byDay[d] || {}).video || 0) + ((D.byDay[d] || {}).site || 0) * .25));
+  const bars = D.days.map((d, i) => { const x = D.byDay[d] || {}, val = (x.video || 0) + (x.site || 0) * .25; return `<div class="bc"><div class="b${i === 6 ? ' now' : val ? ' on' : ''}" style="height:${Math.max(4, Math.round(64 * val / mx))}px"></div><span>${WD[new Date(d + 'T00:00:00Z').getUTCDay()]}</span></div>` }).join('');
+  const prog = D.r && D.total ? Math.round(100 * D.r.lessons / D.total) : 0;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box;margin:0}html,body{width:540px;height:675px;overflow:hidden}
+body{font-family:'Inter Tight',Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:#f3f1f7;color:#141220;padding:22px}
+.hd{display:flex;align-items:center;justify-content:space-between}.hd img{height:20px;display:block}
+.pill{font-size:12.5px;color:#6b6780;background:#fff;border-radius:99px;padding:6px 12px}
+.card{margin-top:14px;background:#fff;border-radius:22px;padding:18px 20px}
+.k{font-size:12.5px;color:#6b6780}.nm{margin-top:3px;font-size:28px;font-weight:600;letter-spacing:-.03em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vd{margin-top:12px;display:flex;gap:10px;align-items:flex-start;background:${vc[0]};border-radius:16px;padding:12px 14px;color:${vc[1]}}
+.vi{flex:none;width:28px;height:28px;border-radius:9px;background:${vc[2]};color:#fff;font-weight:700;display:grid;place-items:center;font-size:15px}
+.vt{font-size:15px;font-weight:600;line-height:1.25}.vs{margin-top:2px;font-size:12.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.g{margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.t{background:#fff;border-radius:18px;padding:13px 16px}.tl{font-size:12.5px;color:#6b6780}
+.tv{margin-top:3px;display:flex;align-items:center;gap:8px}.tv b{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.d{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:99px;color:#6b6780;background:#efeef3}.d.up{color:#137a45;background:#e3f6ea}.d.dn{color:#c5302f;background:#fde9e8}
+.ts{margin-top:2px;font-size:11.5px;color:#8a86a0}
+.ac{margin-top:8px;background:#fff;border-radius:22px;padding:16px 20px}
+.bars{margin-top:10px;height:84px;display:flex;align-items:flex-end;gap:8px}.bc{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:5px}
+.b{border-radius:7px;background:#ece8f4}.b.on{background:#d9c6f7}.b.now{background:#8b45e6}.bc span{font-size:11px;color:#8a86a0;text-align:center}
+.pr{margin-top:12px;height:8px;border-radius:4px;background:#ece8f4}.pr i{display:block;height:8px;border-radius:4px;background:#8b45e6;width:${prog}%}
+</style></head><body>
+<div class="hd"><img src="https://romanoduvanov.github.io/otzyvy/gc/brand/email-logo.png" alt=""><span class="pill">${per} · ${D.N === 7 ? 'неделя' : D.N === 1 ? 'день' : D.N + ' ' + pl(D.N, ['день', 'дня', 'дней'])}</span></div>
+<div class="card"><div class="k">Отчёт об обучении · курс «AI-креатор»</div><div class="nm">${esc(D.name)}</div>
+<div class="vd"><div class="vi">${vc[3]}</div><div><div class="vt">${esc(v.t)}</div><div class="vs">${nb(esc(v.s))}</div></div></div></div>
+<div class="g">${tile('Время за уроками', hrs(D.tCur.video), delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null)), prevLbl + ': ' + (D.tPrev.video || D.tPrev.site ? hrs(D.tPrev.video) : 'нет данных'))}
+${tile('Уроков пройдено', D.cur ? C.lessons : (D.r ? D.r.lessons : 0), P ? delta(C.lessons, P.lessons) : null, P ? prevLbl + ': ' + P.lessons : D.cur ? 'за период' : 'всего на курсе')}
+${tile('Домашек сдано', D.cur ? C.hw : (D.r ? D.r.hw : 0), P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ': ' + P.hw : D.cur ? 'за период' : 'всего на курсе')}
+${tile('Место в потоке', D.place || '—', pd == null ? null : pd === 0 ? { t: 'eq', s: '= 0' } : { t: pd > 0 ? 'up' : 'dn', s: (pd > 0 ? '▲ +' : '▼ −') + Math.abs(pd) }, 'из ' + D.n + ' учеников')}</div>
+<div class="ac"><div class="k">Активность по дням · всего на платформе ${hrs(D.tCur.site)}</div><div class="bars">${bars}</div>
+<div class="k" style="margin-top:12px">Прогресс курса · ${D.r ? D.r.lessons : 0} из ${D.total || '—'} открытых ${pl(D.total || 0, ['урока', 'уроков', 'уроков'])}</div><div class="pr"><i></i></div></div>
+</body></html>`;
+}
+function tgCaption(D) {
+  const v = verdictOf(D), T = tipsOf(D, v), per = D.N === 1 ? human(D.end) : (D.start.slice(5, 7) === D.end.slice(5, 7) ? human(D.start).split(' ')[0] : human(D.start)) + '–' + human(D.end);
+  const em = { good: '🟢', ok: '🔵', down: '🟠', none: '⚪️' }[v.k];
+  const head = (D.parentName ? th(D.parentName) + ', здравствуйте!\n\n' : '') + '<b>Отчёт об обучении · ' + th(D.name) + '</b>\n' + per + '\n\n' + em + ' <b>' + th(v.t) + '</b>\n';
+  const tail = T.praise ? '⭐️ <b>Самое время похвалить.</b> ' + th(T.praise) : '<b>Три идеи, как поддержать</b>\n' + T.tips.map((x, i) => (i + 1) + '. <b>' + th(x[0]) + '</b>' + th(x[1])).join('\n');
+  let c = head + th(v.s) + '\n\n' + tail; if (c.replace(/<[^>]+>/g, '').length > 1000) c = head + '\n' + tail; if (c.replace(/<[^>]+>/g, '').length > 1000) c = head + th(v.s); return c;
+}
+async function shot(env, url) {
+  const acc = env.CF_ACCOUNT || '3544f71e7e7fd1a3544f2f335165a199'; if (!env.CF_API_TOKEN) return null;
+  const r = await fetch('https://api.cloudflare.com/client/v4/accounts/' + acc + '/browser-rendering/screenshot', { method: 'POST', headers: { 'Authorization': 'Bearer ' + env.CF_API_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, viewport: { width: 540, height: 675, deviceScaleFactor: 2 }, gotoOptions: { waitUntil: 'networkidle0', timeout: 20000 }, screenshotOptions: { type: 'png' } }) });
+  if (!r.ok || !(r.headers.get('Content-Type') || '').includes('image')) { await logIt(env, 'shot-err', 0, r.status + ' ' + (await r.text()).slice(0, 200)); return null }
+  return await r.arrayBuffer();
+}
+async function tgSendReport(env, p, D0) {
+  const R = await buildReport(env, p.uid, { D: D0, p }); const base = env.BASE_URL || '';
+  const btn = [[{ text: 'Служба заботы', url: CARE }, { text: 'Отписаться', callback_data: 'off' }]];
+  const png = await shot(env, base + '/card?t=' + p.token + '&v=' + Date.now());
+  if (png && env.TG_TOKEN) {
+    const fd = new FormData(); fd.append('chat_id', String(p.tg_chat)); fd.append('caption', tgCaption(R.D)); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify({ inline_keyboard: btn }));
+    fd.append('photo', new Blob([png], { type: 'image/png' }), 'report.png');
+    const r = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/sendPhoto', { method: 'POST', body: fd }); const j = await r.json().catch(() => ({ ok: false }));
+    if (j.ok) return j; await logIt(env, 'tg-err', p.uid, 'sendPhoto ' + (j.description || r.status));
+  }
+  const m = tgReport(R.D, base, p.token); return tgSend(env, p.tg_chat, m.text, m.buttons);
+}
+/* кураторы потока AI-креатор 2.0 */
+const CURATORS = [
+  { id: 'anton', name: 'Антон', full: 'Антон Фрейм', uid: 504950432, about: 'Куратор потока AI-креатор 2.0' },
+  { id: 'kirill', name: 'Кирилл', full: 'Кирилл Кошкин', uid: 510261529, about: 'Куратор потока AI-креатор 2.0' }
+];
+const curPub = c => c && { id: c.id, name: c.name, full: c.full, about: c.about, uid: c.uid };
+/* ---------- кураторы в своей личке Telegram: бот школы подключён к их аккаунту через Telegram Business ---------- */
+const CUR_HOURS_DEF = [10, 20]; /* рабочие часы по МСК, пока куратор не выставит свои в пульте */
+const curHours = async (env, cid) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('hours:' + cid).first(); try { const h = r && JSON.parse(r.v); if (h && h.length === 2) return h } catch (e) {} return CUR_HOURS_DEF };
+const curKey = async (env, cid) => (await sha('cur:' + cid + ':' + env.ADMIN_KEY)).slice(0, 16);
+/* секунды между a и b (unix), попавшие в рабочие часы [h1, h2) по МСК */
+function workSec(a, b, h) { if (!(b > a)) return 0; let s = 0, t = a; const end = Math.min(b, a + 14 * 86400);
+  while (t < end) { const d = msk(new Date(t * 1000)), hr = d.getUTCHours(), next = Math.min(end, t - (d.getUTCMinutes() * 60 + d.getUTCSeconds()) + 3600); if (hr >= h[0] && hr < h[1]) s += next - t; t = next } return s }
+async function saveTgUser(env, u) { if (!u || !u.id) return; await env.DB.prepare('INSERT OR REPLACE INTO tg_user (chat, username, name, at) VALUES (?,?,?,?)').bind(String(u.id), u.username || null, [u.first_name, u.last_name].filter(Boolean).join(' ') || null, new Date().toISOString()).run() }
+const admins = async env => ((await env.DB.prepare('SELECT chat FROM tg_admin').all()).results || []).map(a => a.chat);
+async function bizConnection(env, bc) {
+  const owner = String(bc.user.id), uname = bc.user.username || null, nm = [bc.user.first_name, bc.user.last_name].filter(Boolean).join(' ');
+  let row = await env.DB.prepare('SELECT * FROM cur_tg WHERE tg_id=?').bind(owner).first();
+  if (!row) { const s = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(owner).first(); const c = s && CURATORS.find(x => x.uid === s.uid);
+    if (c) { await env.DB.prepare('INSERT OR REPLACE INTO cur_tg (cid, tg_id, at) VALUES (?,?,?)').bind(c.id, owner, new Date().toISOString()).run(); row = { cid: c.id } } }
+  if (!row) { await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('bc:' + owner, bc.id).run(); await logIt(env, 'biz-unknown', 0, owner + ' @' + uname);
+    for (const a of await admins(env)) await tgSend(env, a, '⚠️ Бота подключил к Telegram Business аккаунт, который не привязан к куратору: ' + th(nm) + (uname ? ' @' + th(uname) : '') + '. Если это куратор — отправь ему его ссылку-приглашение.');
+    return tgSend(env, owner, 'Бот подключён, но я пока не знаю, какой ты куратор. Открой ссылку-приглашение, которую прислал Роман, — и всё заработает.') }
+  const on = bc.is_enabled !== false; const c = CURATORS.find(x => x.id === row.cid);
+  await env.DB.prepare('UPDATE cur_tg SET conn=?, enabled=?, username=?, name=?, at=? WHERE cid=?').bind(bc.id, on ? 1 : 0, uname, nm, new Date().toISOString(), row.cid).run();
+  await logIt(env, on ? 'biz-on' : 'biz-off', 0, row.cid + ' @' + uname);
+  for (const a of await admins(env)) await tgSend(env, a, (on ? '✅ ' : '⛔️ ') + th(c ? c.full : row.cid) + (on ? ' подключил бота к своему Telegram — время ответов теперь считается.' : ' отключил бота от своего Telegram.'));
+  return tgSend(env, owner, on ? '✅ <b>Готово!</b> Ученики пишут тебе в личку, а я только отмечаю время: когда пришёл вопрос и когда ты ответил. Тексты переписки не сохраняются.\n\nЕсли ученик ждёт ответа 2 часа в твоё рабочее время — напомню.' : 'Бот отключён от твоего Telegram — время ответов больше не считается.') }
+async function bizMessage(env, m) {
+  const row = await env.DB.prepare('SELECT * FROM cur_tg WHERE conn=? AND enabled=1').bind(m.business_connection_id).first(); if (!row || !m.chat || m.chat.type !== 'private') return;
+  const chat = String(m.chat.id); if (chat === row.tg_id || m.sender_business_bot) return;
+  const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(); if (!st) return; /* не ученик — ничего не храним */
+  if (m.chat.username) await env.DB.prepare('INSERT OR REPLACE INTO tg_user (chat, username, name, at) VALUES (?,?,?,?)').bind(chat, m.chat.username, [m.chat.first_name, m.chat.last_name].filter(Boolean).join(' ') || null, new Date().toISOString()).run();
+  const out = m.from && String(m.from.id) === row.tg_id, t = m.date | 0;
+  if (!out) { await env.DB.prepare('INSERT OR IGNORE INTO cwait (cid, chat, uid, since) VALUES (?,?,?,?)').bind(row.cid, chat, st.uid, t).run(); return }
+  const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat).first(); if (!w) return;
+  const ws = workSec(w.since, t, await curHours(env, row.cid));
+  await env.DB.batch([env.DB.prepare('INSERT INTO cresp (cid, chat, uid, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?,?,?)').bind(row.cid, chat, st.uid, w.since, t, t - w.since, ws, dayStr(new Date(t * 1000))),
+    env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat)]) }
+/* раз в час: ученик ждёт 2 рабочих часа — напомнить куратору, 4 — сигнал Роману */
+async function curRemind(env, B) { const now = Date.now() / 1000 | 0, out = [];
+  const ws = (await env.DB.prepare('SELECT w.*, c.tg_id, s.name sname, u.username FROM cwait w JOIN cur_tg c ON c.cid=w.cid LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.reminded < 2').all()).results || [];
+  for (const w of ws) { if (B && !B.ok(3)) { out.push('budget'); break } const h = await curHours(env, w.cid), hr = msk().getUTCHours(); if (hr < h[0] || hr >= h[1]) continue;
+    const sec = workSec(w.since, now, h), who = th(w.sname || 'Ученик'), btn = w.username ? [[{ text: 'Открыть чат', url: 'https://t.me/' + w.username }]] : null, c = CURATORS.find(x => x.id === w.cid);
+    if (sec >= 14400 && w.reminded < 2) { for (const a of await admins(env)) await tgSend(env, a, '🔴 ' + who + ' ждёт ответа куратора ' + th(c ? c.full : w.cid) + ' уже ' + hrs(sec) + ' рабочего времени.', btn);
+      await env.DB.prepare('UPDATE cwait SET reminded=2 WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); out.push([w.cid, 2]); if (B) B.use(2); continue }
+    if (sec >= 7200 && w.reminded < 1) { await tgSend(env, w.tg_id, '⏰ ' + who + ' ждёт твоего ответа ' + hrs(sec) + '. Цель — ответить за 1–2 часа.', btn);
+      await env.DB.prepare('UPDATE cwait SET reminded=1 WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); out.push([w.cid, 1]); if (B) B.use(1) } }
+  return out }
+async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days * 86400, now = Date.now() / 1000 | 0, res = [];
+  for (const c of CURATORS) { const ct = await env.DB.prepare('SELECT username, enabled FROM cur_tg WHERE cid=?').bind(c.id).first();
+    const rs = ((await env.DB.prepare('SELECT wsec, sec, day FROM cresp WHERE cid=? AND answered>=? ORDER BY wsec').bind(c.id, from).all()).results || []);
+    const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
+    const byDay = {}; for (const r of rs) (byDay[r.day] = byDay[r.day] || []).push(r.wsec);
+    const wait = ((await env.DB.prepare('SELECT w.uid, w.since, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h) }));
+    res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec)), in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
+      days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d]), n: byDay[d].length })), waiting: wait }) }
+  return { ok: true, days, curators: res } }
+/* вебхук сам добавляет бизнес-события (без ручной ссылки /tg/setup) */
+async function ensureBizHook(env) { const i = await tg(env, 'getWebhookInfo', {}); const w = i && i.result; if (!w || !w.url) return false;
+  if ((w.allowed_updates || []).includes('business_message')) return true;
+  const r = await tg(env, 'setWebhook', { url: w.url, secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message'] });
+  await logIt(env, 'biz-hook', 0, String(!!(r && r.ok))); return !!(r && r.ok) }
+async function curInvites(env) { const ok = await ensureBizHook(env); let t = '<b>Кураторы · подключение к личке</b>\n' + (ok ? '✅ Бот готов принимать сообщения из личек кураторов.' : '⚠️ Не получилось обновить вебхук — напиши в чат с Claude.') + '\n\nПерешли каждому куратору его ссылку. Он жмёт «Старт», бот пришлёт инструкцию.\n';
+  for (const c of CURATORS) { const ct = await env.DB.prepare('SELECT username, enabled FROM cur_tg WHERE cid=?').bind(c.id).first();
+    t += '\n<b>' + th(c.full) + '</b> — ' + (ct && ct.enabled ? '✅ подключён' + (ct.username ? ' (@' + th(ct.username) + ')' : '') : 'ещё не подключён') + '\nhttps://t.me/' + BOT(env) + '?start=cur_' + await curKey(env, c.id) + '\n' }
+  return t }
+async function curTg(env, cid) { const r = cid && await env.DB.prepare('SELECT username FROM cur_tg WHERE cid=? AND enabled=1').bind(cid).first(); return r && r.username || null }
+async function studentRow(env, uid) { let r = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first();
+  if (!r) { await env.DB.prepare('INSERT OR IGNORE INTO student (uid, tg_token) VALUES (?,?)').bind(uid, rnd()).run(); r = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first() }
+  if (!r.tg_token) { const t = rnd(); await env.DB.prepare('UPDATE student SET tg_token=? WHERE uid=?').bind(t, uid).run(); r.tg_token = t } return r }
+const FQT = { 1: 'каждый день', 2: 'раз в 2 дня', 3: 'раз в 3 дня', 7: 'раз в неделю' };
+async function tgUpdate(env, up) {
+  if (up.business_connection) return bizConnection(env, up.business_connection);
+  if (up.business_message) return bizMessage(env, up.business_message);
+  if (up.callback_query) { const q = up.callback_query, chat = String(q.message && q.message.chat.id);
+    if (q.data === 'off') { const p = await env.DB.prepare('SELECT uid, student FROM parent WHERE tg_chat=? AND active=1').bind(chat).first();
+      if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'tg-off', p.uid, '') }
+      await tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: p ? 'Вы отписались от отчётов' : 'Подписка уже отключена' });
+      if (p) await tgSend(env, chat, 'Готово, отчёты больше не будут приходить. Если это ошибка — ' + th(p.student || 'ученик') + ' может снова подключить их в своём профиле.') }
+    return }
+  const m = up.message; if (!m || !m.chat || m.chat.type !== 'private') return; const chat = String(m.chat.id), text = String(m.text || '').trim();
+  if (await neuroTg(env, m, chat, text)) return;
+  const st = text.match(/^\/start(?:\s+(\S+))?/);
+  if (st && st[1] && st[1].startsWith('login_')) return appLoginTg(env, chat, st[1].slice(6), m.from);
+  if (/^\/panel/.test(text)) { const ok = (await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first()) || (await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first());
+    if (ok) return tgSend(env, chat, '<b>Пульт куратора</b>: ученики, ожидание ответа, рассылки и часы работы.', [[{ text: 'Открыть пульт', url: (env.BASE_URL || 'https://oduvanov-api.romanoduvanov52.workers.dev') + '/app' }]]) }
+  if (st && st[1] && st[1].startsWith('p_')) {
+    const p = await env.DB.prepare('SELECT * FROM parent WHERE token=?').bind(st[1].slice(2)).first();
+    if (!p) return tgSend(env, chat, 'Ссылка устарела. Попросите ученика заново подключить отчёт в профиле OduvanovSchool.');
+    if (!p.active) return tgSend(env, chat, 'Отчёт отключён. Попросите ученика подключить его заново в профиле OduvanovSchool.');
+    /* CODE-01: подписку, уже привязанную к другому Telegram, по старой ссылке не перехватить. Новый родитель — ученик отключает отчёт и подключает заново (новая ссылка) */
+    if (p.tg_chat && String(p.tg_chat) !== chat) { await logIt(env, 'tg-parent-busy', p.uid, chat); return tgSend(env, chat, 'Эти отчёты уже приходят в другой Telegram. Если их нужно получать вам, попросите ученика отключить отчёт в профиле и подключить заново: придёт новая ссылка.') }
+    await env.DB.prepare("UPDATE parent SET tg_chat=?, channel='tg', active=1, updated=? WHERE uid=?").bind(chat, new Date().toISOString(), p.uid).run(); p.tg_chat = chat; p.active = 1;
+    await logIt(env, 'tg-parent', p.uid, chat);
+    await tgSend(env, chat, '👋 <b>Здравствуйте!</b>\n\nВы подписаны на отчёты об обучении <b>' + th(p.student || 'ученика') + '</b> в OduvanovSchool. Они будут приходить ' + (FQT[p.freq] || 'раз в неделю') + ' в ' + String(p.hour).padStart(2, '0') + ':00 по Москве.\n\nА вот первый отчёт 👇');
+    if (dayStr() <= until(env)) await tgSendReport(env, p);
+    return }
+  if (st && st[1] && st[1].startsWith('cur_')) { let c = null; for (const x of CURATORS) if (st[1].slice(4) === await curKey(env, x.id)) c = x;
+    if (!c) return tgSend(env, chat, 'Ссылка недействительна. Попроси у Романа новую.');
+    await saveTgUser(env, m.from); const bc = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('bc:' + chat).first();
+    await env.DB.prepare('INSERT OR REPLACE INTO cur_tg (cid, tg_id, username, name, conn, enabled, at) VALUES (?,?,?,?,?,?,?)').bind(c.id, chat, (m.from && m.from.username) || null, [m.from && m.from.first_name, m.from && m.from.last_name].filter(Boolean).join(' ') || null, bc ? bc.v : null, bc ? 1 : 0, new Date().toISOString()).run();
+    await logIt(env, 'cur-bind', c.uid, chat);
+    if (bc) return tgSend(env, chat, '✅ <b>' + th(c.full) + ', всё подключено!</b> Ученики пишут тебе в личку, я отмечаю только время вопроса и ответа.');
+    return tgSend(env, chat, '👋 <b>' + th(c.full) + ', привет!</b> Я запомнил, что ты куратор.\n\nОсталось подключить меня к твоему Telegram:\n1. Настройки → <b>Автоматизация чатов</b> (в старых версиях: Telegram для бизнеса → Чат-боты).\n2. Впиши <b>@' + BOT(env) + '</b> и нажми «Добавить».\n3. Доступ — ко всем личным чатам, права бота не включай.\n\nЯ вижу только время сообщений учеников школы. Тексты не сохраняю.') }
+  if (st && st[1] && st[1].startsWith('s_')) {
+    const r = await env.DB.prepare('SELECT * FROM student WHERE tg_token=?').bind(st[1].slice(2)).first();
+    if (!r) return tgSend(env, chat, 'Ссылка устарела. Открой личный кабинет OduvanovSchool и нажми «Подключить Telegram» ещё раз.');
+    /* CODE-03: ссылка привязки одноразовая — после входа выдаём новый tg_token */
+    await env.DB.prepare('UPDATE student SET tg_chat=?, tg_at=?, tg_token=?, name=COALESCE(name, ?) WHERE uid=?').bind(chat, new Date().toISOString(), rnd(), [m.from && m.from.first_name].filter(Boolean).join(' ') || null, r.uid).run();
+    await logIt(env, 'tg-student', r.uid, chat); await saveTgUser(env, m.from);
+    const c = CURATORS.find(x => x.id === r.curator);
+    return tgSend(env, chat, '🎉 <b>Telegram подключён!</b>\n\nТеперь сюда будут приходить:\n• напоминания об эфирах и открытии модулей — чтобы не пропустить x2 к баллам;\n• ответы куратора и проверка домашек;\n• твои достижения и новые места в рейтинге.' + (c ? '\n\nТвой куратор — <b>' + th(c.full) + '</b>.' : '\n\nНе забудь выбрать куратора на странице курса — он будет вести тебя до результата.'), [[{ text: 'Открыть курс', url: SITE + '/teach/control/stream/view/id/935917158' }]]) }
+  if (st && st[1] && st[1].startsWith('adm_')) {
+    if (st[1].slice(4) !== await admKey(env)) return tgSend(env, chat, 'Ссылка недействительна.');
+    await env.DB.prepare('INSERT OR REPLACE INTO tg_admin (chat, name, added) VALUES (?,?,?)').bind(chat, [m.from && m.from.first_name, m.from && m.from.last_name].filter(Boolean).join(' '), new Date().toISOString()).run();
+    await logIt(env, 'tg-admin', 0, chat); return tgSend(env, chat, '✅ Готово! Сюда будут приходить уведомления об оплатах OduvanovSchool.') }
+  if (/^\/curators/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (a) return tgSend(env, chat, await curInvites(env)) }
+  if (/^\/stop/.test(text)) { const r = await env.DB.prepare('UPDATE parent SET active=0 WHERE tg_chat=?').bind(chat).run(); await env.DB.prepare('DELETE FROM tg_admin WHERE chat=?').bind(chat).run();
+    return tgSend(env, chat, 'Готово, уведомления отключены.') }
+  if (/^\/report/.test(text)) { const p = await env.DB.prepare('SELECT * FROM parent WHERE tg_chat=? AND active=1').bind(chat).first(); if (p) return tgSendReport(env, p) }
+  return tgSend(env, chat, '<b>OduvanovSchool</b> — бот онлайн-школы Романа Одуванова.\n\nЕсли вы родитель ученика, попросите его открыть профиль в личном кабинете, нажать «Отчёт для родителей» → Telegram и отправить вам ссылку.\n\nВопросы по обучению — в службу заботы.', [[{ text: 'Служба заботы', url: CARE }]]);
+}
+/* оплата из GetCourse: процесс «Вызвать URL» → /pay?k=…&… (GET или POST, любые поля) */
+async function payNotify(env, f) {
+  const g = k => { for (const x of k) if (f[x] != null && String(f[x]).trim() !== '' && !/^\{.*\}$/.test(String(f[x]))) return String(f[x]).trim(); return '' };
+  const sum = g(['sum', 'cost', 'amount', 'payed', 'money']), offer = g(['offer', 'product', 'title', 'positions']), name = g(['name', 'user', 'full_name']) || [g(['fn']), g(['ln'])].filter(Boolean).join(' '), email = g(['email']), phone = g(['phone']), num = g(['number', 'order', 'deal']), link = g(['link', 'url']) || (g(['id']) ? SITE + '/sales/control/deal/update/id/' + g(['id']) : '');
+  const t = '💸 <b>Новая оплата' + (sum ? ' · ' + th(sum) : '') + '</b>\n' + (offer ? '\n📦 ' + th(offer) : '') + (name ? '\n👤 ' + th(name) : '') + (email ? '\n✉️ ' + th(email) : '') + (phone ? '\n📞 ' + th(phone) : '') + (num ? '\n🧾 Заказ ' + th(num) : '');
+  const admins = (await env.DB.prepare('SELECT chat FROM tg_admin').all()).results || [];
+  for (const a of admins) await tgSend(env, a.chat, t, link ? [[{ text: 'Открыть заказ', url: link }]] : null);
+  await logIt(env, 'pay', 0, (sum || '') + ' ' + (email || '') + ' → ' + admins.length); return admins.length;
+}
+const logIt = (env, kind, uid, info) => env.DB.prepare('INSERT INTO log (at, kind, uid, info) VALUES (?,?,?,?)').bind(new Date().toISOString(), kind, uid | 0, String(info).slice(0, 500)).run();
+
+/* ---------- HTTP ---------- */
+
+/* ---------- деньги «на вывод»: официальный экспорт платежей GetCourse (Сумма, Комиссии, Получено) ---------- */
+const GC_HOST = 'https://oduvanovroman.getcourse.ru';
+const statKey = async env => env.STAT_KEY || (await sha('stat:' + env.ADMIN_KEY)).slice(0, 32);
+const rub = s => { const m = String(s || '').split('руб')[0].replace(/[\s ]/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/); return m ? +m[0] : 0 };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* бюджет внешних запросов одного запуска: у Cloudflare Free ~50 подзапросов на запуск, оставляем запас */
+const budget = (max = 45) => ({ n: 0, max, ok(k = 1) { return this.n + k <= this.max }, use(k = 1) { this.n += k } });
+/* Export API GetCourse: 100 запросов за 2 часа на аккаунт (вместе с проверками статуса), один экспорт за раз, ошибка 903 — «слишком много запросов» */
+const GC_CAP = 80, GC_WIN = 2 * 3600e3;
+async function gcCall(env, host, url, B) {
+  const now = Date.now(), pk = 'gcpause:' + host, qk = 'gcq:' + host;
+  const pause = await kvGet(env, pk); if (pause && +pause > now) throw new Error('GetCourse: пауза после ошибки лимита ещё ' + Math.ceil((+pause - now) / 60e3) + ' мин');
+  let q = await kvGet(env, qk); q = Array.isArray(q) ? q.filter(t => now - t < GC_WIN) : [];
+  if (q.length >= GC_CAP) throw new Error('GetCourse: ' + q.length + ' запросов к Export API за 2 часа — жду, чтобы не упереться в лимит 100');
+  if (B && !B.ok(1)) return null; if (B) B.use(1);
+  q.push(now); await kvPut(env, qk, JSON.stringify(q));
+  const r = await fetch(url), ct = r.headers.get('Content-Type') || '', t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
+  if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + (ct ? ', ' + ct.split(';')[0] : '') + ')');
+  const code = +(j.error_code || (j.info && j.info.error_code) || 0), msg = String(j.error_message || (j.info && j.info.error_message) || '');
+  if (code === 903 || r.status === 429 || /слишком много|too many/i.test(msg)) { await kvPut(env, pk, String(now + 30 * 60e3)); throw new Error('GetCourse: слишком много запросов (' + (code || r.status) + '), пауза 30 мин') }
+  if (!r.ok) throw new Error('GetCourse: HTTP ' + r.status + (msg ? ' · ' + msg.slice(0, 120) : ''));
+  return j }
+function needCols(what, F, names) { const miss = names.filter(n => F.indexOf(n) < 0); if (miss.length) throw new Error('GetCourse ' + what + ': нет колонок ' + miss.join(', ') + ' — данные не записаны') }
+/* экспорт по шагам: запуск → export_id в kv → несколько проверок; не готов — доберёт следующий запуск (без sleep-цикла на минуты) */
+async function gcExportStep(env, name, kind, from, to, host, key, B, polls = 3) {
+  if (!key) throw new Error('нет ключа GetCourse');
+  const sk = 'exp:' + name; let st = await kvGet(env, sk), fresh = false;
+  if (st && Date.now() - st.at > 40 * 60e3) { await kvDel(env, sk); await logIt(env, 'gc-export-drop', 0, name + ' ' + st.id); st = null }
+  if (!st) { const j = await gcCall(env, host, host + '/pl/api/account/' + kind + '?' + new URLSearchParams({ key, 'created_at[from]': from, 'created_at[to]': to }), B); if (!j) return null;
+    if (!j.success || !j.info || !j.info.export_id) throw new Error('GetCourse: ' + (j.error_message || 'не удалось запустить экспорт'));
+    st = { id: j.info.export_id, from, to, at: Date.now() }; fresh = true; await kvPut(env, sk, JSON.stringify(st)) }
+  for (let i = 0; i < polls; i++) { if (fresh || i) await sleep(i ? 5000 : 3000);
+    const x = await gcCall(env, host, host + '/pl/api/account/exports/' + st.id + '?key=' + encodeURIComponent(key), B); if (!x) return null;
+    if (x.success && x.info && Array.isArray(x.info.items)) { await kvDel(env, sk);
+      if (!Array.isArray(x.info.fields)) throw new Error('GetCourse: в экспорте нет списка колонок');
+      x.info._from = st.from; x.info._to = st.to; return x.info } }
+  return null }
+/* разовый экспорт целиком (только для /fin/old/sync): не больше 20 проверок, чтобы уложиться в ~50 запросов */
+async function gcExport(env, kind, from, to, host = GC_HOST, key = env.GC_KEY, tries = 20) {
+  if (!key) throw new Error('нет ключа GetCourse'); const B = budget(45);
+  const r = await gcCall(env, host, host + '/pl/api/account/' + kind + '?' + new URLSearchParams({ key, 'created_at[from]': from, 'created_at[to]': to }), B);
+  if (!r || !r.success || !r.info || !r.info.export_id) throw new Error('GetCourse: ' + ((r && r.error_message) || 'ошибка экспорта'));
+  for (let i = 0; i < Math.min(tries, 20); i++) { await sleep(4000);
+    const x = await gcCall(env, host, host + '/pl/api/account/exports/' + r.info.export_id + '?key=' + encodeURIComponent(key), B); if (!x) break;
+    if (x.success && x.info && Array.isArray(x.info.items)) { if (!Array.isArray(x.info.fields)) throw new Error('GetCourse: в экспорте нет списка колонок'); return x.info } }
+  throw new Error('GetCourse: экспорт не успел');
+}
+async function syncPay(env, from, to, B, polls = 3) {
+  const info = await gcExportStep(env, 'pay', 'payments', from, to, GC_HOST, env.GC_KEY, B, polls); if (!info) return { pending: true, from, to };
+  const F = info.fields, ix = n => F.indexOf(n), now = new Date().toISOString();
+  needCols('платежи', F, ['Номер', 'Дата создания', 'Статус', 'Сумма', 'Комиссии', 'Получено']);
+  const I = { id: ix('Номер'), user: ix('Пользователь'), email: ix('Эл. почта'), deal: ix('Заказ'), at: ix('Дата создания'), type: ix('Тип'), st: ix('Статус'), sum: ix('Сумма'), fee: ix('Комиссии'), net: ix('Получено'), title: ix('Название') };
+  const miss = ['Пользователь', 'Эл. почта', 'Заказ', 'Тип', 'Название'].filter(n => ix(n) < 0); if (miss.length) await logIt(env, 'pay-sync-warn', 0, 'нет колонок ' + miss.join(', '));
+  const stm = env.DB.prepare('INSERT OR REPLACE INTO pay (id, deal, email, name, created, day, type, status, sum, fee, net, title, synced) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const rows = info.items.filter(r => +r[I.id]).map(r => stm.bind(+r[I.id], +r[I.deal] || null, r[I.email] || '', r[I.user] || '', r[I.at] || '', String(r[I.at] || '').slice(0, 10), r[I.type] || '', r[I.st] || '', rub(r[I.sum]), Math.abs(rub(r[I.fee])), rub(r[I.net]), r[I.title] || '', now));
+  for (let i = 0; i < rows.length; i += 80) await env.DB.batch(rows.slice(i, i + 80));
+  await kvPut(env, 'pay_synced', now); await finDays(env, true);
+  return { n: rows.length, from: info._from, to: info._to };
+}
+/* быстрая досинхронизация последних 3 дней — после оплаты (процесс GetCourse зовёт /pay) и по кнопке «Обновить»; не чаще раза в minGap секунд */
+async function syncSoon(env, minGap = 30) { if (!env.GC_KEY) return null;
+  const last = await kvGet(env, 'pay_try'); if (last && Date.now() - +last < minGap * 1000) return null;
+  await kvPut(env, 'pay_try', String(Date.now()));
+  try { const t = dayStr(); return await syncPay(env, addDays(t, -3), t, budget(30), 5) } catch (e) { await logIt(env, 'pay-sync-err', 0, e.message); return null } }
+/* по часам — последние 45 дней (не чаще раза в 50 мин); раз в сутки после 05:00 МСК — всё с PAY_FROM (по умолчанию 20.04.2026). Незаконченный экспорт добирается следующим запуском */
+async function syncPayAuto(env, B) { if (!env.GC_KEY) return null; const h = msk().getUTCHours(), today = dayStr();
+  const pend = await kvGet(env, 'exp:pay');
+  if (!pend) { const last = await kvGet(env, 'pay_auto'); if (last && Date.now() - +last < 50 * 60e3) return { skip: 'fresh' }; await kvPut(env, 'pay_auto', String(Date.now())) }
+  const full = h >= 5 && (await kvGet(env, 'pay_full')) !== today;
+  try { const r = await syncPay(env, full ? (env.PAY_FROM || '2026-04-20') : addDays(today, -45), today, B, 3);
+    if (r && r.n != null && r.from === (env.PAY_FROM || '2026-04-20')) await kvPut(env, 'pay_full', today); return r }
+  catch (e) { await logIt(env, 'pay-sync-err', 0, e.message); return { err: e.message } } }
+/* старый аккаунт школы (oduvanovschool, до 20.04.2026): только цифры.
+   Оплаты кладём в pay с отрицательным id (имя пустое, вместо почты — хеш), оплаченные заказы — в odeal.
+   В новом GetCourse ничего не создаётся. Запускается сам по расписанию один раз, пока в kv нет old_import. */
+const GC_OLD = 'https://oduvanovschool.getcourse.ru';
+async function syncOld(env) {
+  if (!env.GC_KEY_OLD) return { err: 'нет GC_KEY_OLD' };
+  await ensure(env); const to = dayStr(), now = new Date().toISOString();
+  const eh = async e => { e = String(e || '').trim().toLowerCase(); return e ? (await sha('old:' + e)).slice(0, 16) : '' };
+  const P = await gcExport(env, 'payments', '2020-01-01', to, GC_OLD, env.GC_KEY_OLD, 75), F = P.fields, ix = n => F.indexOf(n);
+  needCols('платежи старого аккаунта', F, ['Номер', 'Дата создания', 'Статус', 'Сумма', 'Комиссии', 'Получено']);
+  const I = { id: ix('Номер'), email: ix('Эл. почта'), at: ix('Дата создания'), type: ix('Тип'), st: ix('Статус'), sum: ix('Сумма'), fee: ix('Комиссии'), net: ix('Получено'), title: ix('Название') };
+  const sp = env.DB.prepare('INSERT OR REPLACE INTO pay (id, deal, email, name, created, day, type, status, sum, fee, net, title, synced) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'), pr = [];
+  for (const r of P.items) { if (!(+r[I.id])) continue; pr.push(sp.bind(-(+r[I.id]), null, await eh(r[I.email]), '', r[I.at] || '', String(r[I.at] || '').slice(0, 10), r[I.type] || '', r[I.st] || '', rub(r[I.sum]), Math.abs(rub(r[I.fee])), rub(r[I.net]), r[I.title] || '', 'old')) }
+  const D = await gcExport(env, 'deals', '2020-01-01', to, GC_OLD, env.GC_KEY_OLD, 75), G = D.fields, jx = n => G.indexOf(n);
+  needCols('заказы старого аккаунта', G, ['ID заказа', 'Оплачен', 'Дата оплаты', 'Стоимость, RUB']);
+  const J = { id: jx('ID заказа'), uid: jx('ID пользователя'), email: jx('Email'), paid: jx('Оплачен'), at: jx('Дата оплаты'), cost: jx('Стоимость, RUB'), title: jx('Состав заказа') };
+  const sd = env.DB.prepare('INSERT OR REPLACE INTO odeal (id, day, eh, cost, title) VALUES (?,?,?,?,?)'), dr = [];
+  for (const r of D.items) { if (r[J.paid] !== 'Да' || !r[J.at] || !(+r[J.id])) continue; dr.push(sd.bind(-(+r[J.id]), String(r[J.at]).slice(0, 10), (await eh(r[J.uid] || r[J.email])) || 'd' + r[J.id], parseFloat(String(r[J.cost]).replace(/[\s ]/g, '').replace(',', '.')) || 0, r[J.title] || '')) }
+  for (let i = 0; i < pr.length; i += 80) await env.DB.batch(pr.slice(i, i + 80));
+  for (let i = 0; i < dr.length; i += 80) await env.DB.batch(dr.slice(i, i + 80));
+  const res = { pay: pr.length, deals: dr.length, at: now }; await kvDel(env, 'fin_days');
+  await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('old_import', JSON.stringify(res)).run();
+  await logIt(env, 'old-import', 0, JSON.stringify(res)); return res;
+}
+async function syncOldAuto(env) { if (!env.GC_KEY_OLD) return null; await ensure(env);
+  if (await env.DB.prepare("SELECT v FROM kv WHERE k='old_import'").first()) return null;
+  const t = await env.DB.prepare("SELECT v FROM kv WHERE k='old_try'").first(); if (t && Date.now() - +t.v < 50 * 60e3) return null;
+  await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('old_try', String(Date.now())).run();
+  try { return await syncOld(env) } catch (e) { await logIt(env, 'old-import-err', 0, e.message); return { err: e.message } } }
+/* агрегат по дням: пересчёт только после синхронизации (pay_synced сменился), иначе — из kv */
+async function finDays(env, force) { const syn = await kvGet(env, 'pay_synced'), c = !force && await kvGet(env, 'fin_days');
+  if (c && c.v === 1 && c.synced === syn) return c;
+  const d = await env.DB.prepare("SELECT day, COUNT(*) n, SUM(sum) g, SUM(fee) f, SUM(net) net, SUM(CASE WHEN id<0 THEN net ELSE 0 END) o FROM pay WHERE status='Получен' GROUP BY day ORDER BY day").all();
+  const od = await env.DB.prepare('SELECT day, COUNT(*) n, SUM(cost) s FROM odeal GROUP BY day ORDER BY day').all();
+  const o = { v: 1, synced: syn, days: (d.results || []).map(r => [r.day, r.n, Math.round(r.g * 100) / 100, Math.round(r.f * 100) / 100, Math.round(r.net * 100) / 100, Math.round((r.o || 0) * 100) / 100]), odays: (od.results || []).map(r => [r.day, r.n, Math.round(r.s * 100) / 100]) };
+  await kvPut(env, 'fin_days', JSON.stringify(o)); return o }
+async function finData(env, from, to, pfrom, pto) {
+  const c = await finDays(env);
+  const q = "SELECT id, deal, name, email, created, type, sum, fee, net, title FROM pay WHERE status='Получен' AND day>=? AND day<=? ORDER BY created DESC LIMIT 25000";
+  const list = from && to ? (await env.DB.prepare(q).bind(from, to).all()).results || [] : [];
+  const plist = pfrom && pto ? (await env.DB.prepare(q).bind(pfrom, pto).all()).results || [] : null;
+  const pl = (await env.DB.prepare("SELECT k, v FROM kv WHERE k LIKE 'plan:%'").all()).results || [];
+  const plans = {}; pl.forEach(r => { try { plans[r.k.slice(5)] = JSON.parse(r.v) } catch (e) {} });
+  return { ok: true, synced: c.synced, days: c.days, odays: c.odays, list, plist, plans };
+}
+
+export default {
+  async fetch(req, env, ctx) {
+    const u = new URL(req.url), path = u.pathname.replace(/\/+$/, '') || '/';
+    if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
+    try {
+      if (path === '/app') return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+      /* пульт живёт и на GitHub Pages (gc/pult.html) — ответы API с CORS для своих доменов */
+      if (path.startsWith('/ma/')) return maApi(env, req, path);
+      if (path.startsWith('/app/api/')) { const r0 = await appApi(env, req, path), h0 = new Headers(r0.headers); for (const [k, v] of Object.entries(cors(req))) h0.set(k, v); return new Response(r0.body, { status: r0.status, headers: h0 }) }
+      if (path !== '/') await ensure(env);
+      if (path === '/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensureAll(env); await kvPut(env, 'schema_v', SCHEMA_V); return json(req, { ok: true, schema: SCHEMA_V }) }
+
+      /* ---------- вход ученика (v42) ---------- */
+      /* процесс GetCourse «Вызвать URL»: ответ (fs1.<32 hex>) GetCourse сохраняет в доп. поле пользователя fs_key */
+      if (path === '/auth/gc') { if (!same(u.searchParams.get('k'), await hookKey(env))) return new Response('forbidden', { status: 403 });
+        const uid = String(u.searchParams.get('uid') || '').trim(); if (!okUid(uid)) return new Response('bad uid', { status: 400 });
+        await env.DB.prepare('INSERT INTO authuid (uid, issued) VALUES (?,?) ON CONFLICT(uid) DO UPDATE SET issued=excluded.issued').bind(+uid, new Date().toISOString()).run();
+        const key = await userKey(env, uid);
+        return u.searchParams.get('fmt') === 'json' ? new Response(JSON.stringify({ key }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }) : new Response(key, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } }) }
+      /* ключ из доп. поля → токены t (запись) и v (чтение) */
+      if (path === '/auth' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const uid = String(o.u || '');
+        if (!okUid(uid) || !same(o.k, await userKey(env, uid))) return deny(req);
+        await env.DB.prepare('INSERT INTO authuid (uid, seen) VALUES (?,?) ON CONFLICT(uid) DO UPDATE SET seen=excluded.seen').bind(+uid, new Date().toISOString()).run();
+        return json(req, { ok: true, u: +uid, t: await mkToken(env, 'a', uid), v: await mkToken(env, 'v', uid), ttl: TTL.v }, 200, { 'Cache-Control': 'no-store' }) }
+      if (path === '/auth/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { const base = env.BASE_URL || u.origin;
+        return json(req, { field: 'fs_key', process_url: base + '/auth/gc?k=' + await hookKey(env) + '&uid={object.id}', rating_put: base + '/rating/put?k=' + await ratingKey(env), auth_secret: env.AUTH_SECRET ? 'AUTH_SECRET задан' : 'AUTH_SECRET не задан: ключи выводятся из ADMIN_KEY', strict: env.AUTH_STRICT === '1' }) }
+      if (path === '/auth/stats' && u.searchParams.get('k') === env.ADMIN_KEY) { const a = await env.DB.prepare('SELECT COUNT(issued) i, COUNT(seen) s FROM authuid').first(); let rt = null;
+        try { const D = await loadData(env); if (D.rows.length && D.rows[0].uid != null) { const has = new Set(((await env.DB.prepare('SELECT uid FROM authuid WHERE issued IS NOT NULL').all()).results || []).map(x => String(x.uid)));
+          const miss = D.rows.filter(x => !has.has(String(x.uid))); rt = { rows: D.rows.length, with_key: D.rows.length - miss.length, without_key: miss.slice(0, 60).map(x => x.name) } } } catch (e) { rt = { err: e.message } }
+        return json(req, { ok: true, issued: a.i, seen: a.s, rating: rt, rating_at: await kvGet(env, 'rating_at'), strict: env.AUTH_STRICT === '1' }) }
+
+      /* ---------- рейтинг: закрытая копия на сервере (CODE-04) ---------- */
+      if (path === '/rating/put' && req.method === 'POST') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403);
+        const t = await req.text(); if (t.length > 1.5e6) return json(req, { ok: false, err: 'big' }, 413); let D; try { D = JSON.parse(t) } catch (e) { return json(req, { ok: false, err: 'json' }, 400) }
+        if (!D || !Array.isArray(D.rows) || !D.rows.length || D.rows.some(r => !okUid(r.uid) || !r.h)) return json(req, { ok: false, err: 'rows: нужны uid и h в каждой строке' }, 400);
+        await kvPut(env, 'rating', t); await kvPut(env, 'rating_at', new Date().toISOString()); RC = null; await logIt(env, 'rating-put', 0, D.rows.length + ' rows'); return json(req, { ok: true, rows: D.rows.length }) }
+      if (path === '/rating') { const w = await who(env, u.searchParams.get('v') || u.searchParams.get('t'), 'av'); if (!w.uid) return deny(req);
+        return json(req, await ratingFor(env, w.uid, u.searchParams.get('for')), 200, { 'Cache-Control': 'private, max-age=60' }) }
+      /* расписание для виджета «Ближайшие открытия»: без личных данных */
+      /* расписание и структура курса (модули → части → уроки) для виджетов и страниц курса: без личных данных */
+      if (path === '/sched') { const D = await loadData(env);
+        const modules = (D.modules || []).map(m => ({ id: m.id, name: m.name, desc: m.desc || '', at: m.at || null, amazon: !!m.amazon, parts: (m.parts || []).map(p => ({ name: p.name, at: p.at || null, lessons: (p.lessons || []).map(l => ({ id: l.id, t: l.t })) })) }));
+        return json(req, { ok: true, schedule: D.schedule || [], x2: D.x2 || null, modules, total_lessons: D.total_lessons || 0, updated: D.updated || '' }, 200, { 'Cache-Control': 'public, max-age=300' }) }
+      /* «Мои покупки»: скрытые незавершённые заказы (STU-12). GET ?u&t → {ok, hidden:[номер]}; POST {u, t, hide:[], unhide:[]} → {ok, hidden}. Токен t — как у /me (sig — синоним) */
+      if (path === '/fmp/hidden') { let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) {} }
+        const tk = req.method === 'POST' ? (o.t || o.sig) : (u.searchParams.get('t') || u.searchParams.get('sig')), q = +(req.method === 'POST' ? o.u : u.searchParams.get('u'));
+        const w = await who(env, tk, 'a'); if (!w.uid || (q && q !== w.uid)) return deny(req); const uid = w.uid;
+        if (req.method === 'POST') { const clean = a => (Array.isArray(a) ? a : []).map(x => String(x == null ? '' : x).trim()).filter(x => /^[0-9A-Za-zА-Яа-я_\-]{1,40}$/.test(x)).slice(0, 200);
+          const hide = clean(o.hide), unhide = clean(o.unhide), now = new Date().toISOString(), st = [];
+          for (const n of unhide) st.push(env.DB.prepare('DELETE FROM fmp_hidden WHERE uid=? AND num=?').bind(uid, n));
+          const cnt = (await env.DB.prepare('SELECT COUNT(*) n FROM fmp_hidden WHERE uid=?').bind(uid).first()).n | 0;
+          for (const n of hide.slice(0, Math.max(0, 500 - cnt))) st.push(env.DB.prepare('INSERT OR IGNORE INTO fmp_hidden (uid, num, at) VALUES (?,?,?)').bind(uid, n, now));
+          if (st.length) await env.DB.batch(st) }
+        const rs = ((await env.DB.prepare('SELECT num FROM fmp_hidden WHERE uid=? ORDER BY at').bind(uid).all()).results || []).map(r => r.num);
+        return json(req, { ok: true, hidden: rs }, 200, { 'Cache-Control': 'no-store' }) }
+
+      /* учёт времени: navigator.sendBeacon(text/plain) → {u, d, s, v} */
+      if (path === '/t' && req.method === 'POST') {
+        const o = JSON.parse(await req.text() || '{}'); const uid = +o.u; if (!okUid(uid)) return json(req, { ok: false }, 400);
+        /* CODE-09: время пишет только сам ученик. Без токена — переходный режим: пока ученик ни разу не входил с ключом (и пока не включён AUTH_STRICT=1) */
+        const w = await who(env, o.t, 'a'); if (w.bad || (w.uid && w.uid !== uid)) return deny(req);
+        if (!w.tok) { if (env.AUTH_STRICT === '1') return deny(req); const sn = await env.DB.prepare('SELECT seen FROM authuid WHERE uid=?').bind(uid).first(); if (sn && sn.seen) return deny(req) }
+        const day = /^\d{4}-\d{2}-\d{2}$/.test(o.d) && Math.abs(new Date(o.d) - new Date(dayStr())) <= 2 * 864e5 ? o.d : dayStr();
+        const s = Math.max(0, Math.min(900, o.s | 0)), v = Math.max(0, Math.min(900, o.v | 0)); if (!s && !v) return json(req, { ok: true });
+        await env.DB.prepare('INSERT INTO time (uid, day, site, video) VALUES (?,?,?,?) ON CONFLICT(uid, day) DO UPDATE SET site=MIN(site+excluded.site, 72000), video=MIN(video+excluded.video, 72000)').bind(uid, day, s, v).run();
+        ctx.waitUntil((async () => { const ex = await env.DB.prepare('SELECT 1 FROM uidmap WHERE uid=?').bind(uid).first(); if (!ex) await env.DB.prepare('INSERT OR IGNORE INTO uidmap (uid, h) VALUES (?,?)').bind(uid, await hashUid(uid)).run() })());
+        return json(req, { ok: true });
+      }
+
+      /* часы для рейтинга и профиля: {h: [сайт, видео]} в секундах */
+      /* часы теперь приходят внутри /rating; отдельный запрос — тоже только вошедшему ученику (ключи — h с серверной солью) */
+      if (path === '/hours') { const w = await who(env, u.searchParams.get('v') || u.searchParams.get('t'), 'av'); if (!w.uid) return deny(req);
+        const R = await ratingFor(env, w.uid, null); return json(req, R.hours, 200, { 'Cache-Control': 'private, max-age=120' }) }
+
+      /* настройки отчёта родителю */
+      if (path === '/parent' && req.method === 'GET') {
+        /* CODE-01: настройки и ссылку для родителя видит только сам ученик */
+        const w = await who(env, u.searchParams.get('t'), 'a'); if (w.bad) return deny(req); const q = +u.searchParams.get('u');
+        if (!w.uid) w.uid = await softUid(env, w, q);
+        if (!w.uid || (q && q !== w.uid)) return json(req, { ok: true, auth: false, p: null, until: until(env), live: dayStr() <= until(env) });
+        const uid = w.uid; const p = await env.DB.prepare('SELECT email, name, freq, hour, channel, active, last_sent, tg_chat, token FROM parent WHERE uid=?').bind(uid).first();
+        if (p) { p.tg_ok = !!p.tg_chat; p.tg_link = 'https://t.me/' + BOT(env) + '?start=p_' + p.token; delete p.tg_chat; delete p.token }
+        return json(req, { ok: true, p: p || null, until: until(env), live: dayStr() <= until(env) });
+      }
+      if (path === '/parent' && req.method === 'POST') {
+        let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+        const w = await who(env, o.t, 'a'); if (!w.uid && !w.bad) w.uid = await softUid(env, w, +o.u); if (!w.uid || (o.u && +o.u !== w.uid)) return deny(req); const uid = w.uid;
+        if (o.off) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), uid).run(); await logIt(env, 'parent-off', uid, ''); return json(req, { ok: true }) }
+        const email = String(o.email || '').trim().toLowerCase(); if (o.channel !== 'tg' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json(req, { ok: false, err: 'email' }, 400);
+        const freq = [1, 2, 3, 7].includes(+o.freq) ? +o.freq : 7, hour = Math.max(6, Math.min(23, o.hour | 0 || 19)), now = new Date().toISOString();
+        /* отчёт включают заново (или впервые) → новая ссылка для родителя, старая привязка Telegram сбрасывается */
+        const old = await env.DB.prepare('SELECT token, active FROM parent WHERE uid=?').bind(uid).first(); const token = old && old.active && old.token || rnd();
+        await env.DB.prepare('INSERT INTO parent (uid, h, student, email, name, freq, hour, channel, active, token, created, updated) VALUES (?,?,?,?,?,?,?,?,1,?,?,?) ON CONFLICT(uid) DO UPDATE SET student=excluded.student, email=CASE WHEN length(excluded.email)=0 THEN parent.email ELSE excluded.email END, name=excluded.name, freq=excluded.freq, hour=excluded.hour, channel=excluded.channel, tg_chat=CASE WHEN parent.active=1 THEN parent.tg_chat ELSE NULL END, token=excluded.token, active=1, updated=excluded.updated')
+          .bind(uid, await hashUid(uid), String(o.student || '').slice(0, 80), email, String(o.name || '').slice(0, 40), freq, hour, o.channel === 'tg' ? 'tg' : 'email', token, now, now).run();
+        await logIt(env, 'parent-on', uid, email + ' f' + freq + ' h' + hour);
+        /* CODE-01: пример на почту — не чаще раза в сутки на ученика */
+        let sent = null; if (o.sendNow && dayStr() <= until(env) && o.channel !== 'tg') { if ((await kvGet(env, 'sn:' + uid)) === dayStr()) sent = { ok: false, reason: 'limit' }; else { await kvPut(env, 'sn:' + uid, dayStr());
+          const R = await buildReport(env, uid); sent = await sendMail(env, email, R.subject, R.html.replace(/\{\{BASE\}\}/g, u.origin)); if (sent.ok) await env.DB.prepare('UPDATE parent SET last_sent=? WHERE uid=?').bind(dayStr(), uid).run() } }
+        const tgl = 'https://t.me/' + BOT(env) + '?start=p_' + token; const tgc = o.channel === 'tg' ? await env.DB.prepare('SELECT tg_chat FROM parent WHERE uid=?').bind(uid).first() : null;
+        return json(req, { ok: true, sent, tg_link: tgl, tg_ok: !!(tgc && tgc.tg_chat) });
+      }
+      /* превью письма: /preview?u=<id>&f=1|2|3|7 */
+      /* CODE-02: свой отчёт — по токену чтения v; без токена — пример на обезличенных данных */
+      if (path === '/preview') { const w = await who(env, u.searchParams.get('v') || u.searchParams.get('t'), 'av'); const f = +u.searchParams.get('f') || 0;
+        const R = w.uid ? await buildReport(env, w.uid, { freq: f, preview: true }) : demoReport(f); return html(R.html.replace(/\{\{BASE\}\}/g, u.origin)) }
+      if (path === '/unsub') {
+        const t = u.searchParams.get('t') || ''; const p = t && await env.DB.prepare('SELECT uid, student FROM parent WHERE token=?').bind(t).first();
+        if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'unsub', p.uid, '') }
+        return html(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f1f7;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#141220;text-align:center;padding:24px"><div><div style="font-size:22px;font-weight:600">${p ? 'Вы отписались от отчётов' : 'Ссылка устарела'}</div><p style="color:#6b6780;max-width:380px;line-height:1.5">${p ? 'Отчёты больше не будут приходить. Если это ошибка — ' + esc(p.student || 'ученик') + ' может снова подключить их в своём профиле.' : 'Если нужна помощь — напишите в службу заботы.'}</p><a href="${CARE}" style="color:#8b45e6">Служба заботы</a></div></body>`);
+      }
+      if (path === '/fin') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const g = n => (u.searchParams.get(n) || '').match(/^\d{4}-\d{2}-\d{2}$/) ? u.searchParams.get(n) : null; return json(req, await finData(env, g('from'), g('to'), g('pfrom'), g('pto'))) }
+      if (path === '/fin/plan' && req.method === 'POST') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const o = JSON.parse(await req.text() || '{}');
+        if (!/^\d{4}-\d{2}$/.test(o.month || '')) return json(req, { ok: false }, 400); const v = { min: +o.min || 0, opt: +o.opt || 0, ideal: +o.ideal || 0 };
+        await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('plan:' + o.month, JSON.stringify(v)).run(); return json(req, { ok: true, plan: v }) }
+      if (path === '/fin/sync' && u.searchParams.get('k') === env.ADMIN_KEY) { const t = dayStr(); return json(req, await syncPay(env, u.searchParams.get('from') || addDays(t, -45), u.searchParams.get('to') || t)) }
+      /* CODE-20: синк идёт в фоне; ответ — максимум через 20 с (не держим запрос на всё время экспорта) */
+      if (path === '/fin/refresh') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403);
+        const p = syncSoon(env, 60); ctx.waitUntil(p); const r = await Promise.race([p, sleep(20000).then(() => 'wait')]);
+        return json(req, { ok: true, ran: !!(r && r !== 'wait' && r.n != null), pending: !!(await kvGet(env, 'exp:pay')), synced: await kvGet(env, 'pay_synced') }) }
+      if (path === '/fin/old') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const g = n => (u.searchParams.get(n) || '').match(/^\d{4}-\d{2}-\d{2}$/) ? u.searchParams.get(n) : null, a = g('from'), b = g('to'); if (!a || !b) return json(req, { ok: false }, 400);
+        const r = await env.DB.prepare("SELECT COUNT(*) n, SUM(cost) s, COUNT(DISTINCT CASE WHEN eh<>'' THEN eh END) b FROM odeal WHERE day>=? AND day<=?").bind(a, b).first(); const st = await env.DB.prepare("SELECT v FROM kv WHERE k='old_import'").first();
+        return json(req, { ok: true, n: r.n || 0, sum: r.s || 0, buyers: r.b || 0, import: st ? JSON.parse(st.v) : null }) }
+      if (path === '/fin/old/sync' && u.searchParams.get('k') === env.ADMIN_KEY) return json(req, await syncOld(env));
+      if (path === '/fin/key' && u.searchParams.get('k') === env.ADMIN_KEY) return json(req, { link: SITE + '/pl/sales/dealstat#fsk=' + await statKey(env) });
+      if (path === '/admin/log' && u.searchParams.get('k') === env.ADMIN_KEY) { const r = await env.DB.prepare('SELECT * FROM log ORDER BY at DESC LIMIT 200').all(); return json(req, r.results) }
+      if (path === '/admin/run' && u.searchParams.get('k') === env.ADMIN_KEY) { const res = await runHourly(env, true); return json(req, res) }
+      /* Telegram: вебхук и настройка */
+      if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 });
+        const up = await req.json(); ctx.waitUntil(tgUpdate(env, up).catch(e => logIt(env, 'tg-ex', 0, String(e && e.message || e)))); return new Response('ok') }
+      if (path === '/tg/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const base = env.BASE_URL || u.origin;
+        const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message'], drop_pending_updates: true });
+        const b = await tg(env, 'setMyCommands', { commands: [{ command: 'report', description: 'Прислать отчёт сейчас' }, { command: 'stop', description: 'Отключить уведомления' }] });
+        const c = await tg(env, 'setMyDescription', { description: 'Бот онлайн-школы Романа Одуванова. Отчёты родителям об обучении и уведомления команды школы.' });
+        const d = await tg(env, 'setMyShortDescription', { short_description: 'Отчёты об обучении в OduvanovSchool' });
+        return json(req, { webhook: a.ok, commands: b.ok, descr: c.ok && d.ok, err: a.description, admin_link: 'https://t.me/' + BOT(env) + '?start=adm_' + await admKey(env), pay_url: base + '/pay?k=' + await payKey(env) }) }
+      /* ученик: Telegram и куратор */
+      /* страница ученика «Мой куратор» (eco.js): куратор, когда на связи, как быстро отвечает, его сообщения всем ученикам. Авторизация как у /me */
+      if (path === '/cur/page' && req.method === 'GET') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return json(req, { ok: false }, 400);
+        const w = await who(env, u.searchParams.get('t'), 'av'); if (w.bad || (w.uid && w.uid !== uid)) return deny(req);
+        if (!w.uid) w.uid = await softUid(env, w, uid);
+        const s = await env.DB.prepare('SELECT curator, tg_chat, tg_token FROM student WHERE uid=?').bind(uid).first();
+        const c = s && s.curator && CURATORS.find(x => x.id === s.curator);
+        if (!c) return json(req, { ok: true, auth: !!w.uid, cur: null, curators: CURATORS.map(curPub) });
+        const h = await curHours(env, c.id), hr = msk().getUTCHours(), st = (await curStats(env, 14)).curators.find(x => x.id === c.id) || {};
+        const log = (await kvGet(env, 'bclog:' + c.id)) || [];
+        const out = { ok: true, auth: !!w.uid, cur: Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h }), online: hr >= h[0] && hr < h[1], median: st.median == null ? null : st.median, in2h: st.in2h == null ? null : st.in2h, answered: st.answered || 0 };
+        if (w.uid) { out.feed = log.filter(x => x.all !== false).slice(0, 10).map(x => ({ at: x.at, who: x.who, text: x.text, btn: x.btn || null, link: x.link || null })); out.tg_ok = !!(s && s.tg_chat) }
+        return json(req, out) }
+      if (path === '/me' && req.method === 'GET') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return json(req, { ok: false }, 400);
+        /* CODE-03, PROF-34: ссылка привязки Telegram и запись в базу — только по токену. Без токена: кураторы и уже выбранный куратор, tg_ok:true — старые клиенты не показывают плашку */
+        const w = await who(env, u.searchParams.get('t'), 'a'); if (w.bad || (w.uid && w.uid !== uid)) return deny(req);
+        if (!w.uid) w.uid = await softUid(env, w, uid);
+        if (!w.uid) { const s = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first(); const c0 = s && s.curator && CURATORS.find(x => x.id === s.curator);
+          return json(req, { ok: true, auth: false, tg_ok: true, cur: c0 ? curPub(c0) : null, curators: CURATORS.map(curPub) }) }
+        const r = await studentRow(env, uid); return json(req, { ok: true, auth: true, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
+      if (path === '/cur' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+        const w = await who(env, o.t, 'a'); if (!w.uid && !w.bad) w.uid = await softUid(env, w, +o.u); if (!w.uid || (o.u && +o.u !== w.uid)) return deny(req);
+        const uid = w.uid, c = CURATORS.find(x => x.id === o.c); if (!c) return json(req, { ok: false }, 400);
+        const r = await studentRow(env, uid); if (r.curator) return json(req, { ok: false, err: 'already', cur: curPub(CURATORS.find(x => x.id === r.curator)) });
+        await env.DB.prepare('UPDATE student SET curator=?, cur_at=?, name=COALESCE(?, name) WHERE uid=?').bind(c.id, new Date().toISOString(), String(o.name || '').slice(0, 80) || null, uid).run();
+        await logIt(env, 'curator', uid, c.id); return json(req, { ok: true, cur: curPub(c) }) }
+      /* кураторы в Telegram: ссылки-приглашения, статистика ответов */
+      if (path === '/cur/links' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const out = [];
+        for (const c of CURATORS) { const ct = await env.DB.prepare('SELECT username, enabled FROM cur_tg WHERE cid=?').bind(c.id).first(); out.push({ id: c.id, full: c.full, link: 'https://t.me/' + BOT(env) + '?start=cur_' + await curKey(env, c.id), tg: ct && ct.username, connected: !!(ct && ct.enabled) }) }
+        return json(req, out) }
+      if (path === '/cur/stats') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); return json(req, await curStats(env, Math.min(90, Math.max(1, +u.searchParams.get('days') || 14)))) }
+      if (path === '/cur/hours' && req.method === 'POST') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); const o = JSON.parse(await req.text() || '{}');
+        if (!CURATORS.find(c => c.id === o.c) || !(o.from >= 0 && o.to <= 24 && o.from < o.to)) return json(req, { ok: false }, 400);
+        await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('hours:' + o.c, JSON.stringify([o.from | 0, o.to | 0])).run(); return json(req, { ok: true }) }
+      /* оплаты из GetCourse */
+      if (path === '/pay' && u.searchParams.get('k') === await payKey(env)) { const f = Object.fromEntries(u.searchParams);
+        if (req.method === 'POST') { const ct = req.headers.get('Content-Type') || ''; try { Object.assign(f, ct.includes('json') ? await req.json() : Object.fromEntries(await req.formData())) } catch (e) {} }
+        const n = await payNotify(env, f); ctx.waitUntil(syncSoon(env)); return json(req, { ok: true, sent: n }) }
+      if (path === '/card') { const t = u.searchParams.get('t') || ''; const p = t && await env.DB.prepare('SELECT * FROM parent WHERE token=?').bind(t).first(); if (!p) return html('', 404);
+        const R = await buildReport(env, p.uid, { p }); return html(renderCard(R.D)) }
+      /* полный отчёт по ссылке из Telegram */
+      if (path === '/r') { const t = u.searchParams.get('t') || ''; const p = t && await env.DB.prepare('SELECT * FROM parent WHERE token=?').bind(t).first(); if (!p) return html('<!doctype html><meta charset="utf-8">Ссылка устарела', 404);
+        const R = await buildReport(env, p.uid, { p }); return html(R.html.replace(/\{\{BASE\}\}/g, u.origin)) }
+      if (path === '/') return json(req, { ok: true, service: 'oduvanovschool-api', day: dayStr() });
+      return json(req, { ok: false, err: 'not found' }, 404);
+    } catch (e) { return json(req, { ok: false, err: String(e && e.message || e) }, 500) }
+  },
+  async scheduled(ev, env, ctx) { ctx.waitUntil(cronRun(env, ev && ev.cron)) }
+};
+
+/* ---------- cron (CODE-05): у каждого запуска свой лимит ~50 внешних запросов ----------
+   В Cloudflare → oduvanov-api → Settings → Triggers → Cron: «5 * * * *» — снимок рейтинга и отчёты родителям, «25 * * * *» — платежи GetCourse,
+   «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
+   Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
+   Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
+const CRON_JOBS = { '5 * * * *': ['report'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'pay', 'report'] };
+async function cronRun(env, cron) {
+  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'pay'], out = {};
+  try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : curJob(env, B)) }
+    catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
+  if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
+  return out }
+async function curJob(env, B) { if (!B.ok(2)) return { skip: 'budget' }; B.use(2); await ensureBizHook(env); return curRemind(env, B) }
+
+/* каждый час: снимок рейтинга (раз в сутки — сохраняется последний за день) и рассылка отчётов, у которых подошёл срок */
+/* отчёты родителям (CODE-05): не только в точный час — «пришло время» = час настал (или отправку пропустили — тогда с 8:00);
+   сначала те, кто ждёт дольше; пачка ограничена бюджетом запуска, остальные уйдут в следующий запуск; не больше 3 попыток в сутки на родителя */
+async function runHourly(env, force, B = budget(45)) {
+  const D = await loadData(env); await snapshot(env, D);
+  const hour = msk().getUTCHours(), today = dayStr(); const out = { hour, sent: [], skipped: 0, left: 0, until: until(env) };
+  if (today > until(env)) { out.ended = true; return out }
+  const ps = (await env.DB.prepare("SELECT * FROM parent WHERE active=1 AND (channel='email' OR (channel='tg' AND tg_chat IS NOT NULL)) ORDER BY COALESCE(last_sent, '') ASC").all()).results || [];
+  for (const p of ps) {
+    const age = p.last_sent ? Math.round((new Date(today) - new Date(p.last_sent)) / 864e5) : 99, due = age >= p.freq, late = age > p.freq;
+    if (!due || (!force && !(hour >= p.hour || (late && hour >= 8)))) { out.skipped++; continue }
+    const tk = 'ptry:' + p.uid, tr = await kvGet(env, tk); if (!force && tr && tr.d === today && tr.n >= 3) { out.skipped++; continue }
+    const need = p.channel === 'tg' ? 3 : 1; if (!B.ok(need)) { out.left++; continue } B.use(need);
+    let res = { ok: false };
+    try { if (p.channel === 'tg') { const j = await tgSendReport(env, p, D); res = { ok: !!(j && j.ok) } } else {
+      const R = await buildReport(env, p.uid, { D, p }); res = await sendMail(env, p.email, R.subject, R.html.replace(/\{\{BASE\}\}/g, env.BASE_URL || '')) } }
+    catch (e) { await logIt(env, 'report-err', p.uid, String(e && e.message || e)) }
+    if (res.ok) await env.DB.prepare('UPDATE parent SET last_sent=? WHERE uid=?').bind(today, p.uid).run();
+    else await kvPut(env, tk, JSON.stringify({ d: today, n: (tr && tr.d === today ? tr.n : 0) + 1 }));
+    out.sent.push([p.uid, res.ok]);
+  }
+  if (out.left) await logIt(env, 'report-left', 0, out.left + ' отчётов уйдут в следующий запуск');
+  return out;
+}
+
+/* ---------- Нейро-Одуванов: ИИ-помощник (Claude Haiku 5.5) ----------
+   Тест в боте: только для чатов из tg_admin.
+   /neuro — включить/выключить, /neuro <id ученика> — отвечать как этому ученику, /neuro new — новый диалог.
+   Секрет: ANTHROPIC_API_KEY. Модель: AI_MODEL (по умолчанию claude-haiku-5-5). */
+const AI_MODEL = env => (env && env.AI_MODEL) || 'claude-haiku-5-5';
+const AI_PRICE = { in: 0.10, out: 0.50, rub: 85 }; /* $ за 1 млн токенов, курс для подсказки */
+const RANKS = [[0, 'Новичок'], [150, 'Джуниор'], [500, 'Фрилансер'], [1000, 'Арт-директор'], [1700, 'Владелец студии'], [2500, 'Дизайнер-миллионер']];
+const AI_PAGES = [
+  ['Мои покупки — доступы, сроки, тариф, бонусный счёт', SITE + '/sales/control/userProduct/my'],
+  ['Профиль — Telegram, выбор куратора, отчёт родителю', SITE + '/user/my/profile'],
+  ['Все тренинги', SITE + '/teach/control/stream'],
+  ['Курс «AI-креатор 2.0» — модули и уроки, своё место в рейтинге', SITE + '/teach/control/stream/view/id/935917158'],
+  ['Рейтинг потока — места, баллы, звания', SITE + '/teach/control/stream/view/id/935952152'],
+  ['Расписание — когда открываются модули', SITE + '/teach/control/schedule'],
+  ['Настройки уведомлений', SITE + '/pl/notifications/settings/my'],
+  ['Забота о студентах (оплата, доступы, технические проблемы)', CARE]
+];
+function aiSystem() {
+  return `Ты — Нейро-Одуванов, ИИ-версия Романа Одуванова, основателя онлайн-школы OduvanovSchool (AI-дизайн карточек для маркетплейсов, поток «AI-креатор 2.0»). Ты помогаешь ученику: находишь страницы кабинета, отвечаешь про баллы, рейтинг, расписание, разбираешь его работы.
+
+Как отвечать:
+- По-русски, на «ты», тепло и по делу, коротко: 1–4 предложения или короткий список. Без эмодзи-гирлянд (максимум одно).
+- Ссылку на страницу давай полным адресом отдельной строкой. Жирный — через **текст**. Никаких заголовков и таблиц.
+- Данные ученика (место, баллы, уроки, ДЗ, время на учёбе, куратор) — в блоке «Ученик сейчас» ниже, они свежие. Расписание и модули — из course_plan. Не выдумывай цифры, даты и ссылки. Чего нет в данных — так и скажи одной фразой и подскажи, где посмотреть.
+- Не обсуждай свои прошлые ответы и то, как ты получаешь данные (никаких «я проверил», «поправка», «инструмент»). Если раньше ошибся — просто дай верную цифру.
+- Время на учёбе: «на сайте» — активное время в открытой вкладке кабинета, «видео» — время просмотра уроков. Показывай в часах и минутах.
+- Вопросы про оплату, возврат, продление, технические сбои → «Забота о студентах». Засчитать ДЗ, проверить работу по-настоящему, спорные баллы → куратор: вызови call_curator.
+
+Страницы кабинета:
+${AI_PAGES.map(p => '- ' + p[0] + ': ' + p[1]).join('\n')}
+
+Баллы рейтинга: урок 10, анкета после модуля 15, ДЗ 20 / 40 / 70 (лёгкий / средний / сложный уровень). x2: уроки и анкеты — 48 ч от открытия модуля, ДЗ — 72 ч. Звания: Новичок 0 · Джуниор 150 · Фрилансер 500 · Арт-директор 1000 · Владелец студии 1700 · Дизайнер-миллионер 2500 и 80% заданий в срок. 1 балл = 1 ₽ бонусного счёта (виден в «Мои покупки»).
+
+Разбор работы (когда прислали картинку):
+1. Если непонятно, что это и для чего (маркетплейс, товар, главный слайд или инфографика, что хотел показать), сначала задай 1–2 коротких уточняющих вопроса с вариантами ответа и не разбирай.
+2. Иначе: оценка X/10 одной строкой; «Сильное» — 2–3 пункта; «Что улучшить» — 3–4 пункта, каждый: что не так → как сделать. Смотри на: читаемость заголовка с телефона (миниатюра), иерархию, один главный посыл, контраст, качество и единый стиль ИИ-генерации, свет и тени товара, выравнивание и поля, количество текста, соответствие требованиям площадки.
+3. На позитиве, без воды. В конце одна фраза: что сделать первым.`;
+}
+const AI_TOOLS = [
+  { name: 'course_plan', description: 'Модули курса, даты открытия, ближайшие эфиры и открытия (расписание потока).', input_schema: { type: 'object', properties: {} } },
+  { name: 'call_curator', description: 'Позвать живого куратора, когда вопрос может решить только человек. Возвращает, как с ним связаться.', input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'Коротко суть вопроса для куратора' } }, required: ['summary'] } }
+];
+/* строка ученика в рейтинге: с сервера (rows с uid) или по старому h с GitHub */
+async function rowFor(D, uid) { if (D.rows.length && D.rows[0].uid != null) return D.rows.find(x => String(x.uid) === String(uid)) || null; const h = await hashUid(uid); return D.rows.find(x => x.h === h) || null }
+async function aiFacts(env, uid, ctx) {
+  if (!uid) return 'Ученик не определён (тест без id): личных данных нет.';
+  const D = ctx.D || (ctx.D = await loadData(env)); const r = await rowFor(D, uid);
+  const s = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first(); const c = s && CURATORS.find(x => x.id === s.curator);
+  const today = dayStr(), all = await timeSum(env, uid, '2000-01-01', today), wk = await timeSum(env, uid, addDays(today, -6), today), td = await timeSum(env, uid, today, today);
+  const f0 = await env.DB.prepare('SELECT MIN(day) d FROM time WHERE uid=? AND (site>0 OR video>0)').bind(uid).first();
+  const t = o => 'на сайте ' + hrs(o.site) + ', видео ' + hrs(o.video);
+  const o = { today, name: (r && r.name) || (s && s.name) || null };
+  if (r) { const pts = r.pts | 0; let rank = RANKS[0][1], next = null; for (const [p, n] of RANKS) { if (pts >= p) rank = n; else { next = n + ' — ещё ' + (p - pts) + ' баллов'; break } }
+    Object.assign(o, { место: r.place + ' из ' + D.n, баллы: pts, звание: rank, следующее_звание: next, уроков_пройдено: r.lessons + ' из ' + D.total_lessons, дз_сдано: r.hw }) } else o.рейтинг = 'нет в рейтинге потока 2.0';
+  o.время_на_учёбе = { всего: t(all), за_7_дней: t(wk), сегодня: t(td), учёт_с: f0 && f0.d || 'нет данных' };
+  o.куратор = c ? c.full + (await curTg(env, c.id) ? ' (пишет в Telegram)' : '') : 'не выбран — выбрать в профиле';
+  return 'Ученик сейчас:\n' + JSON.stringify(o, null, 1);
+}
+async function aiTool(env, name, input, uid, ctx) {
+  if (name === 'student_info') {
+    if (!uid) return { error: 'ученик не определён (тест без id) — данных нет' };
+    const D = ctx.D || (ctx.D = await loadData(env)); const r = await rowFor(D, uid);
+    const s = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first(); const c = s && CURATORS.find(x => x.id === s.curator);
+    if (!r) return { error: 'ученика нет в рейтинге потока 2.0', curator: c ? c.full : null };
+    const pts = r.pts | 0; let rank = RANKS[0][1], next = null; for (const [p, t] of RANKS) { if (pts >= p) rank = t; else { next = { title: t, need: p - pts }; break } }
+    return { name: r.name, place: r.place, of: D.n, points: pts, rank, next_rank: next, lessons_done: r.lessons, lessons_total: D.total_lessons, homework_done: r.hw, curator: c ? { name: c.full, telegram: await curTg(env, c.id) } : 'не выбран (выбрать в профиле)' };
+  }
+  if (name === 'course_plan') { const D = ctx.D || (ctx.D = await loadData(env)); const now = Date.now(); return JSON.stringify({ today: dayStr(), x2: D.x2 || null, modules: (D.modules || []).map(m => ({ name: m.name, about: m.desc, opens: m.at, open: m.at ? Date.parse(m.at) <= now : false, link: SITE + '/teach/control/stream/view/id/' + m.id, lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0) })) }).slice(0, 7000) }
+  if (name === 'call_curator') {
+    const s = uid && await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first(); const c = s && CURATORS.find(x => x.id === s.curator);
+    const u = c && await curTg(env, c.id); ctx.curator = c ? { name: c.name, tg: u } : null;
+    return c ? { curator: c.full, contact: u ? 'https://t.me/' + u : 'через профиль на платформе', hours: await curHours(env, c.id), answer_time: '1–2 часа в рабочее время' } : { curator: null, hint: 'куратор не выбран — выбрать в профиле ' + SITE + '/user/my/profile' };
+  }
+  return { error: 'нет такого инструмента' };
+}
+/* один ход диалога: history — [{role, content}], user — content текущего сообщения (строка или блоки) */
+async function aiTurn(env, { uid, history, user }) {
+  if (!env.ANTHROPIC_API_KEY) return { text: 'Не задан секрет ANTHROPIC_API_KEY в Cloudflare.', usage: { in: 0, out: 0 } };
+  const msgs = [...history, { role: 'user', content: user }], ctx = {}, use = { in: 0, out: 0, cache: 0 }, t0 = Date.now(); const facts = await aiFacts(env, uid, ctx);
+  for (let i = 0; i < 5; i++) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 1200, system: [{ type: 'text', text: aiSystem(), cache_control: { type: 'ephemeral' } }, { type: 'text', text: facts }], tools: AI_TOOLS, messages: msgs }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { await logIt(env, 'ai-err', uid, r.status + ' ' + JSON.stringify(j.error || j).slice(0, 300)); return { text: 'Ошибка нейросети: ' + r.status + ' ' + ((j.error && j.error.message) || ''), usage: use } }
+    const u = j.usage || {}; use.in += (u.input_tokens | 0) + (u.cache_creation_input_tokens | 0); use.cache += u.cache_read_input_tokens | 0; use.out += u.output_tokens | 0;
+    const calls = (j.content || []).filter(b => b.type === 'tool_use');
+    if (j.stop_reason !== 'tool_use' || !calls.length) {
+      const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      return { text: text || '…', usage: use, ms: Date.now() - t0, tools: ctx.used || [], curator: ctx.curator };
+    }
+    msgs.push({ role: 'assistant', content: j.content }); const res = [];
+    for (const c of calls) { (ctx.used = ctx.used || []).push(c.name); let out; try { out = await aiTool(env, c.name, c.input || {}, uid, ctx) } catch (e) { out = { error: String(e && e.message || e) } }
+      res.push({ type: 'tool_result', tool_use_id: c.id, content: typeof out === 'string' ? out : JSON.stringify(out) }) }
+    msgs.push({ role: 'user', content: res });
+  }
+  return { text: 'Не получилось ответить, попробуй переформулировать.', usage: use };
+}
+const aiCost = u => ((u.in * AI_PRICE.in + u.cache * AI_PRICE.in * 0.1 + u.out * AI_PRICE.out) / 1e6);
+const tgFmt = s => th(s).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/^#{1,6}\s*/gm, '');
+function b64(buf) { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s) }
+async function tgImage(env, fileId) {
+  const f = await tg(env, 'getFile', { file_id: fileId }); if (!f.ok) return null;
+  const r = await fetch('https://api.telegram.org/file/bot' + env.TG_TOKEN + '/' + f.result.file_path); if (!r.ok) return null;
+  const p = f.result.file_path.toLowerCase(); const mt = p.endsWith('.png') ? 'image/png' : p.endsWith('.webp') ? 'image/webp' : p.endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+  return { type: 'image', source: { type: 'base64', media_type: mt, data: b64(await r.arrayBuffer()) } };
+}
+/* обработка сообщения в боте; вернуть true, если сообщение забрал Нейро-Одуванов */
+async function neuroTg(env, m, chat, text) {
+  const adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (!adm) return false;
+  const kv = async k => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind(k).first(); return r ? JSON.parse(r.v) : null };
+  const put = (k, v) => env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind(k, JSON.stringify(v)).run();
+  const st = (await kv('neuro:' + chat)) || { on: false, uid: 0 };
+  const cmd = text.match(/^\/neuro(?:@\w+)?(?:\s+(\S+))?/);
+  if (cmd) {
+    if (cmd[1] === 'new') { await put('nh:' + chat, []); await tgSend(env, chat, '🧹 Новый диалог.'); return true }
+    if (cmd[1] && /^\d{5,12}$/.test(cmd[1])) { st.on = true; st.uid = +cmd[1] } else if (cmd[1] === 'off') st.on = false; else st.on = !st.on;
+    await put('neuro:' + chat, st); await put('nh:' + chat, []);
+    await tgSend(env, chat, st.on ? '🌼 <b>Нейро-Одуванов включён</b> · модель ' + th(AI_MODEL(env)) + '\n' + (st.uid ? 'Отвечаю как ученику с id ' + st.uid + '.' : 'Без ученика — личные данные недоступны. Чтобы проверить на ученике: <code>/neuro &lt;id&gt;</code>') + '\n\nПиши вопросы или кидай картинку на разбор. <code>/neuro new</code> — новый диалог, <code>/neuro</code> — выключить.' : 'Нейро-Одуванов выключен.');
+    return true;
+  }
+  if (!st.on || text.startsWith('/')) return false;
+  const ph = m.photo && m.photo.length ? m.photo[m.photo.length - 1].file_id : (m.document && /^image\//.test(m.document.mime_type || '') ? m.document.file_id : null);
+  const cap = String(m.caption || text || '').trim(); if (!ph && !cap) return true;
+  tg(env, 'sendChatAction', { chat_id: chat, action: 'typing' });
+  let content = cap;
+  if (ph) { const img = await tgImage(env, ph); if (!img) { await tgSend(env, chat, 'Не смог скачать картинку.'); return true } content = [img, { type: 'text', text: cap || 'Разбери мою работу.' }] }
+  const hist = (await kv('nh:' + chat)) || [];
+  const R = await aiTurn(env, { uid: st.uid, history: hist, user: content });
+  hist.push({ role: 'user', content: (ph ? '[прислал картинку] ' : '') + cap }, { role: 'assistant', content: R.text }); await put('nh:' + chat, hist.slice(-12));
+  const u = R.usage, rub = aiCost(u) * AI_PRICE.rub;
+  const foot = '\n\n<i>' + th(AI_MODEL(env)) + ' · ' + (u.in + u.cache + u.out).toLocaleString('ru-RU') + ' ток.' + (u.cache ? ' (кэш ' + u.cache + ')' : '') + ' · ≈' + rub.toFixed(rub < 1 ? 3 : 2).replace('.', ',') + ' ₽' + (R.ms ? ' · ' + (R.ms / 1000).toFixed(1).replace('.', ',') + ' с' : '') + (R.tools && R.tools.length ? ' · ' + R.tools.join(', ') : '') + '</i>';
+  const btn = R.curator && R.curator.tg ? [[{ text: 'Написать ' + R.curator.name + 'у', url: 'https://t.me/' + R.curator.tg }]] : undefined;
+  const j = await tgSend(env, chat, tgFmt(R.text) + foot, btn);
+  if (!j.ok) await tg(env, 'sendMessage', { chat_id: chat, text: R.text + '\n\n' + foot.replace(/<\/?i>/g, '') });
+  await logIt(env, 'ai', st.uid, JSON.stringify({ in: u.in, cache: u.cache, out: u.out, usd: +aiCost(u).toFixed(5), img: !!ph }));
+  return true;
+}
+
+/* ---------- Пульт куратора и Романа: /app (вход через Telegram) ----------
+   Вход: страница даёт ссылку t.me/<бот>?start=login_<nonce>; бот узнаёт куратора (cur_tg.tg_id) или админа (tg_admin) и подтверждает.
+   Сессия: kv 'sess:<токен>' на 30 дней. Данные: ученики куратора (student.curator) + рейтинг (data.json) + время учёбы + Telegram + ожидание ответа. */
+const APP_SESS_DAYS = 30;
+const ajson = (obj, st = 200) => new Response(JSON.stringify(obj), { status: st, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+async function appLoginTg(env, chat, nonce, from) {
+  const L = await kvGet(env, 'login:' + nonce); if (!L || L.done) return tgSend(env, chat, 'Ссылка для входа устарела. Обнови страницу пульта и нажми «Войти» ещё раз.');
+  if (Date.now() - L.at > 10 * 60e3) return tgSend(env, chat, 'Ссылка для входа устарела (10 минут). Нажми «Войти» ещё раз.');
+  const adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first();
+  const cur = await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first();
+  if (!adm && !cur) return tgSend(env, chat, 'Пульт доступен только кураторам и команде школы. Если ты куратор — сначала подключись по ссылке от Романа.');
+  const name = [from && from.first_name, from && from.last_name].filter(Boolean).join(' ') || 'Без имени';
+  await kvPut(env, 'login:' + nonce, Object.assign(L, { done: true, chat, role: adm ? 'admin' : 'curator', cid: cur ? cur.cid : null, name }));
+  await logIt(env, 'app-login', 0, (adm ? 'admin ' : 'cur ') + chat);
+  return tgSend(env, chat, '✅ <b>Вход в пульт выполнен.</b> Вернись в браузер — страница откроется сама.');
+}
+async function appSession(env, req) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''); if (!/^[0-9a-f]{32}$/.test(t)) return null;
+  const s = await kvGet(env, 'sess:' + t); if (!s || s.exp < Date.now()) return null; s.tok = t; return s }
+function appScope(s, c) { if (s.role === 'admin') return CURATORS.find(x => x.id === c) ? c : (c === 'all' ? 'all' : CURATORS[0].id); return s.cid }
+const APPC = {}; /* кэш списка в памяти изолята на 30 с: переключение и повторные запросы мгновенные */
+async function appStudents(env, cid) { const ck = APPC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v; const v = await appStudents0(env, cid); APPC[cid] = { at: Date.now(), v }; return v }
+async function appStudents0(env, cid) { /* D1 на бесплатном тарифе — до 50 запросов за вызов, поэтому всё одним набором запросов */
+  const D = await loadData(env); const byH = {}; for (const r of D.rows) byH[r.h] = r;
+  const q = cid === 'all' ? env.DB.prepare('SELECT * FROM student WHERE curator IS NOT NULL') : env.DB.prepare('SELECT * FROM student WHERE curator=?').bind(cid);
+  const today = dayStr(), wk = addDays(today, -6);
+  const [rs, ts, ls, us, ws] = await env.DB.batch([q,
+    env.DB.prepare('SELECT uid, SUM(site)+SUM(video) t FROM time WHERE day>=? GROUP BY uid').bind(wk),
+    env.DB.prepare('SELECT uid, MAX(day) d FROM time WHERE site>0 OR video>0 GROUP BY uid'),
+    env.DB.prepare('SELECT chat, username FROM tg_user'),
+    env.DB.prepare('SELECT uid, MIN(since) since FROM cwait GROUP BY uid')]);
+  const T = {}, L = {}, U = {}, W = {}; for (const x of ts.results || []) T[x.uid] = x.t | 0; for (const x of ls.results || []) L[x.uid] = x.d;
+  for (const x of us.results || []) U[x.chat] = x.username; for (const x of ws.results || []) if (x.uid) W[x.uid] = x.since;
+  const out = [];
+  const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}; if (priv) for (const r of D.rows) byU[String(r.uid)] = r;
+  for (const s of rs.results || []) { const r = (priv ? byU[String(s.uid)] : byH[await hashUid(s.uid)]) || null;
+    out.push({ uid: s.uid, name: (r && r.name) || s.name || ('id ' + s.uid), cur: s.curator, tar: r && r.tar || null, acc: r && r.acc || null,
+      place: r && r.place || null, pts: r ? r.pts | 0 : null, week: r ? r.week | 0 : null, lessons: r ? r.lessons | 0 : null, hw: r ? r.hw | 0 : null, ontime: r && r.ontime != null ? r.ontime : null,
+      t7: T[s.uid] || 0, last: L[s.uid] || null, tg: !!s.tg_chat, tgu: s.tg_chat && U[s.tg_chat] || null, tgid: s.tg_chat || null, wait: W[s.uid] || null }) }
+  return { n: D.n, total: D.total_lessons, students: out };
+}
+async function appApi(env, req, path) {
+  const u = new URL(req.url);
+  if (path === '/app/api/login/start' && req.method === 'POST') { await ensure(env); const n = rnd(); await kvPut(env, 'login:' + n, { at: Date.now() }); return ajson({ ok: true, nonce: n, link: 'https://t.me/' + BOT(env) + '?start=login_' + n }) }
+  if (path === '/app/api/login/check') { const n = u.searchParams.get('n') || ''; if (!/^[0-9a-f]{32}$/.test(n)) return ajson({ ok: false }, 400);
+    const L = await kvGet(env, 'login:' + n); if (!L) return ajson({ ok: false, err: 'expired' }); if (!L.done) return ajson({ ok: true, wait: true });
+    const tok = rnd(); await kvPut(env, 'sess:' + tok, { role: L.role, cid: L.cid, chat: L.chat, name: L.name, exp: Date.now() + APP_SESS_DAYS * 864e5 }); await kvDel(env, 'login:' + n);
+    return ajson({ ok: true, token: tok }) }
+  const s = await appSession(env, req); if (!s) return ajson({ ok: false, err: 'auth' }, 401);
+  if (path === '/app/api/logout' && req.method === 'POST') { await kvDel(env, 'sess:' + s.tok); return ajson({ ok: true }) }
+  if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
+  const c = appScope(s, u.searchParams.get('c') || '');
+  if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
+  if (path === '/app/api/stats') { const st = await curStats(env, Math.min(90, Math.max(1, +u.searchParams.get('days') || 14))); return ajson({ ok: true, c, curators: c === 'all' ? st.curators : st.curators.filter(x => x.id === c) }) }
+  if (path === '/app/api/hours' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
+    if (cc === 'all' || !(o.from >= 0 && o.to <= 24 && o.from < o.to)) return ajson({ ok: false }, 400);
+    await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]); return ajson({ ok: true }) }
+  if (path === '/app/api/bclog') return ajson({ ok: true, log: (await kvGet(env, 'bclog:' + c)) || [] });
+  if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
+    const text = String(o.text || '').trim().slice(0, 3000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
+    const all = (await appStudents(env, cc)).students; const want = Array.isArray(o.uids) && o.uids.length ? new Set(o.uids.map(Number)) : null;
+    const to = all.filter(x => x.tgid && (!want || want.has(x.uid))); if (to.length > 40) return ajson({ ok: false, err: 'batch' }, 400); /* бесплатный Cloudflare: ~50 запросов за вызов — страница шлёт пачками по 35 */
+    const who = s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор');
+    const btn = o.link && /^https:\/\//.test(o.link) ? [[{ text: String(o.btn || 'Открыть').slice(0, 40), url: o.link }]] : undefined;
+    let sent = 0, fail = 0;
+    for (const x of to) { const j = await tgSend(env, x.tgid, '<b>' + th(who) + '</b>\n' + th(text), btn); if (j && j.ok) sent++; else fail++ }
+    const log = (await kvGet(env, 'bclog:' + cc)) || []; const bid = String(o.bid || '').slice(0, 40);
+    if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail } else log.unshift({ bid, at: new Date().toISOString(), who, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, noTg: o.noTg | 0 });
+    await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
+    await logIt(env, 'broadcast', 0, cc + ' ' + sent + '/' + to.length); return ajson({ ok: true, sent, fail }) }
+  return ajson({ ok: false, err: 'not found' }, 404);
+}
+
+const APP_HTML = "<!doctype html>\n<html lang=\"ru\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Пульт куратора · OduvanovSchool</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link href=\"https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">\n<style>\n:root{--bg:#000106;--s0:#0c0c0c;--s1:#161616;--s2:#1f1f1f;--tile:#242424;--ink2:rgba(255,255,255,.58);--ink3:rgba(255,255,255,.44);--hair:rgba(255,255,255,.08);--lil:#c38bff;--acc:#d77fff;--plum:#602364;--up:#4ade80;--dn:#ff8f8f;--warn:#ffb48c}\n*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:#fff;font:400 15px/1.45 \"Inter Tight\",Inter,system-ui,sans-serif;font-feature-settings:\"tnum\"}\nbody{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.35),transparent 70%) fixed,var(--bg)}\na{color:var(--acc);text-decoration:none}button{font:inherit;color:inherit;cursor:pointer}\n.wrap{max-width:1280px;margin:0 auto;padding:28px 32px 120px;display:flex;flex-direction:column;gap:16px}\n.hd{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 0 22px;border-bottom:1px solid var(--hair)}\n.hd h1{margin:0;font-size:44px;line-height:1.05;font-weight:500;letter-spacing:-.03em}.hd p{margin:8px 0 0;color:var(--ink2)}\n.mk{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:15px;color:#fff}.mk b{font-weight:500;color:#e2c9ff}\n.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:var(--plum);font-weight:600;font-size:15px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6),0 16px 48px -12px rgba(252,203,255,.35)}\n.btn:disabled{opacity:.5;cursor:default}\n.sb{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:12px;border:1px solid var(--hair);background:var(--s1);font-size:14px;font-weight:500;white-space:nowrap}\n.sb.pri{background:linear-gradient(180deg,#fef8ff,#fccbff);color:var(--plum);border:0}\n.tabs{display:flex;gap:4px;flex-wrap:wrap}.tabs button{height:38px;padding:0 16px;border-radius:12px;border:1px solid var(--hair);background:var(--s1);font-size:14px;font-weight:500;color:rgba(255,255,255,.75)}\n.tabs button.on{background:#fff;color:#000106;border-color:#fff}\n.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--s0);border:1px solid var(--hair)}.seg button{border:0;background:transparent;height:30px;padding:0 12px;border-radius:8px;color:var(--ink2);font-size:13px;font-weight:500}.seg button.on{background:var(--s2);color:#fff}\n.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}\n.k{background:var(--s1);border:1px solid var(--hair);border-radius:20px;padding:16px 18px}.k .l{display:flex;align-items:center;gap:10px;color:var(--ink2);font-size:13.5px}\n.k .ic{width:32px;height:32px;border-radius:10px;background:var(--tile);display:grid;place-items:center;color:var(--lil);flex:none}\n.k .v{display:block;font-size:30px;font-weight:500;letter-spacing:-.02em;margin:12px 0 2px}.k .d{font-size:12.5px;color:var(--ink3)}\n.k.on{border-color:rgba(195,139,255,.6);background:linear-gradient(160deg,rgba(150,87,232,.16),rgba(22,22,22,0) 60%),var(--s1)}.k.on .ic{background:var(--lil);color:#1a0b2e}\n.k.bad{border-color:rgba(255,59,92,.5)}\n.card{background:var(--s1);border:1px solid var(--hair);border-radius:22px;padding:20px}\n.ctl{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}\n.inp{height:40px;border-radius:12px;border:1px solid var(--hair);background:var(--s0);color:#fff;font:inherit;padding:0 12px;outline:none;color-scheme:dark}\n.inp:focus{border-color:rgba(195,139,255,.6)}textarea.inp{height:auto;padding:12px;resize:vertical;min-height:120px;line-height:1.5}\n.tw{overflow:auto;border-radius:22px;border:1px solid var(--hair);background:var(--s1)}\ntable{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;font-weight:400;font-size:12px;color:var(--ink3);padding:12px 12px;white-space:nowrap;border-bottom:1px solid var(--hair);cursor:pointer;user-select:none}\ntd{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);white-space:nowrap;vertical-align:middle}tr:last-child td{border-bottom:0}\ntbody tr:hover{background:rgba(255,255,255,.025)}\n.nm b{font-weight:500}.nm small{display:block;color:var(--ink3);font-size:12px}\n.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:7px;font-size:11.5px;font-weight:600;white-space:nowrap;background:rgba(255,255,255,.06);color:var(--ink2)}\n.chip.l{background:rgba(195,139,255,.16);color:#e2c9ff}.chip.bad{background:rgba(255,59,92,.16);color:var(--dn)}.chip.ok{background:rgba(74,222,128,.12);color:var(--up)}.chip.w{background:rgba(255,180,140,.14);color:var(--warn)}\n.bar{height:6px;border-radius:5px;background:rgba(255,255,255,.07);overflow:hidden;width:70px;display:inline-block;vertical-align:middle;margin-right:8px}.bar i{display:block;height:100%;background:linear-gradient(90deg,#6724ad,#c38bff)}\n.chk{width:18px;height:18px;accent-color:#c38bff}\n.muted{color:var(--ink3)}.ink2{color:var(--ink2)}.dn{color:var(--dn)}.up{color:var(--up)}\n.login{min-height:100vh;display:grid;place-items:center;padding:24px}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:18px;align-items:center;text-align:center;padding:40px 32px;border-radius:32px;background:var(--s1);border:1px solid var(--hair)}\n.lg h1{margin:0;font-size:32px;font-weight:500;letter-spacing:-.02em}\n.bub{background:#182533;border-radius:16px 16px 16px 4px;padding:10px 13px;font-size:14px;max-width:420px;white-space:pre-wrap}\n.bub b{display:block;margin-bottom:2px}.tgb{display:block;text-align:center;margin-top:8px;padding:8px;border-radius:10px;background:rgba(94,168,255,.16);color:#8cc4ff;font-weight:600;font-size:13px}\n.log{display:flex;flex-direction:column;gap:8px}.log div{display:flex;gap:12px;padding:10px 12px;border-radius:14px;background:var(--s0);border:1px solid var(--hair);font-size:13.5px}\n.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:12px 18px;border-radius:14px;background:#0f1f15;border:1px solid rgba(74,222,128,.4);color:#c9f7d8;font-size:14px;z-index:9;display:none}\n.hid{display:none!important}\nhtml.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40px 40px;max-width:none}html.emb .login{min-height:0;padding:40px 0}html.emb #bOut{display:none}\n@media (max-width:760px){.wrap{padding:18px 14px 100px}html.emb .wrap{padding:8px 16px 40px}.hd h1{font-size:32px}.kpis{grid-template-columns:1fr 1fr}.k .v{font-size:24px}}\n</style></head><body>\n<div id=\"login\" class=\"login hid\"><div class=\"lg\">\n<span class=\"mk\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 64 64\"><rect width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect x=\"22\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect x=\"44\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#c38bff\"/><rect y=\"22\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect x=\"44\" y=\"22\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect y=\"44\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect x=\"22\" y=\"44\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/><rect x=\"44\" y=\"44\" width=\"20\" height=\"20\" rx=\"3\" fill=\"#fff\"/></svg>Oduvanov<b>School</b></span>\n<h1>Пульт куратора</h1><p class=\"ink2\" style=\"margin:0\">Вход через Telegram: нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда.</p>\n<button class=\"btn\" id=\"bLogin\" style=\"width:100%\">Войти через Telegram</button><span class=\"muted\" id=\"lgSt\" style=\"font-size:13px\"></span></div></div>\n\n<div id=\"app\" class=\"wrap hid\">\n<header class=\"hd\"><div><h1 id=\"hTitle\">Пульт куратора</h1><p id=\"hSub\">Ученики, ответы и&nbsp;рассылки</p></div>\n<div class=\"row\"><div class=\"seg hid\" id=\"curSeg\"></div><button class=\"sb\" id=\"bOut\">Выйти</button></div></header>\n<div class=\"kpis\" id=\"kpis\"></div>\n<div class=\"ctl\"><div class=\"tabs\" id=\"tabs\"><button data-t=\"st\" class=\"on\">Ученики</button><button data-t=\"bc\">Рассылка</button><button data-t=\"hr\">Время работы</button></div><span class=\"muted\" id=\"upd\" style=\"font-size:13px\"></span></div>\n\n<section id=\"t-st\" class=\"tab\">\n<div class=\"ctl\" style=\"margin-bottom:12px\"><div class=\"seg\" id=\"flt\"><button data-f=\"all\" class=\"on\">Все</button><button data-f=\"wait\">Ждут ответа</button><button data-f=\"idle\">Не заходили 5+ дн</button><button data-f=\"notg\">Без Telegram</button></div>\n<div class=\"row\"><input class=\"inp\" id=\"q\" placeholder=\"Поиск по имени\" style=\"width:220px\"><span class=\"muted\" id=\"selN\" style=\"font-size:13px\"></span><button class=\"sb hid\" id=\"bSelMsg\">Написать выбранным</button></div></div>\n<div class=\"tw\"><table><thead><tr><th style=\"width:34px\"><input type=\"checkbox\" class=\"chk\" id=\"chkAll\"></th><th data-s=\"name\">Ученик</th><th data-s=\"place\">Место</th><th data-s=\"pts\">Баллы</th><th data-s=\"week\">За неделю</th><th data-s=\"lessons\">Уроки</th><th data-s=\"hw\">ДЗ</th><th data-s=\"t7\">Время, 7 дн</th><th data-s=\"last\">Был</th><th data-s=\"wait\">Ответ</th><th>Telegram</th></tr></thead><tbody id=\"tb\"><tr><td colspan=\"11\" class=\"muted\" style=\"text-align:center;padding:30px\">Загружаю учеников…</td></tr></tbody></table></div>\n</section>\n\n<section id=\"t-bc\" class=\"tab hid\"><div style=\"display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start\" id=\"bcGrid\">\n<div class=\"card\" style=\"display:flex;flex-direction:column;gap:14px\">\n<div class=\"ctl\"><b style=\"font-weight:500;font-size:18px\">Сообщение ученикам в&nbsp;Telegram</b><div class=\"seg\" id=\"bcTo\"><button data-r=\"all\" class=\"on\">Все</button><button data-r=\"idle\">Не заходили 5+ дн</button><button data-r=\"sel\">Выбранные</button></div></div>\n<textarea class=\"inp\" id=\"bcText\" maxlength=\"3000\" placeholder=\"Например: «Завтра в 19:00 эфир по колористике — присылайте работы на разбор до 23:59»\"></textarea>\n<div class=\"row\"><span class=\"muted\" style=\"font-size:13px\">Кнопка под сообщением:</span><span id=\"bcLinks\" class=\"row\"></span></div>\n<div class=\"row\"><input class=\"inp\" id=\"bcBtn\" placeholder=\"Текст кнопки\" style=\"width:180px\"><input class=\"inp\" id=\"bcLink\" placeholder=\"https://… (необязательно)\" style=\"flex:1;min-width:200px\"></div>\n<div class=\"row\"><button class=\"btn\" id=\"bSend\">Отправить</button><span class=\"muted\" id=\"bcInfo\" style=\"font-size:13px\"></span></div></div>\n<div style=\"display:flex;flex-direction:column;gap:12px\"><div class=\"card\"><span class=\"muted\" style=\"font-size:12px\">Так увидит ученик</span><div style=\"background:#0e1621;border-radius:16px;padding:12px;margin-top:8px\"><div class=\"bub\" id=\"bcPrev\"><b id=\"bcWho\">Куратор</b><span id=\"bcPT\" class=\"muted\">Текст сообщения</span><span class=\"tgb hid\" id=\"bcPB\"></span></div></div></div>\n<div class=\"card\"><b style=\"font-weight:500\">Последние рассылки</b><div class=\"log\" id=\"bcLog\" style=\"margin-top:10px\"></div></div></div></div></section>\n\n<section id=\"t-hr\" class=\"tab hid\"><div class=\"card\" style=\"max-width:560px;display:flex;flex-direction:column;gap:14px\">\n<b style=\"font-weight:500;font-size:18px\">Когда ты&nbsp;на&nbsp;связи</b><p class=\"ink2\" style=\"margin:0\">Время ответа ученикам считается только в&nbsp;эти часы (по&nbsp;Москве). Ученики видят их&nbsp;на&nbsp;кнопке «Написать в&nbsp;Telegram».</p>\n<div class=\"row\" style=\"font-size:17px\">с <select class=\"inp\" id=\"hFrom\"></select> до <select class=\"inp\" id=\"hTo\"></select> <button class=\"btn\" id=\"bHours\">Сохранить</button></div><span class=\"muted\" id=\"hInfo\"></span></div></section>\n</div>\n<div class=\"toast\" id=\"toast\"></div>\n<script>\n(function(){\nvar EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}\nvar API=location.origin+'/app/api/', T=null, ME=null, CUR='', DATA=null, STATS=null, F='all', SORT={k:'wait',d:-1}, SEL={}, RCPT='all';\ntry{T=localStorage.getItem('oaTok')}catch(e){}\nfunction $(id){return document.getElementById(id)}\nfunction esc(s){return String(s==null?'':s).replace(/[&<>\"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}\nfunction toast(t){var e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(function(){e.style.display='none'},3500)}\nfunction api(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});if(T)o.headers.Authorization='Bearer '+T;\n  return fetch(API+p,o).then(function(r){if(r.status===401){logout(true);throw new Error('auth')}return r.json()})}\nfunction logout(silent){if(!silent&&T)fetch(API+'logout',{method:'POST',headers:{Authorization:'Bearer '+T}});T=null;try{localStorage.removeItem('oaTok')}catch(e){}$('app').classList.add('hid');$('login').classList.remove('hid')}\n$('bOut').onclick=function(){logout()};\n$('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';\n  fetch(API+'login/start',{method:'POST'}).then(function(r){return r.json()}).then(function(j){\n    var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').innerHTML='Нажми «Старт» в&nbsp;боте. Жду подтверждения…';var n=0;\n    var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}\n      fetch(API+'login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);T=c.token;try{localStorage.setItem('oaTok',T)}catch(e){}b.disabled=false;$('lgSt').textContent='';start()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)})};\nfunction ago(d){if(!d)return '<span class=\"muted\">—</span>';var n=Math.round((Date.parse(new Date().toISOString().slice(0,10))-Date.parse(d))/864e5);return n<=0?'сегодня':n===1?'вчера':(n>=5?'<span class=\"dn\">'+n+' дн назад</span>':n+' дн назад')}\nfunction idle(s){if(!s.last)return true;return (Date.now()-Date.parse(s.last))/864e5>=5}\nfunction hm(sec){var m=Math.round(sec/60);if(m<60)return m+' мин';var h=Math.floor(m/60);return h+' ч'+(m%60?' '+(m%60)+' мин':'')}\nfunction wtxt(since){var m=Math.round((Date.now()/1000-since)/60);return m<60?m+' мин':Math.floor(m/60)+' ч '+(m%60)+' мин'}\nvar IC={u:'<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><circle cx=\"9\" cy=\"8\" r=\"4\"/><path d=\"M2 21c1-4 4-6 7-6s6 2 7 6\"/></svg>',t:'<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M21 4 3 11l6 2 2 6 3-4 5 4z\"/></svg>',c:'<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/></svg>',w:'<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M21 12a8 8 0 0 1-12 7l-5 1 1.5-4A8 8 0 1 1 21 12z\"/></svg>',z:'<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M13 2 4 14h7l-1 8 9-12h-7z\"/></svg>'};\nfunction kp(ic,l,v,d,cls){return '<div class=\"k '+(cls||'')+'\"><span class=\"l\"><span class=\"ic\">'+IC[ic]+'</span>'+l+'</span><span class=\"v\"'+(String(v).indexOf(' / ')>0?' style=\"font-size:21px\"':'')+'>'+v+'</span><span class=\"d\">'+d+'</span></div>'}\nfunction renderK(){var S=DATA.students,tg=S.filter(function(s){return s.tg}).length,wt=S.filter(function(s){return s.wait}),id=S.filter(idle).length;\n  var st=(STATS&&STATS.curators)||[],ans=0,med=[],in2=[];st.forEach(function(c){ans+=c.answered;if(c.median!=null)med.push(c.median);if(c.in2h!=null)in2.push(c.in2h)});\n  var old=wt.length?Math.min.apply(null,wt.map(function(s){return s.wait})):null;\n  $('kpis').innerHTML=kp('u','Ученики',S.length,'из '+DATA.n+' в потоке','on')+kp('t','В Telegram',tg,S.length?Math.round(tg/S.length*100)+'% подключили':'—')\n   +kp('w','Ждут ответа',wt.length,old?'дольше всех '+wtxt(old):'никто не ждёт',wt.length?'bad':'')+kp('c','Медиана ответа',med.length?(st.length>1?st.map(function(c){return c.median!=null?hm(c.median):'—'}).join(' / '):hm(med[0])):'—',(st.length>1?st.map(function(c){return c.full.split(' ')[0]}).join(' / ')+' · ':'')+ans+' ответов за 14 дн')\n   +kp('z','Ответ за 2 часа',in2.length?(st.length>1?st.map(function(c){return c.in2h!=null?c.in2h+'%':'—'}).join(' / '):in2[0]+'%'):'—','цель — 100%')+kp('u','Не заходили 5+ дн',id,'стоит написать им')}\nfunction rowsF(){var q=($('q').value||'').toLowerCase();return DATA.students.filter(function(s){if(q&&s.name.toLowerCase().indexOf(q)<0)return false;\n  if(F==='wait')return !!s.wait;if(F==='idle')return idle(s);if(F==='notg')return !s.tg;return true}).sort(function(a,b){var k=SORT.k,x=a[k],y=b[k];\n  if(k==='place'){x=x||1e9;y=y||1e9;return (x-y)*-SORT.d}if(x==null)x=k==='name'?'':-1e12;if(y==null)y=k==='name'?'':-1e12;return (x>y?1:x<y?-1:0)*SORT.d})}\nfunction renderT(){var R=rowsF(),h='';R.forEach(function(s){var tg=s.tg?'<a class=\"sb\" style=\"height:30px\" target=\"_blank\" href=\"'+(s.tgu?'https://t.me/'+esc(s.tgu):'tg://user?id='+esc(s.tgid))+'\">Написать</a>':'<span class=\"chip\">не подключён</span>';\n  h+='<tr><td><input type=\"checkbox\" class=\"chk\" data-u=\"'+s.uid+'\"'+(SEL[s.uid]?' checked':'')+'></td><td class=\"nm\"><b>'+esc(s.name)+'</b><small>'+(s.tar?esc(s.tar):'тариф —')+(CUR==='all'&&s.cur?' · '+esc(s.cur):'')+'</small></td>'\n  +'<td>'+(s.place?s.place:'—')+'</td><td>'+(s.pts!=null?s.pts:'—')+'</td><td>'+(s.week?'<span class=\"up\">+'+s.week+'</span>':'<span class=\"muted\">0</span>')+'</td>'\n  +'<td>'+(s.lessons!=null?'<span class=\"bar\"><i style=\"width:'+Math.min(100,Math.round(s.lessons/(DATA.total||1)*100))+'%\"></i></span>'+s.lessons+'/'+DATA.total:'—')+'</td><td>'+(s.hw!=null?s.hw:'—')+'</td>'\n  +'<td>'+(s.t7?hm(s.t7):'<span class=\"muted\">0</span>')+'</td><td>'+ago(s.last)+'</td><td>'+(s.wait?'<span class=\"chip bad\">ждёт '+wtxt(s.wait)+'</span>':'<span class=\"chip ok\">ок</span>')+'</td><td>'+tg+'</td></tr>'});\n  $('tb').innerHTML=h||'<tr><td colspan=\"11\" class=\"muted\" style=\"text-align:center;padding:30px\">Никого</td></tr>';var n=Object.keys(SEL).length;$('selN').textContent=n?('Выбрано: '+n):'';$('bSelMsg').classList.toggle('hid',!n)}\n$('tb').onchange=function(e){var u=e.target.getAttribute('data-u');if(!u)return;if(e.target.checked)SEL[u]=1;else delete SEL[u];renderT()};\n$('chkAll').onchange=function(){var on=this.checked;rowsF().forEach(function(s){if(on)SEL[s.uid]=1;else delete SEL[s.uid]});renderT()};\n$('q').oninput=renderT;\ndocument.querySelectorAll('#flt button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#flt button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');F=b.getAttribute('data-f');renderT()}});\ndocument.querySelectorAll('th[data-s]').forEach(function(th){th.onclick=function(){var k=th.getAttribute('data-s');SORT={k:k,d:SORT.k===k?-SORT.d:(k==='name'?1:-1)};renderT()}});\ndocument.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#tabs button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');\n  document.querySelectorAll('.tab').forEach(function(x){x.classList.add('hid')});$('t-'+b.getAttribute('data-t')).classList.remove('hid');if(b.getAttribute('data-t')==='bc'){upPrev();loadLog()}}});\n$('bSelMsg').onclick=function(){setR('sel');document.querySelector('#tabs [data-t=bc]').click()};\nfunction setR(r){RCPT=r;document.querySelectorAll('#bcTo button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-r')===r)});upPrev()}\ndocument.querySelectorAll('#bcTo button').forEach(function(b){b.onclick=function(){setR(b.getAttribute('data-r'))}});\nvar SITE='https://oduvanovroman.getcourse.ru',LK=[['Рейтинг',SITE+'/teach/control/stream/view/id/935952152'],['Расписание',SITE+'/teach/control/schedule'],['Курс 2.0',SITE+'/teach/control/stream/view/id/935917158'],['Мои покупки',SITE+'/sales/control/userProduct/my']];\n$('bcLinks').innerHTML=LK.map(function(l,i){return '<button class=\"sb\" style=\"height:30px\" data-i=\"'+i+'\">'+l[0]+'</button>'}).join('');\n$('bcLinks').onclick=function(e){var i=e.target.getAttribute('data-i');if(i==null)return;$('bcBtn').value='Открыть: '+LK[i][0];$('bcLink').value=LK[i][1];upPrev()};\nfunction rcpt(){var S=DATA.students;if(RCPT==='idle')return S.filter(idle);if(RCPT==='sel')return S.filter(function(s){return SEL[s.uid]});return S}\nfunction upPrev(){if(!DATA)return;var R=rcpt(),tg=R.filter(function(s){return s.tg});$('bcWho').textContent=ME.role==='admin'?'Роман':(ME.name||'Куратор');var t=$('bcText').value.trim();$('bcPT').textContent=t||'Текст сообщения';$('bcPT').className=t?'':'muted';\n  var bt=$('bcBtn').value.trim(),bl=$('bcLink').value.trim();$('bcPB').textContent=bt||'Открыть';$('bcPB').classList.toggle('hid',!/^https:\\/\\//.test(bl));\n  $('bcInfo').textContent='Получат: '+tg.length+(R.length-tg.length?' · без Telegram: '+(R.length-tg.length):'');$('bSend').disabled=!t||!tg.length}\n['bcText','bcBtn','bcLink'].forEach(function(id){$(id).oninput=upPrev});\n$('bSend').onclick=function(){var R=rcpt(),tg=R.filter(function(s){return s.tg}),b=this;if(!confirmBox(tg.length))return;b.disabled=true;\n  var uids=tg.map(function(s){return s.uid}),bid=Math.random().toString(36).slice(2),sent=0,fail=0,i=0;\n  (function next(){if(i>=uids.length){toast('Отправлено: '+sent+(fail?' · не дошло: '+fail:''));$('bcText').value='';upPrev();loadLog();return}\n    var part=uids.slice(i,i+35);i+=35;$('bcInfo').textContent='Отправляю… '+Math.min(i,uids.length)+'/'+uids.length;\n    api('broadcast',{method:'POST',body:JSON.stringify({c:CUR,uids:part,text:$('bcText').value,btn:$('bcBtn').value,link:$('bcLink').value,bid:bid,noTg:R.length-tg.length})}).then(function(j){sent+=j.sent||0;fail+=j.fail||0;next()}).catch(function(){toast('Ошибка отправки');upPrev()})})()};\nfunction confirmBox(n){var b=$('bSend');if(b._arm){b._arm=0;b.textContent='Отправить';return true}b._arm=1;b.textContent='Точно отправить '+n+'?';setTimeout(function(){b._arm=0;b.textContent='Отправить'},4000);return false}\nfunction loadLog(){api('bclog?c='+CUR).then(function(j){$('bcLog').innerHTML=(j.log||[]).slice(0,8).map(function(l){return '<div><span class=\"muted\" style=\"width:86px;flex:none\">'+new Date(l.at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'</span><span style=\"flex:1\">'+esc(l.text)+'</span><span class=\"up\" style=\"flex:none\">'+l.sent+' ✓</span></div>'}).join('')||'<span class=\"muted\">Пока не было</span>'})}\nfor(var h=0;h<=24;h++){$('hFrom').insertAdjacentHTML('beforeend','<option value=\"'+h+'\">'+h+':00</option>');$('hTo').insertAdjacentHTML('beforeend','<option value=\"'+h+'\">'+h+':00</option>')}\n$('bHours').onclick=function(){var f=+$('hFrom').value,t=+$('hTo').value;if(f>=t){$('hInfo').textContent='Начало должно быть раньше конца';return}\n  api('hours',{method:'POST',body:JSON.stringify({c:CUR,from:f,to:t})}).then(function(j){$('hInfo').textContent=j.ok?'Сохранено: с '+f+':00 до '+t+':00 МСК':'Не сохранилось';load()})};\nvar ALL=null,STALL=null;\nfunction view(){if(ME.role!=='admin'||!ALL){return}var v=CUR;DATA={n:ALL.n,total:ALL.total,students:v==='all'?ALL.students:ALL.students.filter(function(s){return s.cur===v})};\n  STATS={curators:v==='all'?STALL.curators:STALL.curators.filter(function(c){return c.id===v})};renderAll()}\nfunction renderAll(){renderK();renderT();upPrev();var c=(STATS.curators||[])[0];if(c&&c.hours&&CUR!=='all'){$('hFrom').value=c.hours[0];$('hTo').value=c.hours[1]}\n  $('t-hr').querySelector('.card').style.opacity=CUR==='all'?.4:1;if($('t-bc').classList.contains('hid')===false)loadLog()}\nfunction load(){$('upd').textContent='Обновляю…';var c=ME.role==='admin'?'all':CUR;\n  Promise.all([api('students?c='+c),api('stats?c='+c)]).then(function(a){if(ME.role==='admin'){ALL=a[0];STALL=a[1];view()}else{DATA=a[0];STATS=a[1];renderAll()}\n  $('upd').textContent='Обновлено '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}).catch(function(e){$('upd').textContent='Не загрузилось: '+e.message})}\nfunction start(){api('me').then(function(m){ME=m;$('login').classList.add('hid');$('app').classList.remove('hid');\n  if(m.role==='admin'){CUR=CUR||'all';$('hTitle').textContent='Кураторы';$('hSub').textContent='Все ученики, ответы кураторов и рассылки';var sg=$('curSeg');sg.classList.remove('hid');\n    sg.innerHTML='<button data-c=\"all\">Все</button>'+m.curators.map(function(c){return '<button data-c=\"'+c.id+'\">'+esc(c.full.split(' ')[0])+'</button>'}).join('');\n    sg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-c')===CUR);b.onclick=function(){CUR=b.getAttribute('data-c');SEL={};sg.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b)});view()}})}\n  else{CUR=m.cid;$('hTitle').textContent='Пульт куратора';$('hSub').textContent=(m.name||'')+' · твои ученики, ответы и рассылки'}\n  load();setInterval(load,120000)}).catch(function(){})}\nif(T)start();else $('login').classList.remove('hid');\n})();\n</script></body></html>\n";
+
+/* ---------- Мини-апп Telegram (gc/app.html на GitHub Pages) ----------
+   Вход: initData от Telegram (подпись бота) → ученик по student.tg_chat → токены v42 (t — запись, v — чтение).
+   /ma/home — всё для вкладок «Учёба», «Ещё»; /ma/top — рейтинг; /ma/ai — Нейро-Одуванов для ученика (лимит в день). */
+const MA_AI_DAY = 40, MA_IMG_DAY = 5;
+async function tgInitCheck(env, init) { /* https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app */
+  if (!env.TG_TOKEN || !init) return null; const p = new URLSearchParams(init), hash = p.get('hash'); if (!hash) return null; p.delete('hash');
+  const dcs = [...p.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => k + '=' + v).join('\n');
+  const k1 = await crypto.subtle.importKey('raw', enc('WebAppData'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sec = await crypto.subtle.sign('HMAC', k1, enc(env.TG_TOKEN));
+  const k2 = await crypto.subtle.importKey('raw', sec, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  if (!same(hexOf(await crypto.subtle.sign('HMAC', k2, enc(dcs))), hash)) return null;
+  if (Date.now() / 1000 - (+p.get('auth_date') || 0) > 7 * 86400) return null;
+  try { return JSON.parse(p.get('user') || 'null') } catch (e) { return null } }
+const RANKS_MA = [[0, 'Новичок'], [150, 'Джуниор'], [500, 'Фрилансер'], [1000, 'Арт-директор'], [1700, 'Владелец студии'], [2500, 'Дизайнер-миллионер']];
+function rankOf(pts) { let rank = RANKS_MA[0][1], next = null, from = 0; for (const [p, t] of RANKS_MA) { if (pts >= p) { rank = t; from = p } else { next = { title: t, at: p, need: p - pts }; break } } return { rank, from, next } }
+async function maApi(env, req, path) {
+  const u = new URL(req.url);
+  if (path === '/ma/auth' && req.method === 'POST') { await ensure(env); const o = JSON.parse(await req.text() || '{}'); const tu = await tgInitCheck(env, String(o.init || ''));
+    if (!tu || !tu.id) return json(req, { ok: false, err: 'init' }, 401);
+    await saveTgUser(env, tu);
+    const s = await env.DB.prepare('SELECT uid, name FROM student WHERE tg_chat=?').bind(String(tu.id)).first();
+    if (!s) return json(req, { ok: false, err: 'nolink', name: tu.first_name || '' });
+    return json(req, { ok: true, u: s.uid, t: await mkToken(env, 'a', String(s.uid)), v: await mkToken(env, 'v', String(s.uid)), name: s.name || tu.first_name || '' }, 200, { 'Cache-Control': 'no-store' }) }
+  const uid = await authUid(env, u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), 'av'); if (!uid) return deny(req);
+  if (path === '/ma/home') { const D = await loadData(env), r = await rowFor(D, uid) || {}, now = Date.now();
+    const s = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first() || {}; const c = s.curator && CURATORS.find(x => x.id === s.curator);
+    const today = dayStr(), t7 = await timeSum(env, uid, addDays(today, -6), today), tAll = await timeSum(env, uid, '2000-01-01', today);
+    const pts = r.pts | 0, rk = rankOf(pts);
+    const mods = (D.modules || []).map(m => ({ id: m.id, name: m.name, desc: m.desc, at: m.at, open: m.at ? Date.parse(m.at) <= now : false, amazon: !!m.amazon,
+      lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0), first: ((m.parts || []).find(p => (p.lessons || []).length) || { lessons: [{}] }).lessons[0].id || null }));
+    let cur = null; if (c) { const h = await curHours(env, c.id), hr = msk().getUTCHours(); cur = Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h, online: hr >= h[0] && hr < h[1] }) }
+    return json(req, { ok: true, me: { uid, name: r.name || s.name || '', tar: r.tar || null, acc: r.acc || null, place: r.place || null, n: D.n, pts, week: r.week | 0, lessons: r.lessons | 0, total: D.total_lessons, hw: r.hw | 0, ontime: r.ontime == null ? null : r.ontime, rank: rk.rank, rankFrom: rk.from, next: rk.next, t7: t7.site + t7.video, tAll: tAll.site + tAll.video },
+      x2: D.x2 || null, modules: mods, cur, updated: D.updated || null }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/ma/top') { const D = await loadData(env), rows = (D.rows || []).slice().sort((a, b) => (a.place || 1e9) - (b.place || 1e9)); const me = await rowFor(D, uid); const mp = me && me.place || null;
+    const pick = (x, i) => ({ place: x.place, name: x.name, pts: x.pts | 0, week: x.week | 0, rank: rankOf(x.pts | 0).rank, me: me ? x === me : false });
+    const top = rows.slice(0, 10).map(pick), near = mp && mp > 10 ? rows.filter(x => x.place >= mp - 2 && x.place <= mp + 2).map(pick) : [];
+    return json(req, { ok: true, n: D.n, top, near, me: me ? pick(me) : null, ranks: RANKS_MA.map(([p, t]) => ({ t, p })) }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/ma/ai' && req.method === 'POST') { const o = JSON.parse(await req.text() || '{}'); const text = String(o.text || '').trim().slice(0, 2000), img = typeof o.img === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(o.img) ? o.img : null;
+    if (o.reset) { await kvDel(env, 'mah:' + uid); return json(req, { ok: true }) }
+    if (!text && !img) return json(req, { ok: false, err: 'empty' }, 400);
+    const dk = 'mal:' + uid + ':' + dayStr(), cnt = (await kvGet(env, dk)) || { m: 0, i: 0 };
+    if (cnt.m >= MA_AI_DAY) return json(req, { ok: false, err: 'limit', text: 'На сегодня вопросы закончились (' + MA_AI_DAY + ' в день). Завтра продолжим, а срочное — напиши куратору.' });
+    if (img && cnt.i >= MA_IMG_DAY) return json(req, { ok: false, err: 'limit', text: 'Разборы картинок на сегодня закончились (' + MA_IMG_DAY + ' в день). Завтра — с радостью.' });
+    let content = text; if (img) { const m = img.match(/^data:(image\/\w+);base64,(.*)$/); if (m[2].length > 2.8e6) return json(req, { ok: false, err: 'big', text: 'Картинка слишком большая.' });
+      content = [{ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } }, { type: 'text', text: text || 'Разбери мою работу.' }] }
+    const hist = (await kvGet(env, 'mah:' + uid)) || [];
+    const R = await aiTurn(env, { uid, history: hist, user: content });
+    hist.push({ role: 'user', content: (img ? '[прислал картинку] ' : '') + text }, { role: 'assistant', content: R.text }); await kvPut(env, 'mah:' + uid, hist.slice(-12));
+    cnt.m++; if (img) cnt.i++; await kvPut(env, dk, cnt);
+    await logIt(env, 'ai-ma', uid, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out, img: !!img }));
+    return json(req, { ok: true, text: R.text, curator: R.curator || null, left: MA_AI_DAY - cnt.m }) }
+  if (path === '/ma/hist') return json(req, { ok: true, hist: ((await kvGet(env, 'mah:' + uid)) || []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '' })) });
+  return json(req, { ok: false, err: 'not found' }, 404);
+}
