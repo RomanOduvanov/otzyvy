@@ -1069,6 +1069,13 @@ async function maApi(env, req, path) {
   if (path === '/ma/auth' && req.method === 'POST') { await ensure(env); const o = JSON.parse(await req.text() || '{}'); const tu = await tgInitCheck(env, String(o.init || ''));
     if (!tu || !tu.id) return json(req, { ok: false, err: 'init' }, 401);
     await saveTgUser(env, tu);
+    /* команда школы (админ из tg_admin, куратор из cur_tg) — тот же интерфейс + режим команды: сессия как в пульте (роль проверяет сервер) */
+    const [adm, cur] = await env.DB.batch([env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(String(tu.id)), env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(String(tu.id))]).then(r => r.map(x => (x.results || [])[0]));
+    if (adm || cur) { const role = adm ? 'admin' : 'curator', cid = cur ? cur.cid : null, cc = cid && CURATORS.find(x => x.id === cid);
+      const suid = adm ? +String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/)[0] : (cc ? cc.uid : 0); const nm = [tu.first_name, tu.last_name].filter(Boolean).join(' ');
+      const tok = rnd(); await kvPut(env, 'sess:' + tok, { role, cid, uid: null, chat: String(tu.id), name: nm, exp: Date.now() + APP_SESS_DAYS * 864e5 });
+      await logIt(env, 'ma-staff', suid, role + ' ' + tu.id);
+      return json(req, { ok: true, u: suid, t: await mkToken(env, 'a', String(suid)), v: await mkToken(env, 'v', String(suid)), name: tu.first_name || nm, staff: { role, cid, s: tok } }, 200, { 'Cache-Control': 'no-store' }) }
     const s = await env.DB.prepare('SELECT uid, name FROM student WHERE tg_chat=?').bind(String(tu.id)).first();
     if (!s) return json(req, { ok: false, err: 'nolink', name: tu.first_name || '' });
     return json(req, { ok: true, u: s.uid, t: await mkToken(env, 'a', String(s.uid)), v: await mkToken(env, 'v', String(s.uid)), name: s.name || tu.first_name || '' }, 200, { 'Cache-Control': 'no-store' }) }
@@ -1120,10 +1127,17 @@ const B_ST = ['new', 'work', 'review', 'done', 'cancel'];
 const bInt = v => Math.max(0, Math.min(1e9, Math.round(+String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.') || 0)));
 const bStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const bDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : dayStr();
-async function bankUid(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || '';
-  if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) return authUid(env, t, 'a');
-  if (/^[0-9a-f]{32}$/.test(t)) { const s = await kvGet(env, 'sess:' + t); if (s && s.exp > Date.now() && s.role === 'student' && s.uid) return +s.uid }
-  return 0 }
+/* Кто смотрит банк: ученик — свой (запись и чтение); админ — любого ученика (?u=), куратор — только своих (?u=); команда — только чтение. Проверка на сервере. */
+async function bankWho(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || '';
+  if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) return { uid: await authUid(env, t, 'a') };
+  if (!/^[0-9a-f]{32}$/.test(t)) return { uid: 0 };
+  const s = await kvGet(env, 'sess:' + t); if (!s || !(s.exp > Date.now())) return { uid: 0 };
+  if (s.role === 'student') return { uid: s.uid ? +s.uid : 0 };
+  if (s.role !== 'admin' && s.role !== 'curator') return { uid: 0 };
+  const target = +u.searchParams.get('u') || 0; if (!target) return { uid: 0, staff: s };
+  if (s.role === 'curator') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(target).first(); if (!st || !s.cid || st.curator !== s.cid) return { uid: 0, staff: s, forbidden: true } }
+  return { uid: target, ro: true, staff: s } }
+async function bankUid(env, req, u) { return (await bankWho(env, req, u)).uid }
 async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 'string') return null;
   const m = f.data.match(/^data:([\w.+-]+\/[\w.+-]+);base64,([A-Za-z0-9+/=]+)$/); if (!m) return null;
   if (!/^(image\/(jpeg|png|webp|heic|heif|gif)|application\/pdf)$/.test(m[1])) throw new Error('Можно картинку или PDF');
@@ -1132,7 +1146,14 @@ async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 's
   return r && r.id }
 async function bankApi(env, req, path) {
   const u = new URL(req.url); await bankEnsure(env);
-  const uid = await bankUid(env, req, u); if (!uid) return deny(req);
+  const W = await bankWho(env, req, u);
+  if (path === '/bank/staff/list') { const st = W.staff; if (!st) return deny(req);
+    const q = st.role === 'admin' ? env.DB.prepare('SELECT s.uid, s.name, s.curator, COALESCE(SUM(t.amount),0) total, COUNT(t.id) n, MAX(t.day) last FROM student s LEFT JOIN bank_tx t ON t.uid=s.uid GROUP BY s.uid ORDER BY total DESC, s.name LIMIT 2000')
+      : env.DB.prepare('SELECT s.uid, s.name, s.curator, COALESCE(SUM(t.amount),0) total, COUNT(t.id) n, MAX(t.day) last FROM student s LEFT JOIN bank_tx t ON t.uid=s.uid WHERE s.curator=? GROUP BY s.uid ORDER BY total DESC, s.name LIMIT 2000').bind(st.cid || '-');
+    const r = (await q.all()).results || []; return json(req, { ok: true, role: st.role, cid: st.cid || null, students: r }, 200, { 'Cache-Control': 'no-store' }) }
+  if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+  const uid = W.uid; if (!uid) return deny(req);
+  if (W.ro && path !== '/bank/summary' && path !== '/bank/file') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения' }, 403);
   const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
   if (path === '/bank/summary') {
     const [tx, od, fl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, day, what, src, client, order_id, file_id FROM bank_tx WHERE uid=? ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
@@ -1141,7 +1162,7 @@ async function bankApi(env, req, path) {
     const T = tx.results || [], months = {}; let total = 0; for (const x of T) { total += x.amount; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.amount }
     const files = {}; for (const f of fl.results || []) (files[f.ref] = files[f.ref] || []).push({ id: f.id, name: f.name, mime: f.mime, size: f.size });
     const paid = {}; for (const x of T) if (x.order_id) paid[x.order_id] = (paid[x.order_id] || 0) + x.amount;
-    return json(req, { ok: true, total, months, tx: T, orders: (od.results || []).map(o => Object.assign(o, { files: files[o.id] || [], paid: paid[o.id] || 0 })), today: dayStr() }, 200, { 'Cache-Control': 'no-store' }) }
+    return json(req, { ok: true, total, months, tx: T, orders: (od.results || []).map(o => Object.assign(o, { files: files[o.id] || [], paid: paid[o.id] || 0 })), today: dayStr(), ro: !!W.ro, who: W.ro ? await env.DB.prepare('SELECT uid, name FROM student WHERE uid=?').bind(uid).first() : null }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/bank/tx' && req.method === 'POST') { const o = await body(); const amount = bInt(o.amount); if (!amount) return json(req, { ok: false, err: 'Укажи сумму' }, 400);
     const oid = o.order_id ? +o.order_id : null; if (oid && !(await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(oid, uid).first())) return json(req, { ok: false, err: 'нет заказа' }, 400);
     let fid = null; try { fid = await bankFile(env, uid, 'tx', 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
