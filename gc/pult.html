@@ -228,7 +228,6 @@ function start(){api('me').then(function(m){ME=m;$('login').classList.add('hid')
   load();setInterval(load,120000)}).catch(function(){})}
 $('login').classList.add('hid');
 (T?Promise.resolve(T):viaSite()).then(function(t){if(t)start();else $('login').classList.remove('hid')});
-})();
 /* ---------- оценка ответов Нейро (ночь 27.10): доля 👍, последние 👎 с вопросом и ответом. Отдельный блок под #nrBox, nrLoad не трогает ---------- */
 (function(){var _nr=nrLoad;nrLoad=function(){_nr.apply(this,arguments);nrFb()};
   function nrFb(){var F=$('nrFb');if(!F){F=document.createElement('div');F.id='nrFb';F.style.cssText='display:flex;flex-direction:column;gap:16px;margin-top:16px';$('nrBox').after(F)}
@@ -242,4 +241,5 @@ $('login').classList.add('hid');
         var ok=function(){toast('Скопировано: '+dn.length+' ответов')};try{navigator.clipboard.writeText(t).then(ok,function(){fb(t)})}catch(e){fb(t)}
         function fb(s){var a=document.createElement('textarea');a.value=s;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}}
     }).catch(function(e){F.innerHTML='<div class="card dn">Оценки не загрузились: '+esc(e.message||'')+'</div>'})}})();
+})();
 </script></body></html>

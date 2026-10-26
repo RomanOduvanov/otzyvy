@@ -356,7 +356,6 @@ function start(){var sp0=TGW&&TGW.initDataUnsafe&&TGW.initDataUnsafe.start_param
 if(TGW){try{TGW.ready();TGW.expand();TGW.setHeaderColor('#000106');TGW.setBackgroundColor('#000106');if(TGW.setBottomBarColor)TGW.setBottomBarColor('#000106');TGW.onEvent('fullscreenChanged',fsMark);TGW.onEvent('fullscreenFailed',fsMark);applyFS();if(TGW.disableVerticalSwipes)TGW.disableVerticalSwipes();TGW.BackButton.hide();TGW.BackButton.onClick(function(){var x=document.querySelector('.ebm,.hs');if(x){x.remove();return}if(PG.length){pageBack();return}if(STB&&CUR==='bank'&&document.querySelector('.ebro')){STB.list();stBack(false);return}if(CUR!=='learn')tab('learn')})}catch(e){}}
 try{var s=JSON.parse(sessionStorage.getItem('maT')||'null');if(s&&s.t)T=s}catch(e){}
 (T?Promise.resolve(T):auth()).then(start).catch(function(){});
-})();
 /* ---------- оценка ответа Нейро (ночь 27.10): 👍/👎 под ответом, у 👎 причина по желанию → сервер /ma/aifb ---------- */
 var FBW=['Не по делу','Неверно','Не помогло','Слишком длинно'];
 function aiFb(w,mid){if(!mid||!w)return;var r=document.createElement('div'),saved=null;r.className='aifb';try{saved=localStorage.getItem('aifb:'+mid)}catch(e){}
@@ -372,4 +371,5 @@ function aiFb(w,mid){if(!mid||!w)return;var r=document.createElement('div'),save
       d.querySelector('input').onkeydown=function(k){if(k.key==='Enter'){k.preventDefault();reason(this.value.trim())}};return}
     if(b.hasAttribute('data-w')){var w0=b.getAttribute('data-w'),inp=r.querySelector('.why input');reason(w0==='_'?(inp&&inp.value.trim()):w0)}};
   w.after(r);return r}
+})();
 </script></body></html>
