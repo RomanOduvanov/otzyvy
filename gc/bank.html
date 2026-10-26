@@ -10,31 +10,43 @@ body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87
 .login{display:grid;place-items:center;padding:40px 0}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center;padding:36px 28px;border-radius:32px;background:#161616;border:1px solid rgba(255,255,255,.08)}
 .lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}
-.btn:disabled{opacity:.5}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
+.btn:disabled{opacity:.5}.btn2{height:46px;width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#1c1c1c;color:#fff;font:500 15px "Inter Tight",sans-serif;cursor:pointer}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
 html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 16px 40px}
 @media (max-width:600px){.hd h1{font-size:32px}}
 </style></head><body>
 <div class="wrap">
 <header class="hd"><h1>Мой банк</h1><p>Каждая оплата и&nbsp;каждый заказ&nbsp;— в&nbsp;одном месте</p></header>
-<div id="login" class="login hid"><div class="lg"><h2>Вход через Telegram</h2><p>Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.</p>
-<button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
+<div id="login" class="login hid"><div class="lg"><h2 id="lgH">Вход через Telegram</h2><p id="lgP">Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.</p>
+<button class="btn" id="bLogin">Войти через Telegram</button><button class="btn2" id="bStaff">Я из команды школы</button><span class="muted" id="lgSt"></span></div></div>
 <div id="bank"></div>
 </div>
-<script src="bank.js?v=3"></script>
+<script src="bank.js?v=4"></script>
 <script>
 (function(){
 var EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post);document.querySelector('.hd').classList.add('hid')}
-var API='https://oduvanov-api.romanoduvanov52.workers.dev',T=null;try{T=localStorage.getItem('ebTok')}catch(e){}
+/* ученик — свой банк (сессия ebTok, вход через бота); команда школы — банк ученика только для чтения (сессия пульта oaTok: админ — любой ученик, куратор — свои; проверяет сервер) */
+var API='https://oduvanov-api.romanoduvanov52.workers.dev',STAFF={504950432:1,510261529:1,499631257:1};
+function qp(k){var m=location.search.match(new RegExp('[?&]'+k+'=(\\d+)'));return m?+m[1]:0}
+var TU=qp('u'),GC=qp('gc'),VIEW=/[?&]view=orders/.test(location.search)?'orders':'bank',EB=null,ST=null;try{EB=localStorage.getItem('ebTok');ST=localStorage.getItem('oaTok')}catch(e){}
 function $(i){return document.getElementById(i)}
-function out(){T=null;try{localStorage.removeItem('ebTok')}catch(e){}$('bank').innerHTML='';$('login').classList.remove('hid')}
-function api(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+T;
-  return fetch(API+p,o).then(function(r){if(r.status===401){out();throw new Error('auth')}return r.json()})}
-function start(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{view:/[?&]view=orders/.test(location.search)?'orders':'bank',api:api,file:function(id){return API+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}
-$('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
-  fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){
+function req(tok,p,o,onAuth){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+tok;
+  return fetch(API+p,o).then(function(r){if(r.status===401){onAuth();throw new Error('auth')}if(r.status===403&&/^\/bank\/summary/.test(p)){$('bank').innerHTML='<div class="lg" style="margin:20px auto"><h2>Нет доступа</h2><p>Это не&nbsp;твой ученик&nbsp;— куратор видит банк только своих учеников.</p></div>';throw new Error('403')}return r.json()})}
+function login(kind){$('bank').innerHTML='';$('login').classList.remove('hid');var staffOnly=kind==='staff';
+  $('lgH').textContent=staffOnly?'Вход для команды школы':'Вход через Telegram';$('lgP').innerHTML=staffOnly?'Банк ученика видят админы и&nbsp;кураторы (свои ученики). Подтверди вход в&nbsp;боте школы&nbsp;— один раз на&nbsp;30&nbsp;дней, общий с&nbsp;пультом.':'Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.';
+  $('bLogin').textContent=staffOnly?'Войти через Telegram':'Войти через Telegram';$('bLogin').onclick=function(){go(staffOnly?'staff':'student',this)};$('bStaff').classList.toggle('hid',staffOnly);$('bStaff').onclick=function(){go('staff',this)}}
+function go(kind,b){b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
+  fetch(API+'/app/api/login/start'+(kind==='student'?'?kind=student':''),{method:'POST'}).then(function(r){return r.json()}).then(function(j){
     var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').innerHTML='Нажми «Старт» в&nbsp;боте. Жду подтверждения…';var n=0;
     var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}
-      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);T=c.token;try{localStorage.setItem('ebTok',T)}catch(e){}b.disabled=false;$('lgSt').textContent='';start()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent=c.err==='nolink'?'Этот Telegram не привязан к ученику. Привяжи его в боте и попробуй снова':'Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})};
-if(T)start();else $('login').classList.remove('hid');
+      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';$('login').classList.add('hid');
+        if(kind==='student'){EB=c.token;try{localStorage.setItem('ebTok',EB)}catch(e){}own()}else{ST=c.token;try{localStorage.setItem('oaTok',ST)}catch(e){}team()}}
+        else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})}
+function own(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{view:VIEW,api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}if(ST&&GC&&!TU)team();else login('student')})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
+function team(){$('login').classList.add('hid');var target=TU||(GC&&!STAFF[GC]?GC:0);
+  ECOBANK.staff($('bank'),{uid:target,api:function(p,o){return req(ST,p,o,function(){ST=null;try{localStorage.removeItem('oaTok')}catch(e){}login('staff')})},file:function(id){return API+'/bank/file?id='+id+'&t='+ST},open:function(u){window.open(u,'_blank')}})}
+if(TU){if(ST)team();else login('staff')}
+else if(EB)own();
+else if(ST&&GC)team();
+else login('student');
 })();
 </script></body></html>
