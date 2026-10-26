@@ -54,6 +54,7 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS cur_tg (cid TEXT PRIMARY KEY, tg_id TEXT, username TEXT, name TEXT, conn TEXT, enabled INTEGER DEFAULT 0, at TEXT)',
   'CREATE TABLE IF NOT EXISTS cwait (cid TEXT NOT NULL, chat TEXT NOT NULL, uid INTEGER, since INTEGER, reminded INTEGER DEFAULT 0, PRIMARY KEY (cid, chat))',
   'CREATE TABLE IF NOT EXISTS cresp (id INTEGER PRIMARY KEY AUTOINCREMENT, cid TEXT, chat TEXT, uid INTEGER, asked INTEGER, answered INTEGER, sec INTEGER, wsec INTEGER, day TEXT)',
+  'CREATE TABLE IF NOT EXISTS cack (id INTEGER PRIMARY KEY AUTOINCREMENT, cid TEXT, chat TEXT, uid INTEGER, kind TEXT, since INTEGER, at INTEGER)',
   'CREATE INDEX IF NOT EXISTS cresp_cid ON cresp (cid, answered)',
   /* v42: кому GetCourse выдал ключ (issued) и кто уже вошёл с ним (seen) */
   'CREATE TABLE IF NOT EXISTS authuid (uid INTEGER PRIMARY KEY, issued TEXT, seen TEXT)',
@@ -93,7 +94,12 @@ const ratingKey = async env => env.RATING_KEY || (await sha('rating:' + env.ADMI
 const TTL = { a: 3 * 86400, v: 86400 };
 async function mkToken(env, scope, uid) { const exp = (Math.floor(Date.now() / 1000) + TTL[scope]).toString(36); return uid + '.' + exp + '.' + scope + '.' + (await hmacHex(env, 't|' + scope + '|' + uid + '|' + exp)).slice(0, 32) }
 /* uid из токена или 0; scopes — допустимые области: 'a' — запись, 'v' — чтение */
-async function authUid(env, tok, scopes = 'a') { const m = String(tok || '').match(/^(\d{1,11})\.([0-9a-z]{1,8})\.([av])\.([0-9a-f]{32})$/); if (!m || !scopes.includes(m[3])) return 0;
+/* «Смотреть как ученик»: токен просмотра <uid>.<exp36>.w.<staffUid>.<hmac>, 1 час, только чтение (принимается там, где допустим токен чтения 'v') */
+async function mkView(env, uid, staff) { const exp = (Math.floor(Date.now() / 1000) + 3600).toString(36); return uid + '.' + exp + '.w.' + staff + '.' + (await hmacHex(env, 't|w|' + uid + '|' + exp + '|' + staff)).slice(0, 32) }
+async function viewTok(env, tok) { const m = String(tok || '').match(/^(\d{1,11})\.([0-9a-z]{1,8})\.w\.(\d{1,11})\.([0-9a-f]{32})$/); if (!m || parseInt(m[2], 36) * 1000 < Date.now()) return null;
+  return same(m[4], (await hmacHex(env, 't|w|' + m[1] + '|' + m[2] + '|' + m[3])).slice(0, 32)) ? { uid: +m[1], staff: +m[3] } : null }
+async function authUid(env, tok, scopes = 'a') { if (/\.w\./.test(String(tok || ''))) { if (!String(scopes).includes('v')) return 0; const w = await viewTok(env, tok); return w ? w.uid : 0 }
+  const m = String(tok || '').match(/^(\d{1,11})\.([0-9a-z]{1,8})\.([av])\.([0-9a-f]{32})$/); if (!m || !scopes.includes(m[3])) return 0;
   if (parseInt(m[2], 36) * 1000 < Date.now()) return 0;
   return same(m[4], (await hmacHex(env, 't|' + m[3] + '|' + m[1] + '|' + m[2])).slice(0, 32)) ? +m[1] : 0 }
 /* запрос ученика: {uid, tok}. tok=false — токена не было, tok=true — был и верный; токен был, но неверный → uid=0, bad=true */
@@ -381,26 +387,40 @@ async function bizConnection(env, bc) {
   await logIt(env, on ? 'biz-on' : 'biz-off', 0, row.cid + ' @' + uname);
   for (const a of await admins(env)) await tgSend(env, a, (on ? '✅ ' : '⛔️ ') + th(c ? c.full : row.cid) + (on ? ' подключил бота к своему Telegram — время ответов теперь считается.' : ' отключил бота от своего Telegram.'));
   return tgSend(env, owner, on ? '✅ <b>Готово!</b> Ученики пишут тебе в личку, а я только отмечаю время: когда пришёл вопрос и когда ты ответил. Тексты переписки не сохраняются.\n\nЕсли ученик ждёт ответа 2 часа в твоё рабочее время — напомню.' : 'Бот отключён от твоего Telegram — время ответов больше не считается.') }
-async function bizMessage(env, m) {
-  { const cc = await kvGet(env, 'care:conf'); if (cc && cc.conn && m.business_connection_id === cc.conn) return careMessage(env, m) }
+/* «спасибо», «ок», эмодзи, стикер, «+» — ответа не требует (текст не храним, решаем на лету) */
+function isAck(m) { if (m.sticker) return true; if (m.photo || m.document || m.voice || m.video || m.video_note || m.audio) return false;
+  const t = String(m.text || m.caption || '').trim(); if (!t) return false; if (/\?/.test(t)) return false;
+  if (/(^|\s)(как|когда|почему|зачем|можно|помоги|подскаж|где|сколько|что|какой|какая|какие|нужно|надо)(\s|$)/i.test(t)) return false;
+  const w = t.split(/\s+/).filter(Boolean); if (w.length > 3) return false;
+  const x = t.toLowerCase().replace(/[!.,)(]+/g, ' ').trim();
+  return /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s+👍🙏❤️🔥]+$/u.test(t) || /^(спасибо|спс|благодарю|пасиб[оа]?|ок|окей|ok|окей|понял|поняла|понятно|ясно|хорошо|хор|отлично|супер|класс|круто|принял|приняла|ага|угу|да|ладно|договорились|\+|\+\+)( (большое|огромное|вам|тебе|понял|поняла|ок|понятно|спасибо))*$/.test(x) }
+async function bizMessage(env, m, edited) {
+  { const cc = await kvGet(env, 'care:conf'); if (cc && cc.conn && m.business_connection_id === cc.conn) return careMessage(env, m, edited) }
   const row = await env.DB.prepare('SELECT * FROM cur_tg WHERE conn=? AND enabled=1').bind(m.business_connection_id).first(); if (!row || !m.chat || m.chat.type !== 'private') return;
   const chat = String(m.chat.id); if (chat === row.tg_id || m.sender_business_bot) return;
+  const out = m.from && String(m.from.id) === row.tg_id, t = edited ? (m.edit_date || m.date) | 0 : m.date | 0;
+  if (edited && !out) return; /* правка сообщения ученика — не новый вопрос */
   const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(); if (!st) return; /* не ученик — ничего не храним */
+  if (!out && (await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first() || await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE tg_id=?').bind(chat).first())) return; /* админ или куратор пишет как ученик — не ждём */
   if (m.chat.username) await env.DB.prepare('INSERT OR REPLACE INTO tg_user (chat, username, name, at) VALUES (?,?,?,?)').bind(chat, m.chat.username, [m.chat.first_name, m.chat.last_name].filter(Boolean).join(' ') || null, new Date().toISOString()).run();
-  const out = m.from && String(m.from.id) === row.tg_id, t = m.date | 0;
-  if (!out) { await env.DB.prepare('INSERT OR IGNORE INTO cwait (cid, chat, uid, since) VALUES (?,?,?,?)').bind(row.cid, chat, st.uid, t).run(); return }
+  if (!out) { const w0 = await env.DB.prepare('SELECT since FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat).first();
+    if (!w0 && isAck(m)) { await logIt(env, 'cw-ack', st.uid, row.cid); return }
+    if (!w0) { await env.DB.prepare('INSERT OR IGNORE INTO cwait (cid, chat, uid, since) VALUES (?,?,?,?)').bind(row.cid, chat, st.uid, t).run(); await logIt(env, 'cw-new', st.uid, row.cid + ' ' + t) } return }
   const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat).first(); if (!w) return;
   const ws = workSec(w.since, t, await curHours(env, row.cid));
   await env.DB.batch([env.DB.prepare('INSERT INTO cresp (cid, chat, uid, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?,?,?)').bind(row.cid, chat, st.uid, w.since, t, t - w.since, ws, dayStr(new Date(t * 1000))),
-    env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat)]) }
+    env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(row.cid, chat)]); await logIt(env, 'cw-ans', st.uid, row.cid + ' ' + (t - w.since) + 's' + (edited ? ' edit' : '') + (m.voice ? ' voice' : m.sticker ? ' sticker' : m.photo ? ' photo' : m.video_note ? ' circle' : '')) }
 /* раз в час: ученик ждёт 2 рабочих часа — напомнить куратору, 4 — сигнал Роману */
 async function curRemind(env, B) { const now = Date.now() / 1000 | 0, out = [];
+  await env.DB.batch([env.DB.prepare('DELETE FROM cwait WHERE since < ?').bind(now - 3 * 86400), env.DB.prepare('DELETE FROM cwait WHERE chat IN (SELECT chat FROM tg_admin) OR chat IN (SELECT tg_id FROM cur_tg)')]);
   const ws = (await env.DB.prepare('SELECT w.*, c.tg_id, s.name sname, u.username FROM cwait w JOIN cur_tg c ON c.cid=w.cid LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.reminded < 2').all()).results || [];
   for (const w of ws) { if (B && !B.ok(3)) { out.push('budget'); break } const h = await curHours(env, w.cid), hr = msk().getUTCHours(); if (hr < h[0] || hr >= h[1]) continue;
-    const sec = workSec(w.since, now, h), who = th(w.sname || 'Ученик'), btn = w.username ? [[{ text: 'Открыть чат', url: 'https://t.me/' + w.username }]] : null, c = CURATORS.find(x => x.id === w.cid);
-    if (sec >= 14400 && w.reminded < 2) { for (const a of await admins(env)) await tgSend(env, a, '🔴 ' + who + ' ждёт ответа куратора ' + th(c ? c.full : w.cid) + ' уже ' + hrs(sec) + ' рабочего времени.', btn);
+    const ans = await env.DB.prepare('SELECT id FROM cresp WHERE cid=? AND chat=? AND answered >= ?').bind(w.cid, w.chat, w.since).first(); if (ans) { await env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); continue }
+    const sec = workSec(w.since, now, h), who = th(w.sname || 'Ученик'), c = CURATORS.find(x => x.id === w.cid), since = msk(new Date(w.since * 1000)), sinceT = ('0' + since.getUTCHours()).slice(-2) + ':' + ('0' + since.getUTCMinutes()).slice(-2) + (dayStr(new Date(w.since * 1000)) !== dayStr() ? ' (' + since.getUTCDate() + '.' + ('0' + (since.getUTCMonth() + 1)).slice(-2) + ')' : '');
+    const btn = (w.username ? [[{ text: 'Открыть чат', url: 'https://t.me/' + w.username }]] : []).concat([[{ text: '✅ Уже ответил', callback_data: 'cwd:' + w.cid + ':' + w.chat }, { text: 'Ответ не нужен', callback_data: 'cwn:' + w.cid + ':' + w.chat }]]);
+    if (sec >= 14400 && w.reminded < 2) { for (const a of await admins(env)) await tgSend(env, a, '🔴 ' + who + ' ждёт ответа куратора ' + th(c ? c.full : w.cid) + ' с ' + sinceT + ' МСК — уже ' + hrs(sec) + ' рабочего времени.', w.username ? [[{ text: 'Открыть чат', url: 'https://t.me/' + w.username }]] : null);
       await env.DB.prepare('UPDATE cwait SET reminded=2 WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); out.push([w.cid, 2]); if (B) B.use(2); continue }
-    if (sec >= 7200 && w.reminded < 1) { await tgSend(env, w.tg_id, '⏰ ' + who + ' ждёт твоего ответа ' + hrs(sec) + '. Цель — ответить за 1–2 часа.', btn);
+    if (sec >= 7200 && w.reminded < 1) { await tgSend(env, w.tg_id, '⏰ ' + who + ' ждёт твоего ответа с ' + sinceT + ' МСК (' + hrs(sec) + ' рабочего времени). Цель — ответить за 1–2 часа.\nЕсли уже ответил или ответ не нужен — нажми кнопку ниже.', btn);
       await env.DB.prepare('UPDATE cwait SET reminded=1 WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); out.push([w.cid, 1]); if (B) B.use(1) } }
   return out }
 async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days * 86400, now = Date.now() / 1000 | 0, res = [];
@@ -429,8 +449,15 @@ const FQT = { 1: 'каждый день', 2: 'раз в 2 дня', 3: 'раз в
 async function tgUpdate(env, up) {
   if (up.business_connection) return bizConnection(env, up.business_connection);
   if (up.business_message) return bizMessage(env, up.business_message);
-  if (up.edited_business_message) return careMessage(env, up.edited_business_message, true);
+  if (up.edited_business_message) return bizMessage(env, up.edited_business_message, true);
   if (up.deleted_business_messages) return careDeleted(env, up.deleted_business_messages);
+  if (up.callback_query && /^cw[dn]:/.test(up.callback_query.data || '')) { const q = up.callback_query, [k, cid, wchat] = q.data.split(':');
+    const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(cid).first(); if (!ct || String(q.from.id) !== String(ct.tg_id)) return tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Это напоминание другого куратора' });
+    const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(cid, wchat).first();
+    if (w) await env.DB.batch([env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(cid, wchat), env.DB.prepare('INSERT INTO cack (cid, chat, uid, kind, since, at) VALUES (?,?,?,?,?,?)').bind(cid, wchat, w.uid, k === 'cwd' ? 'answered' : 'noneed', w.since, Date.now() / 1000 | 0)]);
+    await logIt(env, 'cw-' + (k === 'cwd' ? 'manual' : 'noneed'), w ? w.uid : 0, cid);
+    try { await tg(env, 'editMessageReplyMarkup', { chat_id: q.message.chat.id, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }) } catch (e) {}
+    return tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: k === 'cwd' ? 'Отметил: ответ дан. Спасибо!' : 'Отметил: ответ не нужен' }) }
   if (up.callback_query) { const q = up.callback_query, chat = String(q.message && q.message.chat.id);
     if (q.data === 'off') { const p = await env.DB.prepare('SELECT uid, student FROM parent WHERE tg_chat=? AND active=1').bind(chat).first();
       if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'tg-off', p.uid, '') }
@@ -845,7 +872,6 @@ const AI_PRICE = { in: 0.10, out: 0.50, rub: 85 }; /* $ за 1 млн токен
 const RANKS = [[0, 'Новичок'], [150, 'Джуниор'], [500, 'Фрилансер'], [1000, 'Арт-директор'], [1700, 'Владелец студии'], [2500, 'Дизайнер-миллионер']];
 const AI_PAGES = [
   ['Мои покупки — доступы, сроки, тариф, бонусный счёт', SITE + '/sales/control/userProduct/my'],
-  ['Профиль — Telegram, выбор куратора, отчёт родителю', SITE + '/user/my/profile'],
   ['Все тренинги', SITE + '/teach/control/stream'],
   ['Курс «AI-креатор 2.0» — модули и уроки, своё место в рейтинге', SITE + '/teach/control/stream/view/id/935917158'],
   ['Рейтинг потока — места, баллы, звания', SITE + '/teach/control/stream/view/id/935952152'],
@@ -854,27 +880,42 @@ const AI_PAGES = [
   ['Забота о студентах (оплата, доступы, технические проблемы)', CARE]
 ];
 function aiSystem() {
-  return `Ты — Нейро-Одуванов, ИИ-версия Романа Одуванова, основателя онлайн-школы OduvanovSchool (AI-дизайн карточек для маркетплейсов, поток «AI-креатор 2.0»). Ты помогаешь ученику: находишь страницы кабинета, отвечаешь про баллы, рейтинг, расписание, разбираешь его работы.
+  return `Ты — Нейро-Одуванов, ИИ-версия Романа Одуванова, основателя онлайн-школы OduvanovSchool (AI-дизайн карточек для маркетплейсов, поток «AI-креатор 2.0»). Ты помогаешь ученику: учёба, курс, баллы и рейтинг, расписание, нейросети для карточек, поиск клиентов и цены, банк и заказы, разбор работ.
 
-Как отвечать:
-- По-русски, на «ты», тепло и по делу, коротко: 1–4 предложения или короткий список. Без эмодзи-гирлянд (максимум одно).
-- Ссылку на страницу давай полным адресом отдельной строкой. Жирный — через **текст**. Никаких заголовков и таблиц.
-- Данные ученика (место, баллы, уроки, ДЗ, время на учёбе, куратор) — в блоке «Ученик сейчас» ниже, они свежие. Расписание и модули — из course_plan. Не выдумывай цифры, даты и ссылки. Чего нет в данных — так и скажи одной фразой и подскажи, где посмотреть.
-- Не обсуждай свои прошлые ответы и то, как ты получаешь данные (никаких «я проверил», «поправка», «инструмент»). Если раньше ошибся — просто дай верную цифру.
-- Время на учёбе: «на сайте» — активное время в открытой вкладке кабинета, «видео» — время просмотра уроков. Показывай в часах и минутах.
-- Вопросы про оплату, возврат, продление, технические сбои → «Забота о студентах». Засчитать ДЗ, проверить работу по-настоящему, спорные баллы → куратор: вызови call_curator.
+Тон: по-русски, на «ты», как живой куратор школы: тепло, по делу, без пафоса и восклицательных знаков в каждой строке. Абзацы по 1–3 предложения, списки — где помогают. Максимум одно эмодзи. Жирный — через **текст**, без заголовков и таблиц.
 
-Страницы кабинета:
+Как строить ответ на вопрос по теме (поиск клиентов, портфолио, цены, нейросети, дизайн, учёба):
+1. Чёткий ответ по регламенту: где это в курсе, когда откроется, куда нажать, к кому обратиться. Факты о модулях, датах, баллах и правилах — только из данных ниже и из course_plan. Не выдумывай.
+2. 2–4 коротких практических совета, которые можно применить уже сейчас. Для закрытого модуля — общие советы, не пересказ его материалов. Без воды и обещаний результата.
+3. 1–3 вопроса ученику, чтобы дать совет точнее (ниша, опыт, что уже пробовал, что мешает), и одна тёплая человеческая фраза поддержки.
+Весь ответ — примерно 80–180 слов.
+
+Простые вопросы («когда урок», «где баллы», «сколько в банке», «сколько заказов в работе», «когда кончится доступ») — только короткий точный ответ, без советов и вопросов.
+Когда ученик отвечает на твои вопросы — учитывай его ответы и советуй под его ситуацию, не повторяй общий шаблон.
+
+Быстрые ответы: если ты задал ученику вопрос, в самой последней строке дай 2–3 коротких варианта ответа (до 4 слов каждый) в формате: [[Вариант 1 | Вариант 2 | Вариант 3]]. Если вопросов не задавал — этой строки нет.
+
+Данные:
+- Блок «Ученик сейчас» ниже — место, баллы, уроки, ДЗ, время на учёбе, куратор; данные свежие.
+- Расписание и модули — инструмент course_plan. Банк ученика (доход, оплаты, заказы, дедлайны) — инструмент my_bank; отвечай цифрами коротко и добавь, что всё видно во вкладке «Банк».
+- Чего нет в данных — так и скажи одной фразой и подскажи, где посмотреть.
+- Не обсуждай свои прошлые ответы и то, как получаешь данные (никаких «я проверил», «инструмент»). Если раньше ошибся — просто дай верную цифру.
+- Время на учёбе: «на сайте» — активное время во вкладке кабинета, «видео» — просмотр уроков. Показывай в часах и минутах.
+- Оплата, возврат, продление, технические сбои → «Забота о студентах». Засчитать ДЗ, проверить работу по-настоящему, спорные баллы → куратор: вызови call_curator.
+
+Страницы (ссылку давай полным адресом отдельной строкой, она откроется внутри приложения):
 ${AI_PAGES.map(p => '- ' + p[0] + ': ' + p[1]).join('\n')}
+- Банк, заказы, профиль, мой куратор, мои покупки — вкладки «Банк» и «Ещё» в приложении (ссылку не давай).
 
 Баллы рейтинга: урок 10, анкета после модуля 15, ДЗ 20 / 40 / 70 (лёгкий / средний / сложный уровень). x2: уроки и анкеты — 48 ч от открытия модуля, ДЗ — 72 ч. Звания: Новичок 0 · Джуниор 150 · Фрилансер 500 · Арт-директор 1000 · Владелец студии 1700 · Дизайнер-миллионер 2500 и 80% заданий в срок. 1 балл = 1 ₽ бонусного счёта (виден в «Мои покупки»).
 
 Разбор работы (когда прислали картинку):
-1. Если непонятно, что это и для чего (маркетплейс, товар, главный слайд или инфографика, что хотел показать), сначала задай 1–2 коротких уточняющих вопроса с вариантами ответа и не разбирай.
-2. Иначе: оценка X/10 одной строкой; «Сильное» — 2–3 пункта; «Что улучшить» — 3–4 пункта, каждый: что не так → как сделать. Смотри на: читаемость заголовка с телефона (миниатюра), иерархию, один главный посыл, контраст, качество и единый стиль ИИ-генерации, свет и тени товара, выравнивание и поля, количество текста, соответствие требованиям площадки.
+1. Если непонятно, что это и для чего (маркетплейс, товар, главный слайд или инфографика), сначала задай 1–2 коротких уточняющих вопроса с вариантами ответа и не разбирай.
+2. Иначе: оценка X/10 одной строкой; «Сильное» — 2–3 пункта; «Что улучшить» — 3–4 пункта, каждый: что не так → как сделать. Смотри на: читаемость заголовка с телефона (миниатюра), иерархию, один главный посыл, контраст, качество и единый стиль ИИ-генерации, свет и тени товара, выравнивание и поля, количество текста, требования площадки.
 3. На позитиве, без воды. В конце одна фраза: что сделать первым.`;
 }
 const AI_TOOLS = [
+  { name: 'my_bank', description: 'Банк ученика: доход по валютам и ≈ в рублях, оплаты за месяц, заказы по статусам, ближайшие дедлайны. Без контактов клиентов. Только для самого ученика.', input_schema: { type: 'object', properties: {} } },
   { name: 'course_plan', description: 'Модули курса, даты открытия, ближайшие эфиры и открытия (расписание потока).', input_schema: { type: 'object', properties: {} } },
   { name: 'call_curator', description: 'Позвать живого куратора, когда вопрос может решить только человек. Возвращает, как с ним связаться.', input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'Коротко суть вопроса для куратора' } }, required: ['summary'] } }
 ];
@@ -903,6 +944,13 @@ async function aiTool(env, name, input, uid, ctx) {
     const pts = r.pts | 0; let rank = RANKS[0][1], next = null; for (const [p, t] of RANKS) { if (pts >= p) rank = t; else { next = { title: t, need: p - pts }; break } }
     return { name: r.name, place: r.place, of: D.n, points: pts, rank, next_rank: next, lessons_done: r.lessons, lessons_total: D.total_lessons, homework_done: r.hw, curator: c ? { name: c.full, telegram: await curTg(env, c.id) } : 'не выбран (выбрать в профиле)' };
   }
+  if (name === 'my_bank') { if (!uid) return { error: 'ученик не определён' }; await bankEnsure(env);
+    const [t, o] = await env.DB.batch([env.DB.prepare('SELECT amount, cur, rub, day FROM bank_tx WHERE uid=?').bind(uid), env.DB.prepare('SELECT product, price, cur, deadline, status FROM bank_order WHERE uid=?').bind(uid)]);
+    const T = t.results || [], O = o.results || [], by = {}, mk = dayStr().slice(0, 7); let rub = 0, mrub = 0;
+    for (const x of T) { const c = x.cur || 'RUB'; by[c] = (by[c] || 0) + x.amount; const rr = x.rub != null ? x.rub : x.amount; rub += rr; if (x.day.slice(0, 7) === mk) mrub += rr }
+    const st = { new: 0, work: 0, review: 0, done: 0, cancel: 0 }; for (const x of O) st[x.status || 'new'] = (st[x.status || 'new'] || 0) + 1;
+    const dl = O.filter(x => x.deadline && x.status !== 'done' && x.status !== 'cancel').sort((a, b) => a.deadline < b.deadline ? -1 : 1).slice(0, 3).map(x => ({ что: x.product || 'заказ', дедлайн: x.deadline.replace('T', ' '), цена: x.price + ' ' + (x.cur || 'RUB') }));
+    return { доход_всего_в_рублях: rub, доход_по_валютам: by, доход_в_этом_месяце_руб: mrub, оплат: T.length, заказов_всего: O.length, заказы: { новые: st.new, в_работе: st.work, на_проверке: st.review, готово: st.done, отменены: st.cancel }, ближайшие_дедлайны: dl, где_смотреть: 'вкладка «Банк» в приложении' } }
   if (name === 'course_plan') { const D = ctx.D || (ctx.D = await loadData(env)); const now = Date.now(); return JSON.stringify({ today: dayStr(), x2: D.x2 || null, modules: (D.modules || []).map(m => ({ name: m.name, about: m.desc, opens: m.at, open: m.at ? Date.parse(m.at) <= now : false, link: SITE + '/teach/control/stream/view/id/' + m.id, lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0) })) }).slice(0, 7000) }
   if (name === 'call_curator') {
     const s = uid && await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first(); const c = s && CURATORS.find(x => x.id === s.curator);
@@ -911,15 +959,72 @@ async function aiTool(env, name, input, uid, ctx) {
   }
   return { error: 'нет такого инструмента' };
 }
+/* запрос к Anthropic с повтором: 429/5xx/529 и обрыв связи — ещё 2 попытки с паузой; при 403 (регион) — один повтор через AI_PROXY_URL, если задан */
+async function aiFetch(env, body, url) { let r = null, j = null, net = '';
+  for (let i = 0; i < 3; i++) { try { r = await fetch(url || env.AI_URL || 'https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body }); j = await r.json().catch(() => ({})) }
+    catch (e) { r = null; net = String(e && e.message || e).slice(0, 80) }
+    if (r && r.ok) return { r, j };
+    if (r && r.status === 403 && env.AI_PROXY_URL && !url) return aiFetch(env, body, env.AI_PROXY_URL);
+    if (r && ![429, 500, 502, 503, 504, 529].includes(r.status)) break;
+    if (i < 2) await new Promise(z => setTimeout(z, 1200 + i * 1300)) }
+  return { r, j, net } }
+/* ошибка нейросети: в лог с дата-центром и страной; больше 3 за 10 минут — одно сообщение Роману (не чаще раза в 30 минут) */
+async function aiErr(env, uid, code, cf) { const where = cf ? (cf.colo || '?') + '/' + (cf.country || '?') : '?';
+  await logIt(env, 'ai-err', uid, code.slice(0, 260) + ' · ' + where);
+  const k = 'aierr', st = (await kvGet(env, k)) || { ts: [], alert: 0 }, now = Date.now(); st.ts = st.ts.filter(t => now - t < 600e3).concat([now]).slice(-20);
+  if (st.ts.length > 3 && now - (st.alert || 0) > 1800e3) { st.alert = now; for (const a of await admins(env)) await tgSend(env, a, '🔴 <b>Нейро не отвечает:</b> ' + st.ts.length + ' ошибок за 10 мин.\nПричина: ' + th(code.slice(0, 160)) + '\nДата-центр: ' + th(where)) }
+  await kvPut(env, k, st) }
+/* быстрые ответы: последняя строка [[a | b | c]] → кнопки */
+function aiQuick(t) { const m = String(t || '').match(/\n?\s*\[\[([^\]]{2,200})\]\]\s*$/); if (!m) return { text: t, quick: [] };
+  return { text: t.slice(0, m.index).trim(), quick: m[1].split('|').map(x => x.trim()).filter(Boolean).slice(0, 3) } }
+const isStaffUid = (env, uid) => String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || CURATORS.some(c => c.uid === +uid);
+/* ---------- Нейро: защита от спама и сообщений не по делу (сервер) ----------
+   Правила без нейросети: бессмыслица, мат/оскорбления, повтор, флуд (> MOD_FLOOD за минуту). Неясно — дешёвая проверка моделью «да/нет».
+   Лестница: каждые MOD_WARN нарушений — ограничение MOD_STEPS (мин): 30 → 60 → 180 → 720 → 1440; после последнего ещё MOD_WARN — полная блокировка.
+   7 дней (MOD_RESET_DAYS) только по делу — ступень вниз. Команда школы не ограничивается. Ошибки нейросети нарушением не считаются. */
+const MOD_CFG = env => ({ warn: +(env.MOD_WARN || 3), steps: String(env.MOD_STEPS || '30,60,180,720,1440').split(',').map(Number), reset: +(env.MOD_RESET_DAYS || 7), flood: +(env.MOD_FLOOD || 5) });
+const MOD_BAD = /(^|[^а-яё])(ху[йеёияю]|пизд|п[ие]зд|[её]б[аеиоу]|[её]бл|еба[тн]|бля|сук[аи]|муда[кч]|долбо[её]б|пид[оа]р|залуп|гандон|шлюх|дебил|идиот|урод|чмо|fuck|shit|bitch|dick)/i;
+const MOD_OK = /^(привет|здравствуй|здрасте|добр(ый|ое|ого)|хай|hi|hello|спасибо|спс|благодарю|пасиб|ок|окей|ok|понял|поняла|ясно|хорошо|супер|класс|отлично|ага|да|нет|угу|понятно|круто|ладно|давай|подробнее|а ещё|а еще|ещё|еще|продолжи)[\s!.,)?]*$/i;
+const MOD_TOPIC = /(курс|урок|модул|балл|рейтинг|звани|дз|домашк|задани|анкет|эфир|расписан|доступ|тариф|оплат|куратор|школ|одуванов|рома|роман|нейро|нейросет|ии|ai|midjourney|миджорн|промпт|генерац|картин|фото|карточ|слайд|инфограф|дизайн|макет|шрифт|цвет|фон|figma|фигм|фотошоп|wb|вб|wildberries|озон|ozon|маркетплейс|селлер|клиент|заказ|портфолио|цен[аыу]|прайс|деньг|доход|заработ|банк|оплат|фриланс|kwork|авито|резюме|работ|как|что|где|когда|почему|зачем|можно|помоги|подскаж|сколько|\?)/i;
+async function modState(env, uid) { return Object.assign({ n: 0, step: 0, until: 0, banned: false, hist: [], lastV: 0, lastOk: 0, q: [], last: '' }, (await kvGet(env, 'mod:' + uid)) || {}) }
+function modGib(t) { const x = t.toLowerCase().replace(/[^a-zа-яё]/g, ''); if (x.length < 5) return false; if (!/[аеёиоуыэюяaeiouy]/.test(x)) return true; if (/(.)\1{4,}/.test(x)) return true;
+  const v = (x.match(/[аеёиоуыэюяaeiouy]/g) || []).length / x.length; return v < 0.12 || /^(йцукен|фыва|ячсм|qwert|asdf|zxcv)/.test(x) }
+async function modAsk(env, t) { if (!env.ANTHROPIC_API_KEY) return true;
+  const { r, j } = await aiFetch(env, JSON.stringify({ model: env.MOD_MODEL || AI_MODEL(env), max_tokens: 3, system: 'Ты фильтр чата учеников онлайн-школы AI-дизайна карточек для маркетплейсов. По делу: учёба, курс, нейросети, дизайн, клиенты, заказы, деньги и банк ученика, баллы, задания, школа, а также приветствия, благодарности и уточнения. Не по делу: посторонние темы, бессмыслица, оскорбления, провокации. Ответь одним словом: да — если по делу, нет — если не по делу.', messages: [{ role: 'user', content: t.slice(0, 500) }] }));
+  if (!r || !r.ok) return true; const a = ((j.content || []).find(b => b.type === 'text') || {}).text || ''; return !/^\s*нет/i.test(a) }
+async function modCheck(env, uid, text, img) { const C = MOD_CFG(env), now = Date.now(), S = await modState(env, uid), k = 'mod:' + uid;
+  if (S.banned) return { block: { err: 'banned', text: 'Доступ к Нейро закрыт. Если это ошибка — напиши в Заботу о студентах.' } };
+  if (S.until > now) return { block: { err: 'pause', until: S.until, left: Math.max(0, C.steps.length - S.step), text: 'Нейро на паузе — слишком много сообщений не по делу.' } };
+  if (S.step > 0 && S.lastV && now - S.lastV > C.reset * 864e5 && S.lastOk > S.lastV) { S.step--; S.n = S.step * C.warn; S.lastV = now }
+  S.q = (S.q || []).filter(t => now - t < 60e3).concat([now]);
+  const norm = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim(); let why = null;
+  if (S.q.length > C.flood) why = 'флуд: больше ' + C.flood + ' сообщений в минуту';
+  else if (!img && norm && norm === S.last && now - (S.lastAt || 0) < 600e3) why = 'повтор того же сообщения';
+  else if (!img && MOD_BAD.test(norm)) why = 'мат или оскорбление';
+  else if (!img && modGib(norm)) why = 'бессмыслица';
+  else if (!img && norm && !MOD_OK.test(norm) && !MOD_TOPIC.test(norm) && norm.length < 400) { const ok = await modAsk(env, norm); if (!ok) why = 'не по теме учёбы' }
+  S.last = norm; S.lastAt = now;
+  if (!why) { await kvPut(env, k, S); return { ok: true } }
+  S.n++; S.lastV = now; S.hist = [{ at: now, text: String(text || '').slice(0, 200), why }].concat(S.hist || []).slice(0, 15);
+  const idx = (await kvGet(env, 'modidx')) || []; if (!idx.includes(uid)) { idx.push(uid); await kvPut(env, 'modidx', idx.slice(-2000)) }
+  const day = 'modstat:' + dayStr(), ms = (await kvGet(env, day)) || { n: 0 }; ms.n++; await kvPut(env, day, ms);
+  let reply, mod;
+  if (S.step >= C.steps.length) { if (S.n >= (C.steps.length + 1) * C.warn) { S.banned = true; await kvPut(env, k, S); return { block: { err: 'banned', text: 'Доступ к Нейро закрыт. Если это ошибка — напиши в Заботу о студентах.' } } }
+    const rest = (C.steps.length + 1) * C.warn - S.n; reply = 'Нейро помогает только с учёбой. Ещё ' + rest + ' ' + (rest === 1 ? 'сообщение' : 'сообщения') + ' не по делу — и доступ к Нейро закроется совсем.'; mod = { warn: true, rest, left: 0 } }
+  else if (S.n % C.warn === 0) { S.step++; S.until = now + C.steps[S.step - 1] * 60e3; await kvPut(env, k, S);
+    return { block: { err: 'pause', until: S.until, left: Math.max(0, C.steps.length - S.step), text: 'Нейро на паузе — слишком много сообщений не по делу.' } } }
+  else { const rest = C.warn - S.n % C.warn, mins = C.steps[S.step]; reply = 'Нейро помогает только с учёбой: курс, нейросети, дизайн, клиенты, баллы. Ещё ' + rest + ' ' + (rest === 1 ? 'сообщение' : 'сообщения') + ' не по делу — и чат закроется на ' + (mins >= 60 ? (mins / 60) + ' ч' : mins + ' минут') + '.'; mod = { warn: true, rest, left: C.steps.length - S.step } }
+  await kvPut(env, k, S); return { reply, mod } }
+async function modOk(env, uid) { const S = await kvGet(env, 'mod:' + uid); if (S) { S.lastOk = Date.now(); await kvPut(env, 'mod:' + uid, S) } }
 /* один ход диалога: history — [{role, content}], user — content текущего сообщения (строка или блоки) */
-async function aiTurn(env, { uid, history, user }) {
-  if (!env.ANTHROPIC_API_KEY) return { text: 'Не задан секрет ANTHROPIC_API_KEY в Cloudflare.', usage: { in: 0, out: 0 } };
+async function aiTurn(env, { uid, history, user, cf }) {
+  if (!env.ANTHROPIC_API_KEY) return { err: 'no-key', text: '', usage: { in: 0, out: 0, cache: 0 } };
   const msgs = [...history, { role: 'user', content: user }], ctx = {}, use = { in: 0, out: 0, cache: 0 }, t0 = Date.now(); const facts = await aiFacts(env, uid, ctx);
   for (let i = 0; i < 5; i++) {
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 1200, system: [{ type: 'text', text: aiSystem(), cache_control: { type: 'ephemeral' } }, { type: 'text', text: facts }], tools: AI_TOOLS, messages: msgs }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { await logIt(env, 'ai-err', uid, r.status + ' ' + JSON.stringify(j.error || j).slice(0, 300)); return { text: 'Ошибка нейросети: ' + r.status + ' ' + ((j.error && j.error.message) || ''), usage: use } }
+    const body = JSON.stringify({ model: AI_MODEL(env), max_tokens: 1200, system: [{ type: 'text', text: aiSystem(), cache_control: { type: 'ephemeral' } }, { type: 'text', text: facts }], tools: AI_TOOLS, messages: msgs });
+    const { r, j, net } = await aiFetch(env, body);
+    if (!r || !r.ok) { const code = r ? r.status + ' ' + ((j && j.error && (j.error.type + ': ' + j.error.message)) || '') : 'net ' + net;
+      await aiErr(env, uid, code, cf); return { err: code.slice(0, 120), text: '', usage: use } }
     const u = j.usage || {}; use.in += (u.input_tokens | 0) + (u.cache_creation_input_tokens | 0); use.cache += u.cache_read_input_tokens | 0; use.out += u.output_tokens | 0;
     const calls = (j.content || []).filter(b => b.type === 'tool_use');
     if (j.stop_reason !== 'tool_use' || !calls.length) {
@@ -963,7 +1068,9 @@ async function neuroTg(env, m, chat, text) {
   let content = cap;
   if (ph) { const img = await tgImage(env, ph); if (!img) { await tgSend(env, chat, 'Не смог скачать картинку.'); return true } content = [img, { type: 'text', text: cap || 'Разбери мою работу.' }] }
   const hist = (await kv('nh:' + chat)) || [];
-  const R = await aiTurn(env, { uid: st.uid, history: hist, user: content });
+  const R = await aiTurn(env, { uid: st.uid, history: hist, user: content, cf: m.__cf });
+  if (R.err) { await tgSend(env, chat, 'Сейчас технические неполадки у нейросети — попробуй через пару минут.\n<i>' + th(R.err) + '</i>'); return true }
+  { const Q = aiQuick(R.text); R.text = Q.text + (Q.quick.length ? '\n\nВарианты ответа: ' + Q.quick.join(' · ') : '') }
   hist.push({ role: 'user', content: (ph ? '[прислал картинку] ' : '') + cap }, { role: 'assistant', content: R.text }); await put('nh:' + chat, hist.slice(-12));
   const u = R.usage, rub = aiCost(u) * AI_PRICE.rub;
   const foot = '\n\n<i>' + th(AI_MODEL(env)) + ' · ' + (u.in + u.cache + u.out).toLocaleString('ru-RU') + ' ток.' + (u.cache ? ' (кэш ' + u.cache + ')' : '') + ' · ≈' + rub.toFixed(rub < 1 ? 3 : 2).replace('.', ',') + ' ₽' + (R.ms ? ' · ' + (R.ms / 1000).toFixed(1).replace('.', ',') + ' с' : '') + (R.tools && R.tools.length ? ' · ' + R.tools.join(', ') : '') + '</i>';
@@ -1021,6 +1128,18 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
 async function appApi(env, req, path) {
   const u = new URL(req.url);
   if (path === '/app/api/login/start' && req.method === 'POST') { await ensure(env); const n = rnd(); await kvPut(env, 'login:' + n, { at: Date.now(), kind: u.searchParams.get('kind') === 'student' ? 'student' : 'staff' }); return ajson({ ok: true, nonce: n, link: 'https://t.me/' + BOT(env) + '?start=login_' + n }) }
+  /* вход в пульт и банк без Telegram: токен кабинета (FS_AUTH на сайте, проверен сервером) или initData мини-аппа → сессия с ролью по данным сервера */
+  if ((path === '/app/api/login/fs' || path === '/app/api/login/tg') && req.method === 'POST') { await ensure(env); let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    let uid = 0, chat = null, nm = '';
+    if (path === '/app/api/login/fs') { uid = await authUid(env, String(o.t || ''), 'a'); if (!uid) return ajson({ ok: false, err: 'token' }, 401);
+      const st = await env.DB.prepare('SELECT tg_chat, name FROM student WHERE uid=?').bind(uid).first(); chat = st && st.tg_chat || null; nm = st && st.name || '' }
+    else { const tu = await tgInitCheck(env, String(o.init || '')); if (!tu || !tu.id) return ajson({ ok: false, err: 'init' }, 401); chat = String(tu.id); nm = [tu.first_name, tu.last_name].filter(Boolean).join(' ');
+      const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(); uid = st ? st.uid : 0 }
+    const adm = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || (chat && await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first());
+    const cc = CURATORS.find(c => c.uid === uid) || (chat && await (async () => { const r = await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first(); return r && CURATORS.find(c => c.id === r.cid) })());
+    const role = adm ? 'admin' : cc ? 'curator' : uid ? 'student' : null; if (!role) return ajson({ ok: false, err: 'nolink' }, 403);
+    const tok = rnd(); await kvPut(env, 'sess:' + tok, { role, cid: cc ? cc.id : null, uid: role === 'student' ? uid : null, chat, name: nm || (cc && cc.full) || '', exp: Date.now() + APP_SESS_DAYS * 864e5 });
+    await logIt(env, 'app-login-' + (path.endsWith('fs') ? 'fs' : 'tg'), uid, role); return ajson({ ok: true, token: tok, role }) }
   if (path === '/app/api/login/check') { const n = u.searchParams.get('n') || ''; if (!/^[0-9a-f]{32}$/.test(n)) return ajson({ ok: false }, 400);
     const L = await kvGet(env, 'login:' + n); if (!L) return ajson({ ok: false, err: 'expired' }); if (!L.done) return ajson({ ok: true, wait: true });
     const tok = rnd(); await kvPut(env, 'sess:' + tok, { role: L.role, cid: L.cid, uid: L.uid || null, chat: L.chat, name: L.name, exp: Date.now() + APP_SESS_DAYS * 864e5 }); await kvDel(env, 'login:' + n);
@@ -1029,6 +1148,7 @@ async function appApi(env, req, path) {
   if (path === '/app/api/logout' && req.method === 'POST') { await kvDel(env, 'sess:' + s.tok); return ajson({ ok: true }) }
   if (s.role === 'student') return path === '/app/api/me' ? ajson({ ok: true, role: 'student', uid: s.uid, name: s.name }) : ajson({ ok: false, err: 'forbidden' }, 403);
   if (path.startsWith('/app/api/care/')) return careApi(env, s, path, req, u, ajson);
+  if (path.startsWith('/app/api/neuro/')) return neuroAdmin(env, s, path, req, u, ajson);
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
@@ -1088,7 +1208,25 @@ async function maApi(env, req, path) {
   if (path === '/ma/diag' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
     await logIt(env, 'tg-diag', +o.u || 0, JSON.stringify({ k: String(o.kind || '').slice(0, 20), p: String(o.page || '').slice(0, 200), r: String(o.ref || '').slice(0, 200), hl: +o.hl || 0, ua: String(o.ua || '').slice(0, 160) }));
     return json(req, { ok: true }) }
-  const uid = await authUid(env, u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), 'av'); if (!uid) return deny(req);
+  /* «Смотреть как ученик» — выдаёт токен просмотра. Сессия команды (мини-апп/пульт): админ — любого, куратор — своих. Журнал входов. */
+  if (path === '/ma/viewas' && req.method === 'POST') { const st = await appSession(env, req); if (!st || (st.role !== 'admin' && st.role !== 'curator')) return deny(req);
+    let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const target = +o.u || 0;
+    if (o.end) { const L = (await kvGet(env, 'valog')) || []; const x = L.find(y => y.id === o.end); if (x && !x.until) { x.until = new Date().toISOString(); await kvPut(env, 'valog', L) } return json(req, { ok: true }) }
+    if (!target) return json(req, { ok: false, err: 'Укажи ученика' }, 400);
+    const sr = await env.DB.prepare('SELECT uid, name, curator FROM student WHERE uid=?').bind(target).first(), D = await loadData(env), r = (D.rows || []).find(x => +x.uid === target);
+    if (st.role === 'curator' && (!sr || sr.curator !== st.cid)) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+    if (!sr && !r) return json(req, { ok: false, err: 'Ученик не найден' }, 404);
+    const staffUid = st.role === 'admin' ? +String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/)[0] : ((CURATORS.find(c => c.id === st.cid) || {}).uid || 0);
+    const id = rnd().slice(0, 12), c = sr && sr.curator && CURATORS.find(x => x.id === sr.curator), L = (await kvGet(env, 'valog')) || [];
+    L.unshift({ id, who: st.name || st.role, role: st.role, chat: st.chat || null, target, name: (r && r.name) || (sr && sr.name) || null, at: new Date().toISOString() }); await kvPut(env, 'valog', L.slice(0, 300));
+    await logIt(env, 'viewas', target, st.role + ' ' + (st.name || ''));
+    return json(req, { ok: true, id, w: await mkView(env, target, staffUid), who: { uid: target, name: (r && r.name) || (sr && sr.name) || null, tar: (r && r.tar) || null, curName: c ? c.full : null } }, 200, { 'Cache-Control': 'no-store' }) }
+  const TK = u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), VW = /\.w\./.test(TK) ? await viewTok(env, TK) : null;
+  const uid = await authUid(env, TK, 'av'); if (!uid) return deny(req);
+  /* флаги интерфейса (баннер «иконка на экране» и подсказки): сервер — запасная копия CloudStorage Telegram */
+  if (path === '/ma/flag') { const k = 'flags:' + uid, F = (await kvGet(env, k)) || {};
+    if (req.method === 'POST' && !VW) { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const key = String(o.k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 30); if (key) { F[key] = { v: String(o.v || '').slice(0, 30), at: Date.now(), n: ((F[key] && F[key].n) || 0) + 1 }; await kvPut(env, k, F) } }
+    return json(req, { ok: true, flags: F }) }
   if (path === '/ma/home') { const D = await loadData(env), r = await rowFor(D, uid) || {}, now = Date.now();
     const s = await env.DB.prepare('SELECT * FROM student WHERE uid=?').bind(uid).first() || {}; const c = s.curator && CURATORS.find(x => x.id === s.curator);
     const today = dayStr(), t7 = await timeSum(env, uid, addDays(today, -6), today), tAll = await timeSum(env, uid, '2000-01-01', today);
@@ -1096,27 +1234,35 @@ async function maApi(env, req, path) {
     const mods = (D.modules || []).map(m => ({ id: m.id, name: m.name, desc: m.desc, at: m.at, open: m.at ? Date.parse(m.at) <= now : false, amazon: !!m.amazon,
       lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0), first: ((m.parts || []).find(p => (p.lessons || []).length) || { lessons: [{}] }).lessons[0].id || null }));
     let cur = null; if (c) { const h = await curHours(env, c.id), hr = msk().getUTCHours(); cur = Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h, online: hr >= h[0] && hr < h[1] }) }
-    return json(req, { ok: true, me: { uid, name: r.name || s.name || '', tar: r.tar || null, acc: r.acc || null, place: r.place || null, n: D.n, pts, week: r.week | 0, lessons: r.lessons | 0, total: D.total_lessons, hw: r.hw | 0, ontime: r.ontime == null ? null : r.ontime, rank: rk.rank, rankFrom: rk.from, next: rk.next, t7: t7.site + t7.video, tAll: tAll.site + tAll.video },
+    const flags = (await kvGet(env, 'flags:' + uid)) || {}, mod = VW ? null : await modState(env, uid);
+    return json(req, { ok: true, view: VW ? { staff: VW.staff } : null, flags, mod: mod && (mod.until > Date.now() || mod.banned) ? { until: mod.until, banned: !!mod.banned, left: Math.max(0, MOD_CFG(env).steps.length - mod.step) } : null, me: { uid, name: r.name || s.name || '', tar: r.tar || null, acc: r.acc || null, place: r.place || null, n: D.n, pts, week: r.week | 0, lessons: r.lessons | 0, total: D.total_lessons, hw: r.hw | 0, ontime: r.ontime == null ? null : r.ontime, rank: rk.rank, rankFrom: rk.from, next: rk.next, t7: t7.site + t7.video, tAll: tAll.site + tAll.video },
       x2: D.x2 || null, modules: mods, cur, updated: D.updated || null }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/ma/top') { const D = await loadData(env), rows = (D.rows || []).slice().sort((a, b) => (a.place || 1e9) - (b.place || 1e9)); const me = await rowFor(D, uid); const mp = me && me.place || null;
     const pick = (x, i) => ({ place: x.place, name: x.name, pts: x.pts | 0, week: x.week | 0, rank: rankOf(x.pts | 0).rank, me: me ? x === me : false });
     const top = rows.slice(0, 10).map(pick), near = mp && mp > 10 ? rows.filter(x => x.place >= mp - 2 && x.place <= mp + 2).map(pick) : [];
     return json(req, { ok: true, n: D.n, top, near, me: me ? pick(me) : null, ranks: RANKS_MA.map(([p, t]) => ({ t, p })) }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/ma/ai' && req.method === 'POST') { const o = JSON.parse(await req.text() || '{}'); const text = String(o.text || '').trim().slice(0, 2000), img = typeof o.img === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(o.img) ? o.img : null;
-    if (o.reset) { await kvDel(env, 'mah:' + uid); return json(req, { ok: true }) }
+    const HK = VW ? 'mahva:' + VW.staff + ':' + uid : 'mah:' + uid; /* в режиме просмотра — отдельный тестовый диалог команды */
+    if (o.reset) { await kvDel(env, VW ? HK : 'mah:' + uid); return json(req, { ok: true }) }
     if (!text && !img) return json(req, { ok: false, err: 'empty' }, 400);
-    const dk = 'mal:' + uid + ':' + dayStr(), cnt = (await kvGet(env, dk)) || { m: 0, i: 0 };
+    const staff = !!VW || isStaffUid(env, uid);
+    /* защита от спама и сообщений не по делу — до нейросети и до дневного лимита */
+    let M = null; if (!staff) { M = await modCheck(env, uid, text, !!img); if (M.block) return json(req, Object.assign({ ok: false }, M.block)); if (M.reply) return json(req, { ok: true, text: M.reply, mod: M.mod, quick: [] }) }
+    const dk = 'mal:' + uid + ':' + dayStr(), cnt = VW ? { m: 0, i: 0 } : ((await kvGet(env, dk)) || { m: 0, i: 0 });
     if (cnt.m >= MA_AI_DAY) return json(req, { ok: false, err: 'limit', text: 'На сегодня вопросы закончились (' + MA_AI_DAY + ' в день). Завтра продолжим, а срочное — напиши куратору.' });
     if (img && cnt.i >= MA_IMG_DAY) return json(req, { ok: false, err: 'limit', text: 'Разборы картинок на сегодня закончились (' + MA_IMG_DAY + ' в день). Завтра — с радостью.' });
     let content = text; if (img) { const m = img.match(/^data:(image\/\w+);base64,(.*)$/); if (m[2].length > 2.8e6) return json(req, { ok: false, err: 'big', text: 'Картинка слишком большая.' });
       content = [{ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } }, { type: 'text', text: text || 'Разбери мою работу.' }] }
-    const hist = (await kvGet(env, 'mah:' + uid)) || [];
-    const R = await aiTurn(env, { uid, history: hist, user: content });
-    hist.push({ role: 'user', content: (img ? '[прислал картинку] ' : '') + text }, { role: 'assistant', content: R.text }); await kvPut(env, 'mah:' + uid, hist.slice(-12));
-    cnt.m++; if (img) cnt.i++; await kvPut(env, dk, cnt);
-    await logIt(env, 'ai-ma', uid, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out, img: !!img }));
-    return json(req, { ok: true, text: R.text, curator: R.curator || null, left: MA_AI_DAY - cnt.m }) }
-  if (path === '/ma/hist') return json(req, { ok: true, hist: ((await kvGet(env, 'mah:' + uid)) || []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '' })) });
+    const hist = (await kvGet(env, HK)) || (VW ? ((await kvGet(env, 'mah:' + uid)) || []).slice(-6) : []);
+    const R = await aiTurn(env, { uid, history: hist, user: content, cf: req.cf });
+    if (R.err) { const adm = isStaffUid(env, uid) || (VW && isStaffUid(env, VW.staff)); /* ошибка нейросети — не нарушение и не расход лимита */
+      return json(req, { ok: false, err: 'ai', code: adm ? R.err : null, text: 'Сейчас технические неполадки — возможно, мы как раз что-то улучшаем. Попробуй через несколько минут. Если не заработает долго — напиши в Заботу о студентах.' }) }
+    const QR = aiQuick(R.text);
+    hist.push({ role: 'user', content: (img ? '[прислал картинку] ' : '') + text }, { role: 'assistant', content: QR.text }); await kvPut(env, HK, hist.slice(-12));
+    if (!VW) { cnt.m++; if (img) cnt.i++; await kvPut(env, dk, cnt); if (M && M.ok) await modOk(env, uid) }
+    await logIt(env, VW ? 'ai-ma-view' : 'ai-ma', uid, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out, img: !!img }));
+    return json(req, { ok: true, text: QR.text, quick: QR.quick, curator: R.curator || null, left: VW ? null : MA_AI_DAY - cnt.m }) }
+  if (path === '/ma/hist') return json(req, { ok: true, view: !!VW, hist: ((await kvGet(env, 'mah:' + uid)) || []).concat(VW ? ((await kvGet(env, 'mahva:' + VW.staff + ':' + uid)) || []).map(x => Object.assign({}, x, { test: 1 })) : []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '', test: !!x.test })) });
   return json(req, { ok: false, err: 'not found' }, 404);
 }
 
@@ -1160,6 +1306,7 @@ async function cbrRate(env, day, cur) { if (cur === 'RUB') return 1; const k = '
 /* Кто смотрит банк. Ученик — свой; админ — любой (?u=), куратор — только свои (?u=); команда — только чтение. Проверка на сервере. */
 async function bankWho(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || '';
   if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) return { uid: await authUid(env, t, 'a') };
+  if (/\.w\./.test(t)) { const w = await viewTok(env, t); return w ? { uid: w.uid, ro: true, view: true } : { uid: 0 } }
   if (!/^[0-9a-f]{32}$/.test(t)) return { uid: 0 };
   const s = await kvGet(env, 'sess:' + t); if (!s || !(s.exp > Date.now())) return { uid: 0 };
   if (s.role === 'student') return { uid: s.uid ? +s.uid : 0 };
@@ -1278,7 +1425,7 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
   const d = await env.DB.prepare('SELECT * FROM care_dlg WHERE chat=?').bind(chat).first();
   const q = [env.DB.prepare('INSERT OR IGNORE INTO care_msg (chat, mid, dir, text, at) VALUES (?,?,?,?,?)').bind(chat, m.message_id, out ? 'out' : 'in', text, t)];
   if (!d) q.push(env.DB.prepare('INSERT INTO care_dlg (chat, name, username, uid, first_at, last_in, last_out, wait_since, n_in, n_out) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(chat, nm, m.chat.username || null, st ? st.uid : null, t, out ? null : t, out ? t : null, out ? null : t, out ? 0 : 1, out ? 1 : 0));
-  else if (!out) q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, t, chat));
+  else if (!out) { const ack = !d.wait_since && isAck(m); q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, ack ? null : t, chat)) }
   else { q.push(env.DB.prepare('UPDATE care_dlg SET last_out=?, wait_since=NULL, n_out=n_out+1 WHERE chat=?').bind(t, chat));
     if (d.wait_since) { const ws = workSec(d.wait_since, t, c.hours); q.push(env.DB.prepare('INSERT INTO care_resp (chat, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?)').bind(chat, d.wait_since, t, t - d.wait_since, ws, dayStr(new Date(t * 1000))));
       q.push(env.DB.prepare('UPDATE care_dlg SET resp_sec=COALESCE(resp_sec,0)+?, resp_n=resp_n+1 WHERE chat=?').bind(ws, chat)) } }
@@ -1330,4 +1477,31 @@ async function careApi(env, s, path, req, u, ajson) { if (s.role !== 'admin') re
   if (path === '/app/api/care/grade' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
     const g = await careGrade(env, String(o.chat || '')); if (!g) return ajson({ ok: false, err: 'Нечего оценивать' });
     await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), Date.now() / 1000 | 0, String(o.chat)).run(); return ajson({ ok: true, grade: g }) }
+  return ajson({ ok: false, err: 'not found' }, 404) }
+
+/* ---------- пульт → «Нейро» (только админ): нарушения, ограничения, ошибки нейросети, журнал «Смотреть как ученик», разбор напоминаний кураторам ---------- */
+async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin') return ajson({ ok: false, err: 'Раздел только для Романа' }, 403);
+  const C = MOD_CFG(env), now = Date.now();
+  if (path === '/app/api/neuro/status') { const idx = (await kvGet(env, 'modidx')) || [], D = await loadData(env), list = [];
+    const st = idx.length ? ((await env.DB.prepare('SELECT k, v FROM kv WHERE k IN (' + idx.slice(-300).map(() => '?').join(',') + ')').bind(...idx.slice(-300).map(x => 'mod:' + x)).all()).results || []) : [];
+    const studs = {}; for (const r of ((await env.DB.prepare('SELECT uid, name, curator FROM student').all()).results || [])) studs[r.uid] = r;
+    for (const r of st) { const uid = +r.k.slice(4), M = JSON.parse(r.v), row = (D.rows || []).find(x => +x.uid === uid) || {}, sd = studs[uid] || {}, c = sd.curator && CURATORS.find(x => x.id === sd.curator);
+      list.push({ uid, name: row.name || sd.name || null, tar: row.tar || null, curName: c ? c.full : null, n: M.n, step: M.step, until: M.until > now ? M.until : 0, banned: !!M.banned, hist: (M.hist || []).slice(0, 8), lastV: M.lastV }) }
+    list.sort((a, b) => (b.banned - a.banned) || (b.until - a.until) || (b.n - a.n));
+    let fil = 0, fil7 = 0; for (let i = 0; i < 7; i++) { const x = await kvGet(env, 'modstat:' + addDays(dayStr(), -i)); if (x) { fil7 += x.n; if (!i) fil = x.n } }
+    const errs = ((await env.DB.prepare("SELECT at, uid, info FROM log WHERE kind='ai-err' AND at >= ? ORDER BY at DESC LIMIT 30").bind(new Date(now - 7 * 864e5).toISOString()).all()).results || []);
+    const today = new Date(dayStr() + 'T00:00:00+03:00').toISOString(), errToday = errs.filter(e => e.at >= today).length;
+    const cost = (await env.DB.prepare("SELECT COUNT(*) n FROM log WHERE kind='ai-ma' AND at >= ?").bind(new Date(now - 7 * 864e5).toISOString()).first()).n | 0;
+    return ajson({ ok: true, cfg: C, filtered: { today: fil, week: fil7, saved_rub: Math.round(fil7 * 0.35) }, asked7: cost, errors: { today: errToday, last: errs.slice(0, 12) }, students: list, valog: ((await kvGet(env, 'valog')) || []).slice(0, 40) }) }
+  if (path === '/app/api/neuro/act' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const uid = +o.uid, k = 'mod:' + uid, M = await modState(env, uid);
+    if (o.act === 'lift') { M.until = 0; M.banned = false } else if (o.act === 'reset') { M.n = 0; M.step = 0; M.until = 0; M.banned = false; M.hist = [] } else if (o.act === 'ban') { M.banned = true } else return ajson({ ok: false }, 400);
+    await kvPut(env, k, M); const idx = (await kvGet(env, 'modidx')) || []; if (!idx.includes(uid)) { idx.push(uid); await kvPut(env, 'modidx', idx) }
+    await logIt(env, 'mod-' + o.act, uid, s.name || ''); return ajson({ ok: true }) }
+  /* разбор напоминаний кураторам: ожидания, ответы, ручные отметки и что прислал бот */
+  if (path === '/app/api/neuro/curdiag') { const cid = u.searchParams.get('c') || 'anton', day = u.searchParams.get('d') || dayStr(), from = Math.floor(Date.parse(day + 'T00:00:00+03:00') / 1000) - 86400;
+    const [w, r, a, l] = await env.DB.batch([env.DB.prepare('SELECT w.*, s.name sname FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=?').bind(cid),
+      env.DB.prepare('SELECT r.*, s.name sname FROM cresp r LEFT JOIN student s ON s.uid=r.uid WHERE r.cid=? AND r.answered >= ? ORDER BY r.answered').bind(cid, from),
+      env.DB.prepare("SELECT * FROM cack WHERE cid=? AND at >= ? ORDER BY at").bind(cid, from),
+      env.DB.prepare("SELECT at, kind, uid, info FROM log WHERE (kind LIKE 'cw-%' OR kind LIKE 'biz-%' OR kind LIKE 'cron-cur%') AND at >= ? ORDER BY at").bind(new Date(from * 1000).toISOString())]);
+    return ajson({ ok: true, cid, wait: w.results || [], resp: r.results || [], acks: a.results || [], log: l.results || [] }) }
   return ajson({ ok: false, err: 'not found' }, 404) }

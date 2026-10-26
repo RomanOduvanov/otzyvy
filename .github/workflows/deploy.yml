@@ -19,7 +19,7 @@ jobs:
           S=$(curl -fsS "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME/settings" -H "Authorization: Bearer $CF_API_TOKEN")
           CD=$(echo "$S" | jq -r '.result.compatibility_date // "2024-09-23"')
           CF=$(echo "$S" | jq -c '.result.compatibility_flags // []')
-          META=$(jq -nc --arg cd "$CD" --argjson cf "$CF" '{main_module:"worker.js",compatibility_date:$cd,compatibility_flags:$cf,keep_bindings:["plain_text","secret_text","d1","browser","kv_namespace","service","r2_bucket","queue","durable_object_namespace","analytics_engine","ai","version_metadata"]}')
+          META=$(jq -nc --arg cd "$CD" --argjson cf "$CF" '{main_module:"worker.js",compatibility_date:$cd,compatibility_flags:$cf,placement:{mode:"smart"},keep_bindings:["plain_text","secret_text","d1","browser","kv_namespace","service","r2_bucket","queue","durable_object_namespace","analytics_engine","ai","version_metadata"]}')
           R=$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME" -H "Authorization: Bearer $CF_API_TOKEN" -F "metadata=$META;type=application/json" -F "worker.js=@worker.js;type=application/javascript+module")
           echo "$R" | jq '{success, errors, etag: .result.etag}'
           echo "$R" | jq -e '.success' > /dev/null
