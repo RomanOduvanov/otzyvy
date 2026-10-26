@@ -228,6 +228,34 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 .pm-x{position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:12px;border:0;background:rgba(255,255,255,.06);color:#fff;font-size:20px;cursor:pointer}.pm-x:hover{background:rgba(255,255,255,.12)}
 @media(max-width:640px){.pm{padding:12px}.pm-b{padding:20px;border-radius:22px}}
 @media(prefers-reduced-motion:reduce){.tr.top::before,.pl .md1,.tr.hot .nm img{animation:none}}
+
+/* 26.10 · таблица на телефоне: имя закреплено слева, показатели листаются вбок; сортировка одной строкой; подробности по нажатию; своя строка внизу */
+.md.off{opacity:.62}
+@media(max-width:400px){.ladder{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px}.ladder .card{min-width:0}.ladder .rn,.ladder .rp{overflow-wrap:anywhere}}
+.rt-chips{display:none}
+@media(max-width:760px){
+.md{border-radius:16px;flex:1 1 100%;align-items:flex-start}.md small{display:block;white-space:normal}
+.card.tbl{padding:0;position:relative;overflow:hidden}
+.rt-sc{overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;scrollbar-width:none;overscroll-behavior-x:contain}.rt-sc::-webkit-scrollbar{display:none}
+.card.tbl .th,.card.tbl .tr{grid-template-columns:34px 150px 76px 116px 132px 64px 92px 78px 82px!important;width:max-content;min-width:100%;gap:0;padding:0;border-radius:0}
+.card.tbl .th>*,.card.tbl .tr>*{padding:12px 8px;scroll-snap-align:start;box-sizing:border-box;min-width:0}
+.card.tbl .tr .st,.card.tbl .tr .c,.card.tbl .tr .tf{display:block!important}.card.tbl .tr .tf{justify-self:start;margin:0 8px;padding:4px 10px}
+.card.tbl .th button{margin:0!important;padding:12px 8px!important;border-radius:0!important;justify-content:flex-start;justify-self:stretch!important;width:100%;box-sizing:border-box;background:#141414}
+.card.tbl .th>*,.card.tbl .tr>*{order:4}.card.tbl .th [data-k=place],.card.tbl .tr .pl{order:1}.card.tbl .th [data-k=name],.card.tbl .tr .nm{order:2}.card.tbl .th [data-k=pts],.card.tbl .tr .pt{order:3;text-align:left}
+.card.tbl .th [data-k=place],.card.tbl .tr .pl{position:sticky;left:0;z-index:2;background:#141414}
+.card.tbl .th [data-k=name],.card.tbl .tr .nm{position:sticky;left:34px;z-index:2;background:#141414;box-shadow:6px 0 10px -6px rgba(0,0,0,.6)}
+.card.tbl .th#th{display:grid!important;flex-wrap:nowrap!important;padding:0!important;gap:0!important}.card.tbl .th#th button{border-radius:0!important;background:#141414!important;padding:12px 8px!important;margin:0!important}.card.tbl .th#th button[data-k=place]{display:flex!important}.card.tbl .th#th button.on{color:#d77fff}.card.tbl .th{display:grid!important;flex-wrap:nowrap!important;position:relative;z-index:3;background:#141414;border-bottom:1px solid var(--hair)}
+.card.tbl .tr.me .pl,.card.tbl .tr.me .nm{background:#2a1f3d}
+.card.tbl .tr .nm{flex-wrap:wrap;row-gap:2px}.card.tbl .tr .nm img{width:28px;height:28px}.card.tbl .tr .nmt{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt-sub{flex-basis:100%;padding-left:38px;font-size:12px;color:#e2c9ff;font-weight:600;white-space:nowrap}
+.card.tbl .tr+.tr{box-shadow:0 -1px 0 var(--hair)}
+.rt-hint{position:absolute;right:0;top:0;bottom:0;width:56px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(20,20,20,.95));display:flex;align-items:flex-start;justify-content:flex-end;padding:14px 8px 0 0;z-index:4;transition:opacity .3s;font-size:11px;color:#e2c9ff;font-weight:600}
+.rt-hint.off{opacity:0}
+.rt-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 10px;padding:0}.rt-chips::-webkit-scrollbar{display:none}.rt-chips button{all:unset;flex:none;height:34px;padding:0 12px;border-radius:10px;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);font-size:13px;color:rgba(255,255,255,.8);display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap}.rt-chips button.on{background:#fff;color:#000106}
+.rt-detw{position:fixed;inset:0;z-index:60;background:rgba(0,1,6,.6);display:flex;align-items:flex-end}.rt-det{width:100%;box-sizing:border-box;background:#141414;border-radius:24px 24px 0 0;box-shadow:0 -20px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(195,139,255,.3);padding:20px 20px calc(24px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px;color:var(--ink2)}.rt-det b{color:#fff;font-weight:600}.rt-det h3{grid-column:1/-1;margin:0 0 6px;font-size:20px;font-weight:500;color:#fff}.rt-det .x{grid-column:1/-1;margin-top:8px;height:46px;border-radius:14px;background:#1f1f1f;color:#fff;display:flex;align-items:center;justify-content:center}.rt-det .full{grid-column:1/-1}.rt-det button{all:unset;cursor:pointer;color:#d77fff;font-weight:600}
+.rt-mine{position:fixed;left:16px;right:16px;bottom:calc(16px + max(env(safe-area-inset-bottom),0px));z-index:30;display:none;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;background:#2a1f3d;box-shadow:inset 0 0 0 1px rgba(195,139,255,.5),0 16px 40px rgba(0,0,0,.6);font-size:14px;cursor:pointer}.rt-mine.on{display:flex}.rt-mine b{flex:1}.rt-mine i{font-style:normal;color:#d77fff;font-weight:600}
+body{padding-bottom:80px}
+}
 </style></head><body><div class="w">
 <div class="top-l"><svg class="bmk" viewBox="0 0 64 64" aria-hidden="true"><rect x="0" y="0" width="20" height="20" rx="4"/><rect x="22" y="0" width="20" height="20" rx="4"/><rect x="0" y="22" width="20" height="20" rx="4"/><rect x="44" y="22" width="20" height="20" rx="4"/><rect x="0" y="44" width="20" height="20" rx="4"/><rect x="22" y="44" width="20" height="20" rx="4"/><rect x="44" y="44" width="20" height="20" rx="4"/><rect class="a" x="44" y="0" width="20" height="20" rx="4"/></svg><b>Oduvanov<i>School</i></b><span>·</span>AI-креатор с 0 до PRO · поток 2.0</div>
 <h1>Карьерная лестница <span>потока</span></h1>
@@ -487,5 +515,30 @@ const u=FS.uid();
 auto=D.rows.find(x=>x.h===D.fh)||null;if(D.ids){adm=u;Object.assign(ids,D.ids)}
 {const H=D.hours||{};D.rows.forEach(x=>{const t=H[x.h];x.vh=t?t[1]:0;x.vs=t?t[0]:0})}
 renderAll();
+
+/* 26.10 · таблица на телефоне */
+(function(){const MOB=()=>innerWidth<=760,card=document.querySelector('.card.tbl'),th=document.getElementById('th'),rows=document.getElementById('rows');if(!card||!th||!rows)return;
+ const sc=document.createElement('div');sc.className='rt-sc';card.insertBefore(sc,th);sc.appendChild(th);sc.appendChild(rows);
+ const hint=document.createElement('div');hint.className='rt-hint';hint.textContent='→ ещё';card.appendChild(hint);let swiped=false;
+ sc.addEventListener('scroll',()=>{if(sc.scrollLeft>8)swiped=true;hint.classList.toggle('off',swiped||sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-4)},{passive:true});
+ const L=[['pts','Баллы'],['rank','Звание'],['tar','Тариф'],['lessons','Уроки'],['vh','Часы уроков'],['hw','Домашки'],['ontime','В срок ×2'],['name','Ученик'],['place','Место']];
+ const chips=document.createElement('div');chips.className='rt-chips';card.parentNode.insertBefore(chips,card);
+ const SUB={rank:x=>esc(x.rank),tar:x=>esc(x.tar||'без тарифа'),lessons:x=>x.lessons+' уроков',vh:x=>x.vh?FS.hrs(x.vh)+' видео':'0 ч видео',hw:x=>x.hw+' домашек',ontime:x=>x.ontime+'% в срок'};
+ function drawChips(){chips.innerHTML=L.map(c=>'<button data-k="'+c[0]+'" class="'+(SK===c[0]?'on':'')+'">'+c[1]+(SK===c[0]?(SD===1?' ↓':' ↑'):'')+'</button>').join('')}
+ chips.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=b.dataset.k;if(SK===k)SD=-SD;else{SK=k;SD=1}renderAll();syncTh();const col=th.querySelector('[data-k="'+k+'"]');if(col&&MOB()){sc.scrollTo({left:Math.max(0,col.offsetLeft-184),behavior:'smooth'});swiped=true;hint.classList.add('off')}});
+ const mine=document.createElement('div');mine.className='rt-mine';document.body.appendChild(mine);let io=null;
+ function aug(){drawChips();if(!MOB())return;
+  rows.querySelectorAll('.tr').forEach(t=>{const x=D.rows.find(r=>r.h===t.dataset.h);if(!x)return;const nm=t.querySelector('.nm');if(!nm||nm.querySelector('.rt-sub'))return;
+   const sub=document.createElement('span');sub.className='rt-sub';sub.textContent=fmt(x.pts)+(SUB[SK]?' · '+SUB[SK](x).replace(/&[^;]+;/g,''):'');nm.appendChild(sub)});
+  const me=rows.querySelector('.tr.me');if(io){io.disconnect();io=null}
+  if(me){const x=D.rows.find(r=>r.h===me.dataset.h);mine.innerHTML='<b>Ты: '+x.place+' место · '+fmt(x.pts)+' баллов</b><i>к себе ↓</i>';mine.onclick=()=>me.scrollIntoView({block:'center',behavior:'smooth'});
+   io=new IntersectionObserver(es=>{mine.classList.toggle('on',!es[0].isIntersecting)});io.observe(me)}else mine.classList.remove('on')}
+ const _ra=renderAll;renderAll=function(){_ra();aug()};
+ /* на телефоне нажатие на строку раскрывает подробности, профиль — кнопкой */
+ rows.addEventListener('click',e=>{if(!MOB()||e.target.closest('a'))return;const t=e.target.closest('.tr');if(!t)return;e.stopPropagation();
+  const x=D.rows.find(r=>r.h===t.dataset.h);if(!x)return;const w=document.createElement('div');w.className='rt-detw';const d=document.createElement('div');d.className='rt-det';w.appendChild(d);
+  d.innerHTML='<h3>'+x.place+'. '+esc(x.name)+'</h3><span>Баллы: <b>'+fmt(x.pts)+'</b></span><span>Место: <b>'+x.place+'</b></span><span>Звание: <b>'+esc(x.rank)+'</b></span><span>Тариф: <b>'+esc(x.tar||'—')+'</b></span><span>Уроки: <b>'+x.lessons+'</b></span><span>Часы уроков: <b>'+(x.vh?FS.hrs(x.vh):'—')+'</b></span><span>Домашки: <b>'+x.hw+'</b></span><span>В срок ×2: <b>'+x.ontime+'%</b></span><span class="full">Медали: <b>'+((x.medals||[]).map(esc).join(', ')||'пока нет')+'</b></span><span class="full"><button>Открыть профиль →</button></span><span class="x">Свернуть</span>';
+  d.querySelector('button').onclick=ev=>{ev.stopPropagation();w.remove();openProf(x.h)};w.onclick=ev=>{if(ev.target===w||ev.target.classList.contains('x'))w.remove()};document.body.appendChild(w)},true);
+ aug();addEventListener('resize',()=>{rows.querySelectorAll('.rt-sub').forEach(s=>s.remove());aug()})})();
 }).catch(()=>{document.getElementById('upd').textContent='Рейтинг виден только в личном кабинете OduvanovSchool'});
 </script><div class="pm" id="pm" role="dialog" aria-modal="true"><div class="pm-b"><button class="pm-x" id="pmx" aria-label="Закрыть">×</button><div id="pmc"></div></div></div></body></html>

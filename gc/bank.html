@@ -20,7 +20,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 16p
 <button class="btn" id="bLogin">Войти через Telegram</button><button class="btn2" id="bStaff">Я из команды школы</button><span class="muted" id="lgSt"></span></div></div>
 <div id="bank"></div>
 </div>
-<script src="bank.js?v=5"></script>
+<script src="bank.js?v=6"></script>
 <script>
 (function(){
 var EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post);document.querySelector('.hd').classList.add('hid')}
@@ -41,12 +41,15 @@ function go(kind,b){b.disabled=true;$('lgSt').textContent='Открываю Tele
       fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';$('login').classList.add('hid');
         if(kind==='student'){EB=c.token;try{localStorage.setItem('ebTok',EB)}catch(e){}own()}else{ST=c.token;try{localStorage.setItem('oaTok',ST)}catch(e){}team()}}
         else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})}
-function own(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{view:VIEW,api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}if(ST&&GC&&!TU)team();else login('student')})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
+function own(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{view:VIEW,api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}viaSite(true).then(function(r){if(r==='student')own();else if(r)team();else if(ST&&GC&&!TU)team();else login('student')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
 function team(){$('login').classList.add('hid');var target=TU||(GC&&!STAFF[GC]?GC:0);
-  ECOBANK.staff($('bank'),{uid:target,api:function(p,o){return req(ST,p,o,function(){ST=null;try{localStorage.removeItem('oaTok')}catch(e){}login('staff')})},file:function(id){return API+'/bank/file?id='+id+'&t='+ST},open:function(u){window.open(u,'_blank')}})}
-if(TU){if(ST)team();else login('staff')}
-else if(EB)own();
-else if(ST&&GC)team();
-else login('student');
+  ECOBANK.staff($('bank'),{uid:target,api:function(p,o){return req(ST,p,o,function(){ST=null;try{localStorage.removeItem('oaTok')}catch(e){}viaSite(true).then(function(r){if(r&&r!=='student')team();else login('staff')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+ST},open:function(u){window.open(u,'_blank')}})}
+/* вход из кабинета без Telegram: кабинет отдаёт токен своего пользователя (eco.js → FS_AUTH), сервер проверяет его и роль */
+function bridge(force){return new Promise(function(res){if(!EMB||window.parent===window)return res(null);var done=0,h=function(e){if(e.source!==window.parent||!e.data||!('ecoAuth' in e.data))return;removeEventListener('message',h);done=1;res(e.data.ecoAuth)};addEventListener('message',h);try{parent.postMessage({ecoNeedAuth:1,force:!!force},'*')}catch(x){}setTimeout(function(){if(!done){removeEventListener('message',h);res(null)}},5000)})}
+function viaSite(force){return bridge(force).then(function(a){if(!a||!a.t)return null;return fetch(API+'/app/api/login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok)return null;
+  if(j.role==='student'){EB=j.token;try{localStorage.setItem('ebTok',EB)}catch(e){}}else{ST=j.token;try{localStorage.setItem('oaTok',ST)}catch(e){}}return j.role})}).catch(function(){return null})}
+function route(){if(TU){if(ST)team();else login('staff')}else if(EB)own();else if(ST&&GC)team();else login('student')}
+$('bank').innerHTML='<div style="padding:30px;text-align:center;color:rgba(255,255,255,.5)">Загружаю…</div>';
+viaSite().then(function(role){if(role==='student'&&!TU){own();return}if(role&&role!=='student'){team();return}route()});
 })();
 </script></body></html>
