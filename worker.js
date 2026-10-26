@@ -992,6 +992,12 @@ function modGib(t) { const x = t.toLowerCase().replace(/[^a-zа-яё]/g, ''); if
 async function modAsk(env, t) { if (!env.ANTHROPIC_API_KEY) return true;
   const { r, j } = await aiFetch(env, JSON.stringify({ model: env.MOD_MODEL || AI_MODEL(env), max_tokens: 3, system: 'Ты фильтр чата учеников онлайн-школы AI-дизайна карточек для маркетплейсов. По делу: учёба, курс, нейросети, дизайн, клиенты, заказы, деньги и банк ученика, баллы, задания, школа, а также приветствия, благодарности и уточнения. Не по делу: посторонние темы, бессмыслица, оскорбления, провокации. Ответь одним словом: да — если по делу, нет — если не по делу.', messages: [{ role: 'user', content: t.slice(0, 500) }] }));
   if (!r || !r.ok) return true; const a = ((j.content || []).find(b => b.type === 'text') || {}).text || ''; return !/^\s*нет/i.test(a) }
+/* правила без состояния (мат, бессмыслица, не по теме) — общие для modCheck и тестов в пульте */
+async function modWhy(env, norm, img) { if (img || !norm) return null;
+  if (MOD_BAD.test(norm)) return 'мат или оскорбление';
+  if (modGib(norm)) return 'бессмыслица';
+  if (!MOD_OK.test(norm) && !MOD_TOPIC.test(norm) && norm.length < 400) { const ok = await modAsk(env, norm); if (!ok) return 'не по теме учёбы' }
+  return null }
 async function modCheck(env, uid, text, img) { const C = MOD_CFG(env), now = Date.now(), S = await modState(env, uid), k = 'mod:' + uid;
   if (S.banned) return { block: { err: 'banned', text: 'Доступ к Нейро закрыт. Если это ошибка — напиши в Заботу о студентах.' } };
   if (S.until > now) return { block: { err: 'pause', until: S.until, left: Math.max(0, C.steps.length - S.step), text: 'Нейро на паузе — слишком много сообщений не по делу.' } };
@@ -1000,9 +1006,7 @@ async function modCheck(env, uid, text, img) { const C = MOD_CFG(env), now = Dat
   const norm = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim(); let why = null;
   if (S.q.length > C.flood) why = 'флуд: больше ' + C.flood + ' сообщений в минуту';
   else if (!img && norm && norm === S.last && now - (S.lastAt || 0) < 600e3) why = 'повтор того же сообщения';
-  else if (!img && MOD_BAD.test(norm)) why = 'мат или оскорбление';
-  else if (!img && modGib(norm)) why = 'бессмыслица';
-  else if (!img && norm && !MOD_OK.test(norm) && !MOD_TOPIC.test(norm) && norm.length < 400) { const ok = await modAsk(env, norm); if (!ok) why = 'не по теме учёбы' }
+  else why = await modWhy(env, norm, img);
   S.last = norm; S.lastAt = now;
   if (!why) { await kvPut(env, k, S); return { ok: true } }
   S.n++; S.lastV = now; S.hist = [{ at: now, text: String(text || '').slice(0, 200), why }].concat(S.hist || []).slice(0, 15);
@@ -1047,6 +1051,14 @@ async function tgImage(env, fileId) {
   const p = f.result.file_path.toLowerCase(); const mt = p.endsWith('.png') ? 'image/png' : p.endsWith('.webp') ? 'image/webp' : p.endsWith('.gif') ? 'image/gif' : 'image/jpeg';
   return { type: 'image', source: { type: 'base64', media_type: mt, data: b64(await r.arrayBuffer()) } };
 }
+/* ---------- оценка ответов Нейро учеником 👍/👎 (ночь 27.10) ----------
+   /ma/ai отдаёт mid ответа; последние 20 ответов (вопрос + ответ) лежат в kv 'aimid:<ключ диалога>'.
+   /ma/aifb {mid, v: 1 | -1, why} — одна оценка на ответ (повторная заменяет). Статистика — /app/api/neuro/fb (пульт → «Нейро»). */
+const AIFB_SCHEMA = ['CREATE TABLE IF NOT EXISTS ai_fb (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, mid TEXT NOT NULL, vote INTEGER NOT NULL, why TEXT, q TEXT, a TEXT, tools TEXT, view INTEGER DEFAULT 0, at INTEGER)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS ai_fb_um ON ai_fb (uid, mid)'];
+let AIFB_OK = false;
+async function aiFbEnsure(env) { if (AIFB_OK) return; await env.DB.batch(AIFB_SCHEMA.map(s => env.DB.prepare(s))); AIFB_OK = true }
+async function aiMidSave(env, key, rec) { const k = 'aimid:' + key, L = (await kvGet(env, k)) || []; L.unshift(rec); await kvPut(env, k, L.slice(0, 20)) }
 /* обработка сообщения в боте; вернуть true, если сообщение забрал Нейро-Одуванов */
 async function neuroTg(env, m, chat, text) {
   const adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (!adm) return false;
@@ -1261,8 +1273,19 @@ async function maApi(env, req, path) {
     hist.push({ role: 'user', content: (img ? '[прислал картинку] ' : '') + text }, { role: 'assistant', content: QR.text }); await kvPut(env, HK, hist.slice(-12));
     if (!VW) { cnt.m++; if (img) cnt.i++; await kvPut(env, dk, cnt); if (M && M.ok) await modOk(env, uid) }
     await logIt(env, VW ? 'ai-ma-view' : 'ai-ma', uid, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out, img: !!img }));
-    return json(req, { ok: true, text: QR.text, quick: QR.quick, curator: R.curator || null, left: VW ? null : MA_AI_DAY - cnt.m }) }
-  if (path === '/ma/hist') return json(req, { ok: true, view: !!VW, hist: ((await kvGet(env, 'mah:' + uid)) || []).concat(VW ? ((await kvGet(env, 'mahva:' + VW.staff + ':' + uid)) || []).map(x => Object.assign({}, x, { test: 1 })) : []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '', test: !!x.test })) });
+    const mid = rnd().slice(0, 12); await aiMidSave(env, HK, { mid, q: ((img ? '[картинка] ' : '') + text).slice(0, 800), a: QR.text.slice(0, 3000), tools: (R.tools || []).join(','), at: Date.now() });
+    return json(req, { ok: true, mid, text: QR.text, quick: QR.quick, curator: R.curator || null, left: VW ? null : MA_AI_DAY - cnt.m }) }
+  /* оценка ответа 👍/👎 (по желанию с причиной) */
+  if (path === '/ma/aifb' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const HK = VW ? 'mahva:' + VW.staff + ':' + uid : 'mah:' + uid, L = (await kvGet(env, 'aimid:' + HK)) || [], m = L.find(x => x.mid === String(o.mid || ''));
+    if (!m) return json(req, { ok: false, err: 'old' }, 404); const v = +o.v > 0 ? 1 : -1, why = String(o.why || '').trim().slice(0, 500) || null;
+    await aiFbEnsure(env);
+    await env.DB.prepare('INSERT INTO ai_fb (uid, mid, vote, why, q, a, tools, view, at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(uid, mid) DO UPDATE SET why=CASE WHEN excluded.why IS NOT NULL THEN excluded.why WHEN excluded.vote<>ai_fb.vote THEN NULL ELSE ai_fb.why END, vote=excluded.vote, at=excluded.at')
+      .bind(uid, m.mid, v, why, m.q, m.a, m.tools || '', VW ? 1 : 0, Date.now()).run();
+    return json(req, { ok: true }) }
+  if (path === '/ma/hist') { const M1 = (await kvGet(env, 'aimid:mah:' + uid)) || [], M2 = VW ? (await kvGet(env, 'aimid:mahva:' + VW.staff + ':' + uid)) || [] : [];
+    const mf = (L, s) => { const x = typeof s === 'string' && L.find(y => y.a === s.slice(0, 3000)); return x ? x.mid : null };
+    return json(req, { ok: true, view: !!VW, hist: ((await kvGet(env, 'mah:' + uid)) || []).map(x => Object.assign({}, x, { _m: x.role === 'assistant' && !VW ? mf(M1, x.content) : null })).concat(VW ? ((await kvGet(env, 'mahva:' + VW.staff + ':' + uid)) || []).map(x => Object.assign({}, x, { test: 1, _m: x.role === 'assistant' ? mf(M2, x.content) : null })) : []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '', test: !!x.test, mid: x._m || undefined })) }) }
   return json(req, { ok: false, err: 'not found' }, 404);
 }
 
@@ -1500,6 +1523,20 @@ async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin')
     if (o.act === 'lift') { M.until = 0; M.banned = false } else if (o.act === 'reset') { M.n = 0; M.step = 0; M.until = 0; M.banned = false; M.hist = [] } else if (o.act === 'ban') { M.banned = true } else return ajson({ ok: false }, 400);
     await kvPut(env, k, M); const idx = (await kvGet(env, 'modidx')) || []; if (!idx.includes(uid)) { idx.push(uid); await kvPut(env, 'modidx', idx) }
     await logIt(env, 'mod-' + o.act, uid, s.name || ''); return ajson({ ok: true }) }
+  /* оценки ответов Нейро: доля 👍, последние 👎 с вопросом и ответом (ночь 27.10) */
+  if (path === '/app/api/neuro/fb') { await aiFbEnsure(env); const lim = Math.min(200, +u.searchParams.get('n') || 50), only = u.searchParams.get('v'), d7 = now - 7 * 864e5;
+    const [a, w, l] = await env.DB.batch([env.DB.prepare('SELECT SUM(vote>0) up, SUM(vote<0) down FROM ai_fb WHERE view=0'), env.DB.prepare('SELECT SUM(vote>0) up, SUM(vote<0) down FROM ai_fb WHERE view=0 AND at>=?').bind(d7),
+      env.DB.prepare('SELECT f.*, s.name sname FROM ai_fb f LEFT JOIN student s ON s.uid=f.uid' + (only === 'down' ? ' WHERE f.vote<0' : only === 'up' ? ' WHERE f.vote>0' : '') + ' ORDER BY f.at DESC LIMIT ?').bind(lim)]);
+    const sh = x => { const up = x.up | 0, dn = x.down | 0; return { up, down: dn, n: up + dn, share: up + dn ? Math.round(up / (up + dn) * 100) : null } };
+    return ajson({ ok: true, all: sh((a.results || [])[0] || {}), week: sh((w.results || [])[0] || {}), last: (l.results || []).map(x => ({ at: x.at, uid: x.uid, name: x.sname || null, vote: x.vote, why: x.why, q: x.q, a: x.a, tools: x.tools, view: !!x.view })) }) }
+  /* тест Нейро из пульта (только админ): без ученика или как ученик uid, ничего не отправляет, в лимиты и антиспам ученика не пишет. mod: 1 — сначала правила антиспама (без записи нарушений) */
+  if (path === '/app/api/neuro/test' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const text = String(o.text || '').trim().slice(0, 2000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
+    if (o.mod) { const why = await modWhy(env, text.toLowerCase().replace(/\s+/g, ' ').trim(), false); if (why) return ajson({ ok: true, mod: why, text: null }) }
+    const hist = (Array.isArray(o.hist) ? o.hist : []).filter(x => x && (x.role === 'user' || x.role === 'assistant') && typeof x.content === 'string').slice(-10);
+    const R = await aiTurn(env, { uid: +o.uid || 0, history: hist, user: text, cf: req.cf }); if (R.err) return ajson({ ok: false, err: R.err });
+    const QR = aiQuick(R.text); await logIt(env, 'ai-test', +o.uid || 0, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out }));
+    return ajson({ ok: true, text: QR.text, quick: QR.quick, tools: R.tools || [], usage: R.usage, rub: +(aiCost(R.usage) * AI_PRICE.rub).toFixed(3), ms: R.ms }) }
   /* разбор напоминаний кураторам: ожидания, ответы, ручные отметки и что прислал бот */
   if (path === '/app/api/neuro/curdiag') { const cid = u.searchParams.get('c') || 'anton', day = u.searchParams.get('d') || dayStr(), from = Math.floor(Date.parse(day + 'T00:00:00+03:00') / 1000) - 86400;
     const [w, r, a, l] = await env.DB.batch([env.DB.prepare('SELECT w.*, s.name sname FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=?').bind(cid),
