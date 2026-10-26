@@ -614,6 +614,7 @@ export default {
       if (path === '/app') return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
       /* пульт живёт и на GitHub Pages (gc/pult.html) — ответы API с CORS для своих доменов */
       if (path.startsWith('/ma/')) return maApi(env, req, path);
+      if (path.startsWith('/bank/')) return bankApi(env, req, path);
       if (path.startsWith('/app/api/')) { const r0 = await appApi(env, req, path), h0 = new Headers(r0.headers); for (const [k, v] of Object.entries(cors(req))) h0.set(k, v); return new Response(r0.body, { status: r0.status, headers: h0 }) }
       if (path !== '/') await ensure(env);
       if (path === '/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensureAll(env); await kvPut(env, 'schema_v', SCHEMA_V); return json(req, { ok: true, schema: SCHEMA_V }) }
@@ -738,8 +739,8 @@ export default {
       if (path === '/tg/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const base = env.BASE_URL || u.origin;
         const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message'], drop_pending_updates: true });
         const b = await tg(env, 'setMyCommands', { commands: [{ command: 'report', description: 'Прислать отчёт сейчас' }, { command: 'stop', description: 'Отключить уведомления' }] });
-        const c = await tg(env, 'setMyDescription', { description: 'Бот онлайн-школы Романа Одуванова. Отчёты родителям об обучении и уведомления команды школы.' });
-        const d = await tg(env, 'setMyShortDescription', { short_description: 'Отчёты об обучении в OduvanovSchool' });
+        const c = await tg(env, 'setMyDescription', { description: 'OduvanovSchool — вся учёба в одном боте 💜\n\n🔔 Напомню об эфирах и открытии модулей, чтобы ты не пропустил ×2 баллы\n✅ Сообщу, когда куратор ответил или проверил домашку\n🧠 AI-помощник ответит по курсу 24/7: что смотреть, когда дедлайн, как сдать работу\n📱 Кабинет, расписание и рейтинг потока — прямо в Telegram\n🏆 Новые места в рейтинге и достижения — сразу, как получишь\n👨‍👩‍👦 Отчёты об учёбе для тебя или родителей\n\nЖми «Старт» — и ни один балл не пройдёт мимо.' });
+        const d = await tg(env, 'setMyShortDescription', { short_description: 'Эфиры, ×2 баллы, AI-помощник 24/7 и кабинет школы — всё в Telegram. Ни один балл мимо.' });
         return json(req, { webhook: a.ok, commands: b.ok, descr: c.ok && d.ok, err: a.description, admin_link: 'https://t.me/' + BOT(env) + '?start=adm_' + await admKey(env), pay_url: base + '/pay?k=' + await payKey(env) }) }
       /* ученик: Telegram и куратор */
       /* страница ученика «Мой куратор» (eco.js): куратор, когда на связи, как быстро отвечает, его сообщения всем ученикам. Авторизация как у /me */
@@ -977,6 +978,10 @@ const ajson = (obj, st = 200) => new Response(JSON.stringify(obj), { status: st,
 async function appLoginTg(env, chat, nonce, from) {
   const L = await kvGet(env, 'login:' + nonce); if (!L || L.done) return tgSend(env, chat, 'Ссылка для входа устарела. Обнови страницу пульта и нажми «Войти» ещё раз.');
   if (Date.now() - L.at > 10 * 60e3) return tgSend(env, chat, 'Ссылка для входа устарела (10 минут). Нажми «Войти» ещё раз.');
+  if (L.kind === 'student') { const s = await env.DB.prepare('SELECT uid, name FROM student WHERE tg_chat=?').bind(String(chat)).first();
+    if (!s) return tgSend(env, chat, 'Этот Telegram ещё не привязан к кабинету. Открой профиль в кабинете OduvanovSchool → «Подключить Telegram», потом войди ещё раз.');
+    await kvPut(env, 'login:' + nonce, Object.assign(L, { done: true, chat, role: 'student', uid: s.uid, cid: null, name: s.name || (from && from.first_name) || '' }));
+    await logIt(env, 'app-login', s.uid, 'student ' + chat); return tgSend(env, chat, '✅ <b>Вход выполнен.</b> Вернись в браузер — страница откроется сама.') }
   const adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first();
   const cur = await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first();
   if (!adm && !cur) return tgSend(env, chat, 'Пульт доступен только кураторам и команде школы. Если ты куратор — сначала подключись по ссылке от Романа.');
@@ -1011,13 +1016,14 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
 }
 async function appApi(env, req, path) {
   const u = new URL(req.url);
-  if (path === '/app/api/login/start' && req.method === 'POST') { await ensure(env); const n = rnd(); await kvPut(env, 'login:' + n, { at: Date.now() }); return ajson({ ok: true, nonce: n, link: 'https://t.me/' + BOT(env) + '?start=login_' + n }) }
+  if (path === '/app/api/login/start' && req.method === 'POST') { await ensure(env); const n = rnd(); await kvPut(env, 'login:' + n, { at: Date.now(), kind: u.searchParams.get('kind') === 'student' ? 'student' : 'staff' }); return ajson({ ok: true, nonce: n, link: 'https://t.me/' + BOT(env) + '?start=login_' + n }) }
   if (path === '/app/api/login/check') { const n = u.searchParams.get('n') || ''; if (!/^[0-9a-f]{32}$/.test(n)) return ajson({ ok: false }, 400);
     const L = await kvGet(env, 'login:' + n); if (!L) return ajson({ ok: false, err: 'expired' }); if (!L.done) return ajson({ ok: true, wait: true });
-    const tok = rnd(); await kvPut(env, 'sess:' + tok, { role: L.role, cid: L.cid, chat: L.chat, name: L.name, exp: Date.now() + APP_SESS_DAYS * 864e5 }); await kvDel(env, 'login:' + n);
+    const tok = rnd(); await kvPut(env, 'sess:' + tok, { role: L.role, cid: L.cid, uid: L.uid || null, chat: L.chat, name: L.name, exp: Date.now() + APP_SESS_DAYS * 864e5 }); await kvDel(env, 'login:' + n);
     return ajson({ ok: true, token: tok }) }
   const s = await appSession(env, req); if (!s) return ajson({ ok: false, err: 'auth' }, 401);
   if (path === '/app/api/logout' && req.method === 'POST') { await kvDel(env, 'sess:' + s.tok); return ajson({ ok: true }) }
+  if (s.role === 'student') return path === '/app/api/me' ? ajson({ ok: true, role: 'student', uid: s.uid, name: s.name }) : ajson({ ok: false, err: 'forbidden' }, 403);
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
@@ -1095,5 +1101,74 @@ async function maApi(env, req, path) {
     await logIt(env, 'ai-ma', uid, JSON.stringify({ in: R.usage.in, cache: R.usage.cache, out: R.usage.out, img: !!img }));
     return json(req, { ok: true, text: R.text, curator: R.curator || null, left: MA_AI_DAY - cnt.m }) }
   if (path === '/ma/hist') return json(req, { ok: true, hist: ((await kvGet(env, 'mah:' + uid)) || []).map(x => ({ role: x.role, text: typeof x.content === 'string' ? x.content : '' })) });
+  return json(req, { ok: false, err: 'not found' }, 404);
+}
+
+/* ---------- Мой банк и Мои заказы (gc/bank.html, вкладка «Банк» мини-аппа) ----------
+   Кто: ученик по токену мини-аппа (v42, область 'a') или по сессии сайта (вход через бота, role 'student').
+   Деньги — целые рубли. Файлы (скрин оплаты, ТЗ) — в D1 base64, до ~650 КБ на файл. */
+const BANK_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS bank_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, amount INTEGER NOT NULL, day TEXT NOT NULL, what TEXT, src TEXT, client TEXT, order_id INTEGER, file_id INTEGER, at TEXT)',
+  'CREATE INDEX IF NOT EXISTS bank_tx_uid ON bank_tx (uid, day)',
+  'CREATE TABLE IF NOT EXISTS bank_order (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, client TEXT, tg TEXT, product TEXT, price INTEGER, deadline TEXT, status TEXT, brief TEXT, src TEXT, at TEXT, upd TEXT)',
+  'CREATE INDEX IF NOT EXISTS bank_order_uid ON bank_order (uid, status)',
+  'CREATE TABLE IF NOT EXISTS bank_file (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, kind TEXT, ref INTEGER, name TEXT, mime TEXT, size INTEGER, data TEXT, at TEXT)',
+  'CREATE INDEX IF NOT EXISTS bank_file_ref ON bank_file (uid, kind, ref)'];
+let BANK_OK = false;
+async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.map(s => env.DB.prepare(s))); BANK_OK = true }
+const B_ST = ['new', 'work', 'review', 'done', 'cancel'];
+const bInt = v => Math.max(0, Math.min(1e9, Math.round(+String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.') || 0)));
+const bStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+const bDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : dayStr();
+async function bankUid(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || '';
+  if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) return authUid(env, t, 'a');
+  if (/^[0-9a-f]{32}$/.test(t)) { const s = await kvGet(env, 'sess:' + t); if (s && s.exp > Date.now() && s.role === 'student' && s.uid) return +s.uid }
+  return 0 }
+async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 'string') return null;
+  const m = f.data.match(/^data:([\w.+-]+\/[\w.+-]+);base64,([A-Za-z0-9+/=]+)$/); if (!m) return null;
+  if (!/^(image\/(jpeg|png|webp|heic|heif|gif)|application\/pdf)$/.test(m[1])) throw new Error('Можно картинку или PDF');
+  if (m[2].length > 900000) throw new Error('Файл больше 650 КБ — сожми или сделай скрин');
+  const r = await env.DB.prepare('INSERT INTO bank_file (uid, kind, ref, name, mime, size, data, at) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(uid, kind, ref, bStr(f.name, 120) || 'файл', m[1], Math.round(m[2].length * 0.75), m[2], new Date().toISOString()).first();
+  return r && r.id }
+async function bankApi(env, req, path) {
+  const u = new URL(req.url); await bankEnsure(env);
+  const uid = await bankUid(env, req, u); if (!uid) return deny(req);
+  const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
+  if (path === '/bank/summary') {
+    const [tx, od, fl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, day, what, src, client, order_id, file_id FROM bank_tx WHERE uid=? ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
+      env.DB.prepare('SELECT id, client, tg, product, price, deadline, status, brief, src, at, upd FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
+      env.DB.prepare('SELECT id, kind, ref, name, mime, size FROM bank_file WHERE uid=? AND kind=\'order\'').bind(uid)]);
+    const T = tx.results || [], months = {}; let total = 0; for (const x of T) { total += x.amount; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.amount }
+    const files = {}; for (const f of fl.results || []) (files[f.ref] = files[f.ref] || []).push({ id: f.id, name: f.name, mime: f.mime, size: f.size });
+    const paid = {}; for (const x of T) if (x.order_id) paid[x.order_id] = (paid[x.order_id] || 0) + x.amount;
+    return json(req, { ok: true, total, months, tx: T, orders: (od.results || []).map(o => Object.assign(o, { files: files[o.id] || [], paid: paid[o.id] || 0 })), today: dayStr() }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/tx' && req.method === 'POST') { const o = await body(); const amount = bInt(o.amount); if (!amount) return json(req, { ok: false, err: 'Укажи сумму' }, 400);
+    const oid = o.order_id ? +o.order_id : null; if (oid && !(await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(oid, uid).first())) return json(req, { ok: false, err: 'нет заказа' }, 400);
+    let fid = null; try { fid = await bankFile(env, uid, 'tx', 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
+    const r = await env.DB.prepare('INSERT INTO bank_tx (uid, amount, day, what, src, client, order_id, file_id, at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, amount, bDay(o.day), bStr(o.what, 200), bStr(o.src, 60), bStr(o.client, 120), oid, fid, new Date().toISOString()).first();
+    if (fid) await env.DB.prepare('UPDATE bank_file SET ref=? WHERE id=?').bind(r.id, fid).run();
+    await logIt(env, 'bank-tx', uid, String(amount)); return json(req, { ok: true, id: r.id }) }
+  if (path === '/bank/tx/del' && req.method === 'POST') { const o = await body(); const x = await env.DB.prepare('SELECT file_id FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid).first(); if (!x) return json(req, { ok: false }, 404);
+    await env.DB.batch([env.DB.prepare('DELETE FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid), env.DB.prepare('DELETE FROM bank_file WHERE uid=? AND kind=\'tx\' AND ref=?').bind(uid, +o.id)]); return json(req, { ok: true }) }
+  if (path === '/bank/order' && req.method === 'POST') { const o = await body(), now = new Date().toISOString();
+    const f = { client: bStr(o.client, 120), tg: bStr(o.tg, 64).replace(/^https?:\/\/t\.me\//, '').replace(/^@/, ''), product: bStr(o.product, 200), price: bInt(o.price), deadline: /^\d{4}-\d{2}-\d{2}$/.test(o.deadline || '') ? o.deadline : null, status: B_ST.includes(o.status) ? o.status : 'new', brief: bStr(o.brief, 4000), src: bStr(o.src, 60) };
+    if (!f.client && !f.product) return json(req, { ok: false, err: 'Укажи клиента или что за заказ' }, 400);
+    let id = +o.id || 0;
+    if (id) { const ex = await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(id, uid).first(); if (!ex) return json(req, { ok: false }, 404);
+      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, deadline=?, status=?, brief=?, src=?, upd=? WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.deadline, f.status, f.brief, f.src, now, id, uid).run() }
+    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, deadline, status, brief, src, at, upd) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.deadline, f.status, f.brief, f.src, now, now).first(); id = r.id }
+    if (o.tx_id) await env.DB.prepare('UPDATE bank_tx SET order_id=? WHERE id=? AND uid=?').bind(id, +o.tx_id, uid).run();
+    const fs = Array.isArray(o.files) ? o.files.slice(0, 5) : [];
+    const cnt = (await env.DB.prepare('SELECT COUNT(*) n FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, id).first()).n;
+    for (const x of fs.slice(0, Math.max(0, 10 - cnt))) { try { await bankFile(env, uid, 'order', id, x) } catch (e) { return json(req, { ok: false, id, err: e.message }, 400) } }
+    return json(req, { ok: true, id }) }
+  if (path === '/bank/order/status' && req.method === 'POST') { const o = await body(); if (!B_ST.includes(o.status)) return json(req, { ok: false }, 400);
+    await env.DB.prepare('UPDATE bank_order SET status=?, upd=? WHERE id=? AND uid=?').bind(o.status, new Date().toISOString(), +o.id, uid).run(); return json(req, { ok: true }) }
+  if (path === '/bank/order/del' && req.method === 'POST') { const o = await body();
+    await env.DB.batch([env.DB.prepare('DELETE FROM bank_order WHERE id=? AND uid=?').bind(+o.id, uid), env.DB.prepare('DELETE FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, +o.id), env.DB.prepare('UPDATE bank_tx SET order_id=NULL WHERE uid=? AND order_id=?').bind(uid, +o.id)]); return json(req, { ok: true }) }
+  if (path === '/bank/file/del' && req.method === 'POST') { const o = await body(); await env.DB.prepare('DELETE FROM bank_file WHERE id=? AND uid=?').bind(+o.id, uid).run(); return json(req, { ok: true }) }
+  if (path === '/bank/file') { const f = await env.DB.prepare('SELECT name, mime, data FROM bank_file WHERE id=? AND uid=?').bind(+u.searchParams.get('id'), uid).first(); if (!f) return new Response('нет файла', { status: 404 });
+    const bin = Uint8Array.from(atob(f.data), c => c.charCodeAt(0));
+    return new Response(bin, { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
   return json(req, { ok: false, err: 'not found' }, 404);
 }
