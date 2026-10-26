@@ -156,7 +156,13 @@
 const FS={
  API:'https://oduvanov-api.romanoduvanov52.workers.dev',
  /* часы на платформе и за видео уроков с сервера: {h:[сайт, видео]} в секундах */
- hours(){if(!/^http/.test(FS.API))return Promise.resolve(null);return Promise.race([fetch(FS.API+'/hours').then(r=>r.json()).catch(()=>null),new Promise(ok=>setTimeout(()=>ok(null),2500))])},
+ /* v42-SRV: рейтинг — с сервера и только ученику, вошедшему в кабинет. Токен чтения v даёт страница GetCourse (layout.js) через postMessage */
+ auth(){return FS._a||(FS._a=new Promise(ok=>{const GC='https://oduvanovroman.getcourse.ru';let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
+  const f=e=>{if(e.origin!==GC||!e.data||!('fsAuth' in e.data))return;end(e.data.fsAuth)};addEventListener('message',f);
+  const ask=()=>{try{parent.postMessage({fsNeedAuth:1},GC)}catch(e){}};ask();iv=setInterval(ask,800);setTimeout(()=>end(null),9000)}))},
+ data(){return FS._d||(FS._d=FS.auth().then(a=>{if(!a||!a.v)throw new Error('auth');const u=FS.uid();return fetch(FS.API+'/rating?v='+encodeURIComponent(a.v)+(u?'&for='+u:'')).then(r=>r.json())})
+  .then(D=>{if(!D||!D.rows)throw new Error('rating');D.fh=D.fh||D.me;return D}))},
+ hours(){return FS.data().then(D=>D.hours||null).catch(()=>null)},
  rki(D,r){let i=D.ranks.findIndex(x=>x[0]===r.rank);if(i<0){i=0;D.ranks.forEach((x,k)=>{if((r.pts||0)>=x[1])i=k})}return i},
  hrs(sec){const h=(sec||0)/3600;return h<0.05?'0 ч':h<10?(Math.round(h*10)/10).toString().replace('.',',')+' ч':Math.round(h)+' ч'},
 
@@ -355,12 +361,12 @@ FS.shareCard=async function(D,r,o){
 };
 
 const post=()=>{try{parent.postMessage({fsProfH:document.getElementById('w').style.display==='none'?0:Math.ceil(document.body.getBoundingClientRect().height)+2},'*')}catch(e){}};
-fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{const u=FS.uid();if(!u){post();return}const h=await FS.hash(u);const r=D.rows.find(x=>x.h===h);if(!r){post();return}
+FS.data().then(async D=>{const u=FS.uid();if(!u){post();return}const h=D.fh;const r=D.rows.find(x=>x.h===h);if(!r){post();return}
  const H=await FS.hours();if(H){const t=H[r.h]||[0,0];r.vs=t[0];r.vh=t[1]}document.getElementById('w').style.display='';FS.profile(document.getElementById('p'),D,r,{awards:'../awards/',me:/me=1/.test(location.hash)});post()}).catch(post);
 let SD=null,SR=null;
 /* «Поделиться результатом»: родитель (кабинет GetCourse) просит картинку */
 addEventListener('message',async e=>{if(!e.data||!e.data.fsShare||!/^https:\/\/oduvanovroman\.getcourse\.ru$/.test(e.origin))return;
- try{if(!SD){SD=await fetch('data.json',{cache:'no-store'}).then(r=>r.json());const h=await FS.hash(FS.uid());SR=SD.rows.find(x=>x.h===h)}
+ try{if(!SD){SD=await FS.data();SR=SD.rows.find(x=>x.h===SD.fh)}
   const out={};for(const f of ['story','post','wide'])out[f]=await FS.shareCard(SD,SR,{awards:'../awards/',brand:'../brand/',ava:e.data.ava||null,fmt:f});parent.postMessage({fsShareImgs:out},e.origin)}catch(err){parent.postMessage({fsShareErr:1},e.origin)}});
 addEventListener('resize',post);try{new ResizeObserver(post).observe(document.body)}catch(e){}document.fonts&&document.fonts.ready.then(post);
 </script></body></html>

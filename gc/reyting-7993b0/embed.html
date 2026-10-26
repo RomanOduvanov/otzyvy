@@ -157,7 +157,13 @@
 const FS={
  API:'https://oduvanov-api.romanoduvanov52.workers.dev',
  /* часы на платформе и за видео уроков с сервера: {h:[сайт, видео]} в секундах */
- hours(){if(!/^http/.test(FS.API))return Promise.resolve(null);return Promise.race([fetch(FS.API+'/hours').then(r=>r.json()).catch(()=>null),new Promise(ok=>setTimeout(()=>ok(null),2500))])},
+ /* v42-SRV: рейтинг — с сервера и только ученику, вошедшему в кабинет. Токен чтения v даёт страница GetCourse (layout.js) через postMessage */
+ auth(){return FS._a||(FS._a=new Promise(ok=>{const GC='https://oduvanovroman.getcourse.ru';let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
+  const f=e=>{if(e.origin!==GC||!e.data||!('fsAuth' in e.data))return;end(e.data.fsAuth)};addEventListener('message',f);
+  const ask=()=>{try{parent.postMessage({fsNeedAuth:1},GC)}catch(e){}};ask();iv=setInterval(ask,800);setTimeout(()=>end(null),9000)}))},
+ data(){return FS._d||(FS._d=FS.auth().then(a=>{if(!a||!a.v)throw new Error('auth');const u=FS.uid();return fetch(FS.API+'/rating?v='+encodeURIComponent(a.v)+(u?'&for='+u:'')).then(r=>r.json())})
+  .then(D=>{if(!D||!D.rows)throw new Error('rating');D.fh=D.fh||D.me;return D}))},
+ hours(){return FS.data().then(D=>D.hours||null).catch(()=>null)},
  rki(D,r){let i=D.ranks.findIndex(x=>x[0]===r.rank);if(i<0){i=0;D.ranks.forEach((x,k)=>{if((r.pts||0)>=x[1])i=k})}return i},
  hrs(sec){const h=(sec||0)/3600;return h<0.05?'0 ч':h<10?(Math.round(h*10)/10).toString().replace('.',',')+' ч':Math.round(h)+' ч'},
 
@@ -356,12 +362,12 @@ FS.shareCard=async function(D,r,o){
 };
 
 const A='../awards/',RATING='https://oduvanovroman.getcourse.ru/teach/control/stream/view/id/935952152';
-fetch('data.json',{cache:'no-store'}).then(r=>r.json()).then(async D=>{
- const u=FS.uid();let r=null;if(u){const h=await FS.hash(u);r=D.rows.find(x=>x.h===h)||null}
+FS.data().then(async D=>{
+ const u=FS.uid();let r=null;if(u){const h=D.fh;r=D.rows.find(x=>x.h===h)||null}
  FS.me(document.getElementById('me'),D,r,{awards:A,link:RATING,target:'_top'});
  FS.tariff(document.getElementById('tc'),r);
  FS.x2(document.getElementById('x2'),D.x2,RATING,'_top');
  ['me','tc','x2'].forEach(i=>FS.nbsp(document.getElementById(i)));
  const post=()=>{try{parent.postMessage({fsEmbedHeight:Math.ceil(document.body.getBoundingClientRect().height)+2,fsEmbedV:2},'*')}catch(e){}};post();addEventListener('resize',post);try{new ResizeObserver(post).observe(document.body)}catch(_){}document.fonts&&document.fonts.ready.then(post);
-});
+}).catch(()=>{});
 </script></body></html>
