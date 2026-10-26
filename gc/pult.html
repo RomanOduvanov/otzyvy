@@ -47,7 +47,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:12px 18px;border-radius:14px;background:#0f1f15;border:1px solid rgba(74,222,128,.4);color:#c9f7d8;font-size:14px;z-index:9;display:none}
 .hid{display:none!important}
 html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40px 40px;max-width:none}html.emb .login{min-height:0;padding:40px 0}html.emb #bOut{display:none}
-@media (max-width:760px){.wrap{padding:18px 14px 100px}html.emb .wrap{padding:8px 16px 40px}.hd h1{font-size:32px}.kpis{grid-template-columns:1fr 1fr}.k .v{font-size:24px}}
+@media (max-width:760px){.wrap{padding:18px 14px 100px}html.emb .wrap{padding:8px 16px 40px}.hd h1{font-size:32px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.k{min-width:0}.k .d,.k .l{overflow-wrap:anywhere}.k .v{font-size:24px}}
 
 #bcGrid{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-areas:"a b" "c d";gap:16px;align-items:start}.bcA{grid-area:a}.bcB{grid-area:b}.bcC{grid-area:c}.bcD{grid-area:d}
 .bcIn{display:flex;gap:8px;flex-wrap:wrap}.bcIn #bcBtn{flex:0 1 200px}.bcIn #bcLink{flex:1 1 220px}#bcText{width:100%;min-height:128px}
@@ -55,6 +55,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 .inp{box-sizing:border-box;max-width:100%;font-size:16px}
 @media (max-width:760px){#bcGrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"a" "b" "c" "d"}.bcIn input{flex:1 1 100%!important;width:100%}#bSend{width:100%}.ctl{flex-wrap:wrap}.ctl>.row{width:100%}#q{width:100%!important}#flt{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}#flt button{flex:none;white-space:nowrap}.hd{flex-direction:column;align-items:flex-start}.hd .row{width:100%;justify-content:space-between}#curSeg{max-width:100%;overflow-x:auto}#tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}#tabs button{flex:none}}
 .nt td,.nt th{white-space:normal}.nh{display:flex;flex-direction:column;gap:6px;margin-top:8px}.nh div{font-size:13px;padding:8px 10px;border-radius:10px;background:var(--s0);border:1px solid var(--hair)}
+#nrBox .row,#czBox .row{flex-wrap:wrap}#nrBox .inp,#czBox .inp{max-width:100%}
 .vb{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:9px;background:rgba(195,139,255,.16);color:#e2c9ff!important;font-size:12px;font-weight:600;white-space:nowrap}
 </style></head><body>
 <div id="login" class="login hid"><div class="lg">
