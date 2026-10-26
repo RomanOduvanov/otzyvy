@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мой банк · OduvanovSchool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#000106;color:#fff;font:400 15px/1.45 "Inter Tight",Inter,system-ui,sans-serif;font-feature-settings:"tnum"}
+body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.35),transparent 70%) fixed,#000106}
+.wrap{max-width:760px;margin:0 auto;padding:28px 20px 100px;display:flex;flex-direction:column;gap:18px}
+.hd h1{margin:0;font-size:40px;line-height:1.05;font-weight:500;letter-spacing:-.03em}.hd p{margin:8px 0 0;color:rgba(255,255,255,.58)}
+.login{display:grid;place-items:center;padding:40px 0}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center;padding:36px 28px;border-radius:32px;background:#161616;border:1px solid rgba(255,255,255,.08)}
+.lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}
+.btn:disabled{opacity:.5}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
+html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 16px 40px}
+@media (max-width:600px){.hd h1{font-size:32px}}
+</style></head><body>
+<div class="wrap">
+<header class="hd"><h1>Мой банк</h1><p>Каждая оплата и&nbsp;каждый заказ&nbsp;— в&nbsp;одном месте</p></header>
+<div id="login" class="login hid"><div class="lg"><h2>Вход через Telegram</h2><p>Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.</p>
+<button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
+<div id="bank"></div>
+</div>
+<script src="bank.js?v=1"></script>
+<script>
+(function(){
+var EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post);document.querySelector('.hd').classList.add('hid')}
+var API='https://oduvanov-api.romanoduvanov52.workers.dev',T=null;try{T=localStorage.getItem('ebTok')}catch(e){}
+function $(i){return document.getElementById(i)}
+function out(){T=null;try{localStorage.removeItem('ebTok')}catch(e){}$('bank').innerHTML='';$('login').classList.remove('hid')}
+function api(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+T;
+  return fetch(API+p,o).then(function(r){if(r.status===401){out();throw new Error('auth')}return r.json()})}
+function start(){$('login').classList.add('hid');ECOBANK.mount($('bank'),{api:api,file:function(id){return API+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}
+$('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
+  fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){
+    var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').innerHTML='Нажми «Старт» в&nbsp;боте. Жду подтверждения…';var n=0;
+    var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}
+      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);T=c.token;try{localStorage.setItem('ebTok',T)}catch(e){}b.disabled=false;$('lgSt').textContent='';start()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent=c.err==='nolink'?'Этот Telegram не привязан к ученику. Привяжи его в боте и попробуй снова':'Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})};
+if(T)start();else $('login').classList.remove('hid');
+})();
+</script></body></html>

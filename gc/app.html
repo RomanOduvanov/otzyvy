@@ -87,6 +87,7 @@ a{color:var(--acc);text-decoration:none}button{font:inherit;color:inherit;border
 <button data-t="bank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></svg><em>Банк</em></button>
 <button data-t="more"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><em>Ещё</em></button>
 </nav>
+<script src="bank.js?v=1"></script>
 <script>
 (function(){
 var API='https://oduvanov-api.romanoduvanov52.workers.dev', GC='https://oduvanovroman.getcourse.ru', TGW=window.Telegram&&Telegram.WebApp, T=null, HOME=null, TOP=null, IMG=null, BUSY=false, CUR='learn';
@@ -130,7 +131,7 @@ function rRate(){var m=HOME.me,h='';if(!TOP){$('v-rate').innerHTML='<div class="
   h+='<div class="h2">Как набрать быстрее</div><div class="kp"><div><b>+70</b><small>сложная ДЗ</small></div><div><b style="color:#ffb48c">x2</b><small>первые 48 ч</small></div><div><b>+15</b><small>анкета</small></div></div><a class="btn2" href="#" data-go="/teach/control/stream/view/id/935952152">Полный рейтинг</a>';
   $('v-rate').innerHTML=h}
 /* ---------- Банк (скоро) ---------- */
-function rBank(){$('v-bank').innerHTML='<div class="hi"><span><small>Мой банк</small><b>Учёт заработка</b></span></div><div class="vio" style="align-items:flex-start"><span class="cap">Скоро</span><b style="font-size:21px;font-weight:500;line-height:1.25">Здесь будет твой банк: каждый заказ, клиент и&nbsp;сумма</b><span style="color:rgba(255,255,255,.8);font-size:14px">Добавляешь оплату за&nbsp;пару секунд, видишь рост по&nbsp;месяцам и&nbsp;получаешь награды за&nbsp;рубежи.</span></div><div class="kp"><div><b>₽</b><small>заказы</small></div><div><b>↗</b><small>рост</small></div><div><b>★</b><small>награды</small></div></div>'}
+var BANKM=0;function rBank(){if(BANKM)return;BANKM=1;ECOBANK.mount($('v-bank'),{api:api,file:function(id){return API+'/bank/file?id='+id+'&t='+T.t},open:openExt,hap:function(k){try{k==='ok'?TGW.HapticFeedback.notificationOccurred('success'):TGW.HapticFeedback.selectionChanged()}catch(e){}},share:function(t){openExt('https://t.me/share/url?url='+encodeURIComponent('https://t.me/oduvanov_school_bot')+'&text='+encodeURIComponent(t))}})}
 /* ---------- Ещё ---------- */
 function rMore(){var m=HOME.me,c=HOME.cur,h='',acc=m.acc?new Date(m.acc):null;
   h+='<div class="prof"><span class="av">'+esc((m.name||'?').charAt(0))+'</span><span style="flex:1"><b>'+esc(m.name)+'</b><small>'+(m.tar?esc(m.tar):'')+(acc?' · доступ до '+acc.getDate()+' '+MON[acc.getMonth()]+' '+acc.getFullYear():'')+'</small></span></div>';
