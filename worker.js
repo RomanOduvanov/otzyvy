@@ -389,6 +389,11 @@ async function bizConnection(env, bc) {
   for (const a of await admins(env)) await tgSend(env, a, (on ? '✅ ' : '⛔️ ') + th(c ? c.full : row.cid) + (on ? ' подключил бота к своему Telegram — время ответов теперь считается.' : ' отключил бота от своего Telegram.'));
   return tgSend(env, owner, on ? '✅ <b>Готово!</b> Ученики пишут тебе в личку, а я только отмечаю время: когда пришёл вопрос и когда ты ответил. Тексты переписки не сохраняются.\n\nЕсли ученик ждёт ответа 2 часа в твоё рабочее время — напомню.' : 'Бот отключён от твоего Telegram — время ответов больше не считается.') }
 /* «спасибо», «ок», эмодзи, стикер, «+» — ответа не требует (текст не храним, решаем на лету) */
+/* клиент закрыл вопрос сам («спасибо, всё заработало», «понял», «ок»): ожидание ответа снимается */
+function careClose(m) { if (isAck(m)) return true; const t = String(m.text || m.caption || '').trim(); if (!t || /\?/.test(t)) return false;
+  if (/(^|\s)(как|когда|почему|зачем|можно|помоги|подскаж|где|сколько|какой|какая|какие|нужно|надо|но|однако|опять|снова|всё\s+ещё|все\s+еще|не\s+работает|не\s+получается|не\s+приходит)(\s|$)/i.test(t)) return false;
+  if (t.split(/\s+/).filter(Boolean).length > 15) return false;
+  return /спасиб|благодар|заработал|получилось|разобрал|работает|понятно|понял|ясно|окей|(^|\s)ок(\s|$|[!.)])|супер|отлично|класс|хорошо|договорились|принято/i.test(t) }
 function isAck(m) { if (m.sticker) return true; if (m.photo || m.document || m.voice || m.video || m.video_note || m.audio) return false;
   const t = String(m.text || m.caption || '').trim(); if (!t) return false; if (/\?/.test(t)) return false;
   if (/(^|\s)(как|когда|почему|зачем|можно|помоги|подскаж|где|сколько|что|какой|какая|какие|нужно|надо)(\s|$)/i.test(t)) return false;
@@ -1508,7 +1513,9 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
   const d = await env.DB.prepare('SELECT * FROM care_dlg WHERE chat=?').bind(chat).first();
   const q = [env.DB.prepare('INSERT OR IGNORE INTO care_msg (chat, mid, dir, text, at) VALUES (?,?,?,?,?)').bind(chat, m.message_id, out ? 'out' : 'in', text, t)];
   if (!d) q.push(env.DB.prepare('INSERT INTO care_dlg (chat, name, username, uid, first_at, last_in, last_out, wait_since, n_in, n_out) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(chat, nm, m.chat.username || null, st ? st.uid : null, t, out ? null : t, out ? t : null, out ? null : t, out ? 0 : 1, out ? 1 : 0));
-  else if (!out) { const ack = !d.wait_since && isAck(m); q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, ack ? null : t, chat)) }
+  else if (!out) { const close = careClose(m), ack = close || (!d.wait_since && isAck(m));
+    if (close) q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=NULL, n_in=n_in+1, notified=0 WHERE chat=?').bind(nm, m.chat.username || null, t, chat));
+    else q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, ack ? null : t, chat)) }
   else { q.push(env.DB.prepare('UPDATE care_dlg SET last_out=?, wait_since=NULL, n_out=n_out+1 WHERE chat=?').bind(t, chat));
     if (d.wait_since) { const ws = workSec(d.wait_since, t, c.hours); q.push(env.DB.prepare('INSERT INTO care_resp (chat, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?)').bind(chat, d.wait_since, t, t - d.wait_since, ws, dayStr(new Date(t * 1000))));
       q.push(env.DB.prepare('UPDATE care_dlg SET resp_sec=COALESCE(resp_sec,0)+?, resp_n=resp_n+1 WHERE chat=?').bind(ws, chat)) } }
@@ -1516,13 +1523,39 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
 async function careDeleted(env, dm) { await careEnsure(env); const c = await careConf(env); if (dm.business_connection_id !== c.conn || !dm.chat) return;
   const st = env.DB.prepare('UPDATE care_msg SET del=1 WHERE chat=? AND mid=?'); await env.DB.batch((dm.message_ids || []).slice(0, 50).map(id => st.bind(String(dm.chat.id), id))) }
 /* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
-async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 40').bind(chat).all()).results || []).reverse();
+const CARE_RULES = `Ты — опытный руководитель службы заботы онлайн-школы OduvanovSchool (курсы по дизайну карточек для маркетплейсов и ИИ, платформа GetCourse). Оцени работу сотрудника в диалоге справедливо — как сильный руководитель, а не придирчивый аудитор.
+
+Как устроена работа:
+- Технические вопросы (код подтверждения почты, доступ, кабинет GetCourse, домашки на платформе) решают техспециалисты. Они отвечают от пары минут до 2–3 часов, поэтому сотрудник не может назвать точный срок. Нормально: «передала техспециалисту, вернусь с ответом» без времени. Не требуй сроков в таких случаях и не называй это лишним обещанием.
+- Клиентам в приветствии обещан ответ в течение 1–2 часов.
+- Переписка может быть неполной: бот видит только сообщения после подключения, начало диалога могло не попасть. Если из текста видно, что что-то уже делали раньше (повторно отправляли код, проверяли адрес, передавали техподдержке) — считай это сделанным. Не ставь в вину то, что могло быть сделано раньше или вне чата.
+- Смотри на итог переписки. Если после «уточню», «сейчас проверю» сотрудник вернулся с ответом, или клиент поблагодарил, или написал, что всё работает, — обещание выполнено, вопрос решён (solved=yes), не упоминай это в promises.
+- «Спасибо», «ок», эмодзи или реакция клиента — диалог закрыт, это хороший итог.
+
+Проблема (check=true) — только если есть хотя бы одно:
+- грубость, раздражение, пренебрежение к клиенту;
+- неверные факты о школе, курсах, оплате, доступах;
+- опасные обещания: возврат денег, скидки, продление доступа, конкретный срок за техспециалиста или куратора;
+- клиент остался с отпиской или без понятного следующего шага, хотя сотрудник мог помочь сам;
+- ответ не по сути вопроса.
+Не проблема: нет точных сроков при передаче техспециалистам; общие фразы, если дальше был реальный ответ; вопрос ещё в работе у техспециалистов, если клиенту сказали, что вопрос передан и ему напишут.
+
+Пиши только то, что следует из текста переписки, и не противоречь ему: если сотрудник назвал причину («обновляем кабинет»), не пиши, что причина непонятна. Если в errors или promises сказать нечего — оставь пустую строку.
+score: 9–10 отлично; 7–8 хорошо, мелкие недочёты; 5–6 заметные проблемы; 1–4 плохо.
+solved: "yes" — решено, или передано по назначению и клиент знает, что дальше; "partly" — частично; "no" — клиент без решения и без понятного следующего шага.
+Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"…","promises":"…","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и итог одной фразой","advice":"один конкретный совет сотруднику или пустая строка"}`;
+/* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
+async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 80').bind(chat).all()).results || []).reverse();
   if (!ms.some(x => x.dir === 'out') || !env.ANTHROPIC_API_KEY) return null;
-  const tr = ms.map(x => (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text).join('\n').slice(-9000);
-  const sys = 'Ты проверяешь ответы службы заботы онлайн-школы OduvanovSchool (курс по дизайну карточек маркетплейсов и ИИ). Оцени ответы сотрудника в диалоге. Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"кратко, ошибки или неверные факты, иначе пусто","promises":"кратко, лишние или опасные обещания (возвраты, сроки, скидки без оснований), иначе пусто","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и ответа одной фразой"}. check=true, если есть ошибки, грубость, лишние обещания, вопрос не решён или ответ не по делу.';
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 400, system: sys, messages: [{ role: 'user', content: tr }] }) });
+  const c = await careConf(env), d = await env.DB.prepare('SELECT first_at FROM care_dlg WHERE chat=?').bind(chat).first();
+  const connAt = c.at ? Date.parse(c.at) / 1000 | 0 : 0, partial = ms.length >= 80 || !d || (connAt && d.first_at - connAt < 3 * 86400) || ms[0].dir === 'out';
+  const fmt = x => { const t = new Date((x.at + 3 * 3600) * 1000); return '[' + String(t.getUTCDate()).padStart(2, '0') + '.' + String(t.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(t.getUTCHours()).padStart(2, '0') + ':' + String(t.getUTCMinutes()).padStart(2, '0') + '] ' + (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text };
+  const tr = (partial ? '(Начало переписки могло не попасть в запись.)\n' : '') + ms.map(fmt).join('\n').slice(-14000);
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 3000, system: CARE_RULES, messages: [{ role: 'user', content: 'Переписка (время МСК):\n' + tr }] }) });
   const j = await r.json(); const t = ((j.content || []).find(x => x.type === 'text') || {}).text || ''; const m = t.match(/\{[\s\S]*\}/); if (!m) return null;
-  try { const g = JSON.parse(m[0]); g.at = Date.now(); return g } catch (e) { return null } }
+  try { const g = JSON.parse(m[0]); g.at = Date.now(); g.alert = !!g.check && ((+g.score || 10) <= 5 || (+g.polite || 5) <= 2); return g } catch (e) { return null } }
+/* сотрудник пообещал вернуться («уточню», «передала техспециалисту») — оцениваем не раньше чем через 3 ч, если нет новых сообщений */
+const CARE_PENDING = /уточн|узна[юе]|провер(ю|им)|сейчас|минут|передал|переда[мю]|верн(усь|ёмся|емся)|напиш(у|ем)|сообщ(у|им)|ожида/i;
 async function careTick(env, B) { await careEnsure(env); const c = await careConf(env), out = { notified: 0, graded: 0 }; if (!c.enabled) return { skip: 'off' };
   const now = Date.now() / 1000 | 0, hr = msk().getUTCHours(), work = hr >= c.hours[0] && hr < c.hours[1];
   /* долгое молчание в рабочее время */
@@ -1531,10 +1564,12 @@ async function careTick(env, B) { await careEnsure(env); const c = await careCon
       for (const a of await admins(env)) await tgSend(env, a, '🟠 <b>Служба заботы молчит ' + hrs(sec) + '</b>\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ' ждёт ответа. Порог — ' + c.wait + ' мин в рабочее время.');
       await env.DB.prepare('UPDATE care_dlg SET notified=1 WHERE chat=?').bind(d.chat).run(); out.notified++; if (B) B.use(2) } }
   /* оценка: диалоги с новым ответом, где последнее сообщение старше 10 минут */
-  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 4').bind(now - 600).all()).results || [];
-  for (const d of tg) { if (B && !B.ok(3)) break; const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
+  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 6').bind(now - 1800).all()).results || [];
+  for (const d of tg) { if (B && !B.ok(3)) break;
+    if (d.last_out >= (d.last_in || 0) && now - d.last_out < 3 * 3600) { const lm = await env.DB.prepare("SELECT text FROM care_msg WHERE chat=? AND dir='out' AND del=0 ORDER BY at DESC, id DESC LIMIT 1").bind(d.chat).first(); if (lm && CARE_PENDING.test(lm.text || '')) continue }
+    const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
     await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), now, d.chat).run(); out.graded++;
-    if (g.check) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '')); if (B) B.use(1) } }
+    if (g.alert) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '') + (g.advice ? '\n💡 ' + th(g.advice) : '')); if (B) B.use(1) } }
   /* хранение 90 дней */
   if (Math.random() < 0.1) { const lim = now - 90 * 86400; await env.DB.batch([env.DB.prepare('DELETE FROM care_msg WHERE at < ?').bind(lim), env.DB.prepare('DELETE FROM care_resp WHERE answered < ?').bind(lim), env.DB.prepare('DELETE FROM care_dlg WHERE COALESCE(last_in,0) < ? AND COALESCE(last_out,0) < ?').bind(lim, lim)]) }
   return out }
