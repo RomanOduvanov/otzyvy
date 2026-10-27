@@ -59,7 +59,9 @@ export const SCHEMA = [
   /* v42: кому GetCourse выдал ключ (issued) и кто уже вошёл с ним (seen) */
   'CREATE TABLE IF NOT EXISTS authuid (uid INTEGER PRIMARY KEY, issued TEXT, seen TEXT)',
   /* v42: скрытые незавершённые заказы «Мои покупки» (STU-12) — на сервере, а не в localStorage */
-  'CREATE TABLE IF NOT EXISTS fmp_hidden (uid INTEGER NOT NULL, num TEXT NOT NULL, at TEXT, PRIMARY KEY (uid, num))'
+  'CREATE TABLE IF NOT EXISTS fmp_hidden (uid INTEGER NOT NULL, num TEXT NOT NULL, at TEXT, PRIMARY KEY (uid, num))',
+  /* 27.10: использование мини-приложения учениками (счётчики, без содержимого): app, tab:<вкладка>, page:<страница>, gc, err:<ошибка> */
+  'CREATE TABLE IF NOT EXISTS ev (day TEXT NOT NULL, uid INTEGER NOT NULL, k TEXT NOT NULL, n INTEGER DEFAULT 1, PRIMARY KEY (day, uid, k))'
 ];
 async function ensureAll(env) { await env.DB.batch(SCHEMA.map(s => env.DB.prepare(s))) }
 /* CODE-11: DDL не на каждый запрос. Версия схемы считается из самого SCHEMA: добавили таблицу — на первом запросе после деплоя DDL выполнится сам.
@@ -389,11 +391,6 @@ async function bizConnection(env, bc) {
   for (const a of await admins(env)) await tgSend(env, a, (on ? '✅ ' : '⛔️ ') + th(c ? c.full : row.cid) + (on ? ' подключил бота к своему Telegram — время ответов теперь считается.' : ' отключил бота от своего Telegram.'));
   return tgSend(env, owner, on ? '✅ <b>Готово!</b> Ученики пишут тебе в личку, а я только отмечаю время: когда пришёл вопрос и когда ты ответил. Тексты переписки не сохраняются.\n\nЕсли ученик ждёт ответа 2 часа в твоё рабочее время — напомню.' : 'Бот отключён от твоего Telegram — время ответов больше не считается.') }
 /* «спасибо», «ок», эмодзи, стикер, «+» — ответа не требует (текст не храним, решаем на лету) */
-/* клиент закрыл вопрос сам («спасибо, всё заработало», «понял», «ок»): ожидание ответа снимается */
-function careClose(m) { if (isAck(m)) return true; const t = String(m.text || m.caption || '').trim(); if (!t || /\?/.test(t)) return false;
-  if (/(^|\s)(как|когда|почему|зачем|можно|помоги|подскаж|где|сколько|какой|какая|какие|нужно|надо|но|однако|опять|снова|всё\s+ещё|все\s+еще|не\s+работает|не\s+получается|не\s+приходит)(\s|$)/i.test(t)) return false;
-  if (t.split(/\s+/).filter(Boolean).length > 15) return false;
-  return /спасиб|благодар|заработал|получилось|разобрал|работает|понятно|понял|ясно|окей|(^|\s)ок(\s|$|[!.)])|супер|отлично|класс|хорошо|договорились|принято/i.test(t) }
 function isAck(m) { if (m.sticker) return true; if (m.photo || m.document || m.voice || m.video || m.video_note || m.audio) return false;
   const t = String(m.text || m.caption || '').trim(); if (!t) return false; if (/\?/.test(t)) return false;
   if (/(^|\s)(как|когда|почему|зачем|можно|помоги|подскаж|где|сколько|что|какой|какая|какие|нужно|надо)(\s|$)/i.test(t)) return false;
@@ -834,11 +831,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'care', 'pay', 'report'] };
+const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'care', 'insights', 'pay', 'report'] };
 async function cronRun(env, cron) {
-  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'care', 'pay'], out = {};
+  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'care' ? careTick(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -906,7 +903,6 @@ function aiSystem() {
 В. Учёба и работа (клиенты, цены, портфолио, нейросети, дизайн, промпты) → три части: 1) чёткий ответ и где это в курсе (модуль и когда откроется — из course_plan); 2) 2–4 практических совета, которые можно применить сейчас (для закрытого модуля — общие советы, не пересказ материалов); 3) 1–2 вопроса, чтобы помочь точнее, и одна человеческая фраза поддержки. 80–180 слов.
 Г. Доверие и качество («это скам?», «стоит ли школа денег», «есть отзывы?», «а вам можно верить») → вызови school_facts. Ты часть школы: говори уверенно и честно, опираясь на цифры (государственная лицензия на образовательную деятельность со ссылкой на реестр Рособрнадзора, средняя оценка уроков, сколько оценок и анкет, сколько учеников ставят 9–10, страница отзывов, знак качества GetCourse со ссылкой). Никогда не советуй «проверять признаки мошенничества» и не говори, что не можешь проверить школу. Одна фраза, что понимаешь сомнение, потом факты, потом следующий шаг.
 Д. Трудности и деньги («верните деньги», «не успеваю», «ничего не понимаю», «хочу бросить») → без цифр школы и без уговоров: одна фраза сочувствия, затем реальный путь. Возврат, рассрочка, продление — в Заботу о студентах (что написать: почта покупки и что случилось); условия и сроки не придумывай. «Не успеваю» — открытые уроки доступны до конца доступа, x2 — бонус за скорость, а не дедлайн; предложи маленький план (например, 1 урок в день по 20–30 минут). «Не понимаю» — что пересмотреть и что конкретно спросить у куратора.
-Ж. «Что нового», нововведения, обновления, новости школы за неделю или месяц → вызови school_news (days — из вопроса, по умолчанию 7) и коротко перечисли самое полезное для ученика с датами, сгруппировав похожее; добавь открывшиеся и ближайшие модули. Не говори, что у тебя нет данных, — они есть в school_news; если список пуст, скажи, что крупных изменений не было, и назови ближайшие открытия.
 Е. Привет, спасибо, ок → одна короткая фраза; на привет — коротко, с чем помогаешь (уроки и домашка, расписание, баллы, нейросети и клиенты, разбор работ). Не по теме школы (погода, рефераты, политика) → одна фраза, что помогаешь только с учёбой в школе, без помощи по сторонней теме.
 Быстрые ответы: если в ответе есть вопрос ученику, в самой последней строке дай 2–3 коротких варианта ответа (до 4 слов) в формате [[Вариант 1 | Вариант 2 | Вариант 3]]. Если вопросов нет — этой строки нет.
 Когда ученик отвечает на твои вопросы — советуй под его ситуацию, не повторяй общий шаблон.
@@ -945,7 +941,6 @@ ${AI_PAGES.map(p => '- ' + p[0] + ': ' + p[1]).join('\n')}
 const AI_TOOLS = [
   { name: 'my_bank', description: 'Банк ученика: доход по валютам и ≈ в рублях, оплаты за месяц, заказы по статусам, ближайшие дедлайны. Вызывай ТОЛЬКО когда ученик спрашивает про свои деньги, доход, оплаты или заказы.', input_schema: { type: 'object', properties: {} } },
   { name: 'school_facts', description: 'Факты о школе: государственная лицензия на образовательную деятельность (номер, ссылка на реестр Рособрнадзора), а также из анкет и оценок учеников: средняя оценка уроков, число оценок, анкет и отзывов, доля 9–10, потоки, свежие отзывы, страница отзывов, знак качества GetCourse, учеников в потоке. Для вопросов о доверии, качестве, отзывах, «это скам?», «стоит ли», возврате и сомнениях.', input_schema: { type: 'object', properties: {} } },
-  { name: 'school_news', description: 'Что нового в школе за последние N дней: нововведения платформы и мини-приложения, новые функции, открывшиеся и ближайшие модули. Для вопросов «что нового», «нововведения», «обновления», «новости школы», «что изменилось».', input_schema: { type: 'object', properties: { days: { type: 'integer', description: 'за сколько дней, по умолчанию 7' } } } },
   { name: 'course_plan', description: 'Модули курса, даты открытия, ближайшие эфиры и открытия (расписание потока).', input_schema: { type: 'object', properties: {} } },
   { name: 'call_curator', description: 'Когда вопрос может решить только человек: возвращает куратора, его контакт и часы, а под ответом ученик увидит кнопку «Написать». Куратору ничего не отправляется.', input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'Коротко суть вопроса для куратора' } }, required: ['summary'] } }
 ];
@@ -953,26 +948,6 @@ const AI_TOOLS = [
    Источник — опубликованный отчёт обратной связи (GitHub RomanOduvanov/otzyvy, main/index.html, блок <script id="data">), его обновляет движок отчёта ОС.
    Кэш: kv 'schoolfacts' 12 ч (+ память изолята 1 ч). Нет связи — последняя удачная копия, совсем нет — запасные цифры отчёта от 23.10.2026. */
 const SCHOOL_SRC = 'https://raw.githubusercontent.com/RomanOduvanov/otzyvy/main/index.html', SCHOOL_PAGE = 'https://romanoduvanov.github.io/otzyvy/';
-/* 27.10: новости школы для Нейро («что нового за неделю»). Базовый список ниже + записи Романа (kv 'news', команда боту /news) + открытия модулей из расписания. */
-const SCHOOL_NEWS0 = [
-  { d: '2026-10-27', t: 'Под каждым ответом Нейро-Одуванова можно поставить 👍 или 👎 — так мы улучшаем подсказки.' },
-  { d: '2026-10-27', t: 'В уроке с домашкой появилась кнопка «Изменить работу или уровень»: пока работа на проверке, можно заменить файлы, текст или уровень.' },
-  { d: '2026-10-27', t: 'Починили кнопку «Прикрепить файлы с работой» — теперь срабатывает при нажатии в любом месте плашки.' },
-  { d: '2026-10-27', t: 'В карточках частей модуля правильно показывается «ДЗ на проверке» и число пройденных уроков.' },
-  { d: '2026-10-27', t: 'Анкеты по модулям удобнее заполнять с телефона: шкала 1–10 больше не разваливается.' },
-  { d: '2026-10-26', t: 'Мини-приложение школы в Telegram: учёба, полный рейтинг потока, Нейро-Одуванов, банк и всё о курсе — в одном месте, на весь экран.' },
-  { d: '2026-10-26', t: '«Мой банк» и «Учёт заказов»: записывай оплаты от клиентов (₽, $ или €, пересчёт в рубли по курсу ЦБ) и веди заказы с дедлайном и временем. Данные клиентов видишь только ты.' },
-  { d: '2026-10-26', t: 'Рейтинг потока на телефоне: таблица листается вбок, видно все показатели — звание, уроки, домашки, «в срок ×2».' },
-  { d: '2026-10-26', t: 'Иконку школы можно добавить на экран телефона — кнопка в «Ещё».' },
-  { d: '2026-10-26', t: 'Появились продление доступа и повышение тарифа (в том числе до «Премиум Амазон») с зачётом уже оплаченного — раздел «Мои покупки».' }
-];
-async function schoolNews(env, days) { days = Math.max(1, Math.min(60, +days || 7)); const today = dayStr(), from = addDays(today, -(days - 1)), list = [];
-  for (const n of SCHOOL_NEWS0.concat(((await kvGet(env, 'news')) || []))) if (n && n.d >= from && n.d <= today && !n.off) list.push({ дата: n.d, что: n.t });
-  let opened = [], soon = []; try { const D = await loadData(env), now = Date.now();
-    for (const m of (D.modules || [])) { if (!m.at) continue; const d = String(m.at).slice(0, 10); if (d >= from && d <= today) opened.push({ дата: d, модуль: m.name }); else if (Date.parse(m.at) > now && Date.parse(m.at) - now < 14 * 864e5) soon.push({ дата: d, модуль: m.name }) } } catch (e) {}
-  list.sort((a, b) => a.дата < b.дата ? 1 : -1);
-  return { период: from + ' — ' + today, новое: list, открылись_модули: opened, скоро_откроются: soon };
-}
 const SCHOOL_LICENSE = { есть: 'лицензия на образовательную деятельность государственного образца', номер: 'Л035-01281-52/02584121', выдана: '03.07.2025, Министерство образования и науки Нижегородской области', срок: 'бессрочная', статус: 'действующая', проверить_в_реестре_Рособрнадзора: 'https://islod.obrnadzor.gov.ru/rlic/details/5421faf0-bf22-fb97-d3bb-32b9df3ad5c2/' };
 const SCHOOL_FB0 = { на_дату: '2026-10-23', оценка_уроков: '4,96 из 5', оценок_уроков: 845, на_5_звёзд: '97%', анкет_по_модулям: 727, интерес_к_урокам: '9,35 из 10', польза: '9,29 из 10', применимость: '9,12 из 10', ставят_9_или_10: '83% учеников в анкетах', отзывов_учеников: 833, потоки: ['Закрытый поток (май–сен 2026)', 'Поток 1.0 (июл–сен 2026)', 'Поток 2.0 (с окт 2026)'], знак_качества_GetCourse: 'https://getcourse.ru/qualityreestr~231141b34c82aa95e48810a9d1b33a79', страница_отзывов: SCHOOL_PAGE, запасные_данные: true };
 let SF_MEM = null;
@@ -1028,7 +1003,6 @@ async function aiTool(env, name, input, uid, ctx) {
     const st = { new: 0, work: 0, review: 0, done: 0, cancel: 0 }; for (const x of O) st[x.status || 'new'] = (st[x.status || 'new'] || 0) + 1;
     const dl = O.filter(x => x.deadline && x.status !== 'done' && x.status !== 'cancel').sort((a, b) => a.deadline < b.deadline ? -1 : 1).slice(0, 3).map(x => ({ что: x.product || 'заказ', дедлайн: x.deadline.replace('T', ' '), цена: x.price + ' ' + (x.cur || 'RUB') }));
     return { доход_всего_в_рублях: rub, доход_по_валютам: by, доход_в_этом_месяце_руб: mrub, оплат: T.length, заказов_всего: O.length, заказы: { новые: st.new, в_работе: st.work, на_проверке: st.review, готово: st.done, отменены: st.cancel }, ближайшие_дедлайны: dl, где_смотреть: 'вкладка «Банк» в приложении' } }
-  if (name === 'school_news') return await schoolNews(env, input && input.days);
   if (name === 'course_plan') { const D = ctx.D || (ctx.D = await loadData(env)); const now = Date.now(); return JSON.stringify({ today: dayStr(), x2: D.x2 || null, modules: (D.modules || []).map(m => ({ name: m.name, about: m.desc, opens: m.at, open: m.at ? Date.parse(m.at) <= now : false, link: SITE + '/teach/control/stream/view/id/' + m.id, lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0) })) }).slice(0, 7000) }
   if (name === 'school_facts') { const f = Object.assign({}, await schoolFacts(env)); f.лицензия = SCHOOL_LICENSE; try { const D = ctx.D || (ctx.D = await loadData(env)); if (D.n) f.учеников_в_рейтинге_потока_сейчас = D.n } catch (e) {} return f }
   if (name === 'call_curator') {
@@ -1149,11 +1123,6 @@ async function neuroTg(env, m, chat, text) {
   const kv = async k => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind(k).first(); return r ? JSON.parse(r.v) : null };
   const put = (k, v) => env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind(k, JSON.stringify(v)).run();
   const st = (await kv('neuro:' + chat)) || { on: false, uid: 0 };
-  const nw = text.match(/^\/news(?:@\w+)?(?:\s+([\s\S]+))?/);
-  if (nw) { const L = (await kv('news')) || [], arg = (nw[1] || '').trim(), dm = arg.match(/^del\s+(\d+)$/i);
-    if (dm) { const i = L.length - +dm[1]; if (L[i]) { L.splice(i, 1); await put('news', L); await tgSend(env, chat, '🗑 Удалено.') } else await tgSend(env, chat, 'Нет записи с таким номером.'); return true }
-    if (arg) { L.push({ d: dayStr(), t: arg.slice(0, 600) }); await put('news', L.slice(-200)); await tgSend(env, chat, '✅ Добавлено в новости школы — Нейро расскажет ученикам на вопрос «что нового».'); return true }
-    const last = L.slice(-10).reverse(); await tgSend(env, chat, '📰 <b>Новости школы для Нейро</b>\n' + (last.length ? last.map((n, i) => (i + 1) + '. ' + n.d + ' — ' + th(n.t)).join('\n') : 'Пока только встроенный список.') + '\n\n<code>/news текст</code> — добавить, <code>/news del 1</code> — удалить первую в этом списке.'); return true }
   const cmd = text.match(/^\/neuro(?:@\w+)?(?:\s+(\S+))?/);
   if (cmd) {
     if (cmd[1] === 'new') { await put('nh:' + chat, []); await tgSend(env, chat, '🧹 Новый диалог.'); return true }
@@ -1328,6 +1297,10 @@ async function maApi(env, req, path) {
     return json(req, { ok: true, id, w: await mkView(env, target, staffUid), who: { uid: target, name: (r && r.name) || (sr && sr.name) || null, tar: (r && r.tar) || null, curName: c ? c.full : null } }, 200, { 'Cache-Control': 'no-store' }) }
   const TK = u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), VW = /\.w\./.test(TK) ? await viewTok(env, TK) : null;
   const uid = await authUid(env, TK, 'av'); if (!uid) return deny(req);
+  if (path === '/ma/ev' && req.method === 'POST') { if (VW || isStaffUid(env, uid)) return json(req, { ok: true }); let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const ks = (Array.isArray(o.k) ? o.k : [o.k]).map(k => String(k || '').replace(/[^\wа-яё:. -]/gi, '').slice(0, 64)).filter(Boolean).slice(0, 10), d = dayStr();
+    if (ks.length) { await ensure(env); await env.DB.batch(ks.map(k => env.DB.prepare('INSERT INTO ev (day, uid, k, n) VALUES (?,?,?,1) ON CONFLICT(day, uid, k) DO UPDATE SET n=n+1').bind(d, uid, k))) }
+    return json(req, { ok: true }) }
   /* флаги интерфейса (баннер «иконка на экране» и подсказки): сервер — запасная копия CloudStorage Telegram */
   if (path === '/ma/flag') { const k = 'flags:' + uid, F = (await kvGet(env, k)) || {};
     if (req.method === 'POST' && !VW) { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const key = String(o.k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 30); if (key) { F[key] = { v: String(o.v || '').slice(0, 30), at: Date.now(), n: ((F[key] && F[key].n) || 0) + 1 }; await kvPut(env, k, F) } }
@@ -1541,9 +1514,7 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
   const d = await env.DB.prepare('SELECT * FROM care_dlg WHERE chat=?').bind(chat).first();
   const q = [env.DB.prepare('INSERT OR IGNORE INTO care_msg (chat, mid, dir, text, at) VALUES (?,?,?,?,?)').bind(chat, m.message_id, out ? 'out' : 'in', text, t)];
   if (!d) q.push(env.DB.prepare('INSERT INTO care_dlg (chat, name, username, uid, first_at, last_in, last_out, wait_since, n_in, n_out) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(chat, nm, m.chat.username || null, st ? st.uid : null, t, out ? null : t, out ? t : null, out ? null : t, out ? 0 : 1, out ? 1 : 0));
-  else if (!out) { const close = careClose(m), ack = close || (!d.wait_since && isAck(m));
-    if (close) q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=NULL, n_in=n_in+1, notified=0 WHERE chat=?').bind(nm, m.chat.username || null, t, chat));
-    else q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, ack ? null : t, chat)) }
+  else if (!out) { const ack = !d.wait_since && isAck(m); q.push(env.DB.prepare('UPDATE care_dlg SET name=COALESCE(?,name), username=COALESCE(?,username), last_in=?, wait_since=COALESCE(wait_since, ?), n_in=n_in+1, notified=CASE WHEN wait_since IS NULL THEN 0 ELSE notified END WHERE chat=?').bind(nm, m.chat.username || null, t, ack ? null : t, chat)) }
   else { q.push(env.DB.prepare('UPDATE care_dlg SET last_out=?, wait_since=NULL, n_out=n_out+1 WHERE chat=?').bind(t, chat));
     if (d.wait_since) { const ws = workSec(d.wait_since, t, c.hours); q.push(env.DB.prepare('INSERT INTO care_resp (chat, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?)').bind(chat, d.wait_since, t, t - d.wait_since, ws, dayStr(new Date(t * 1000))));
       q.push(env.DB.prepare('UPDATE care_dlg SET resp_sec=COALESCE(resp_sec,0)+?, resp_n=resp_n+1 WHERE chat=?').bind(ws, chat)) } }
@@ -1551,39 +1522,13 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
 async function careDeleted(env, dm) { await careEnsure(env); const c = await careConf(env); if (dm.business_connection_id !== c.conn || !dm.chat) return;
   const st = env.DB.prepare('UPDATE care_msg SET del=1 WHERE chat=? AND mid=?'); await env.DB.batch((dm.message_ids || []).slice(0, 50).map(id => st.bind(String(dm.chat.id), id))) }
 /* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
-const CARE_RULES = `Ты — опытный руководитель службы заботы онлайн-школы OduvanovSchool (курсы по дизайну карточек для маркетплейсов и ИИ, платформа GetCourse). Оцени работу сотрудника в диалоге справедливо — как сильный руководитель, а не придирчивый аудитор.
-
-Как устроена работа:
-- Технические вопросы (код подтверждения почты, доступ, кабинет GetCourse, домашки на платформе) решают техспециалисты. Они отвечают от пары минут до 2–3 часов, поэтому сотрудник не может назвать точный срок. Нормально: «передала техспециалисту, вернусь с ответом» без времени. Не требуй сроков в таких случаях и не называй это лишним обещанием.
-- Клиентам в приветствии обещан ответ в течение 1–2 часов.
-- Переписка может быть неполной: бот видит только сообщения после подключения, начало диалога могло не попасть. Если из текста видно, что что-то уже делали раньше (повторно отправляли код, проверяли адрес, передавали техподдержке) — считай это сделанным. Не ставь в вину то, что могло быть сделано раньше или вне чата.
-- Смотри на итог переписки. Если после «уточню», «сейчас проверю» сотрудник вернулся с ответом, или клиент поблагодарил, или написал, что всё работает, — обещание выполнено, вопрос решён (solved=yes), не упоминай это в promises.
-- «Спасибо», «ок», эмодзи или реакция клиента — диалог закрыт, это хороший итог.
-
-Проблема (check=true) — только если есть хотя бы одно:
-- грубость, раздражение, пренебрежение к клиенту;
-- неверные факты о школе, курсах, оплате, доступах;
-- опасные обещания: возврат денег, скидки, продление доступа, конкретный срок за техспециалиста или куратора;
-- клиент остался с отпиской или без понятного следующего шага, хотя сотрудник мог помочь сам;
-- ответ не по сути вопроса.
-Не проблема: нет точных сроков при передаче техспециалистам; общие фразы, если дальше был реальный ответ; вопрос ещё в работе у техспециалистов, если клиенту сказали, что вопрос передан и ему напишут.
-
-Пиши только то, что следует из текста переписки, и не противоречь ему: если сотрудник назвал причину («обновляем кабинет»), не пиши, что причина непонятна. Если в errors или promises сказать нечего — оставь пустую строку.
-score: 9–10 отлично; 7–8 хорошо, мелкие недочёты; 5–6 заметные проблемы; 1–4 плохо.
-solved: "yes" — решено, или передано по назначению и клиент знает, что дальше; "partly" — частично; "no" — клиент без решения и без понятного следующего шага.
-Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"…","promises":"…","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и итог одной фразой","advice":"один конкретный совет сотруднику или пустая строка"}`;
-/* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
-async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 80').bind(chat).all()).results || []).reverse();
+async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 40').bind(chat).all()).results || []).reverse();
   if (!ms.some(x => x.dir === 'out') || !env.ANTHROPIC_API_KEY) return null;
-  const c = await careConf(env), d = await env.DB.prepare('SELECT first_at FROM care_dlg WHERE chat=?').bind(chat).first();
-  const connAt = c.at ? Date.parse(c.at) / 1000 | 0 : 0, partial = ms.length >= 80 || !d || (connAt && d.first_at - connAt < 3 * 86400) || ms[0].dir === 'out';
-  const fmt = x => { const t = new Date((x.at + 3 * 3600) * 1000); return '[' + String(t.getUTCDate()).padStart(2, '0') + '.' + String(t.getUTCMonth() + 1).padStart(2, '0') + ' ' + String(t.getUTCHours()).padStart(2, '0') + ':' + String(t.getUTCMinutes()).padStart(2, '0') + '] ' + (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text };
-  const tr = (partial ? '(Начало переписки могло не попасть в запись.)\n' : '') + ms.map(fmt).join('\n').slice(-14000);
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 3000, system: CARE_RULES, messages: [{ role: 'user', content: 'Переписка (время МСК):\n' + tr }] }) });
+  const tr = ms.map(x => (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text).join('\n').slice(-9000);
+  const sys = 'Ты проверяешь ответы службы заботы онлайн-школы OduvanovSchool (курс по дизайну карточек маркетплейсов и ИИ). Оцени ответы сотрудника в диалоге. Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"кратко, ошибки или неверные факты, иначе пусто","promises":"кратко, лишние или опасные обещания (возвраты, сроки, скидки без оснований), иначе пусто","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и ответа одной фразой"}. check=true, если есть ошибки, грубость, лишние обещания, вопрос не решён или ответ не по делу.';
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 400, system: sys, messages: [{ role: 'user', content: tr }] }) });
   const j = await r.json(); const t = ((j.content || []).find(x => x.type === 'text') || {}).text || ''; const m = t.match(/\{[\s\S]*\}/); if (!m) return null;
-  try { const g = JSON.parse(m[0]); g.at = Date.now(); g.alert = !!g.check && ((+g.score || 10) <= 5 || (+g.polite || 5) <= 2); return g } catch (e) { return null } }
-/* сотрудник пообещал вернуться («уточню», «передала техспециалисту») — оцениваем не раньше чем через 3 ч, если нет новых сообщений */
-const CARE_PENDING = /уточн|узна[юе]|провер(ю|им)|сейчас|минут|передал|переда[мю]|верн(усь|ёмся|емся)|напиш(у|ем)|сообщ(у|им)|ожида/i;
+  try { const g = JSON.parse(m[0]); g.at = Date.now(); return g } catch (e) { return null } }
 async function careTick(env, B) { await careEnsure(env); const c = await careConf(env), out = { notified: 0, graded: 0 }; if (!c.enabled) return { skip: 'off' };
   const now = Date.now() / 1000 | 0, hr = msk().getUTCHours(), work = hr >= c.hours[0] && hr < c.hours[1];
   /* долгое молчание в рабочее время */
@@ -1592,12 +1537,10 @@ async function careTick(env, B) { await careEnsure(env); const c = await careCon
       for (const a of await admins(env)) await tgSend(env, a, '🟠 <b>Служба заботы молчит ' + hrs(sec) + '</b>\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ' ждёт ответа. Порог — ' + c.wait + ' мин в рабочее время.');
       await env.DB.prepare('UPDATE care_dlg SET notified=1 WHERE chat=?').bind(d.chat).run(); out.notified++; if (B) B.use(2) } }
   /* оценка: диалоги с новым ответом, где последнее сообщение старше 10 минут */
-  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 6').bind(now - 1800).all()).results || [];
-  for (const d of tg) { if (B && !B.ok(3)) break;
-    if (d.last_out >= (d.last_in || 0) && now - d.last_out < 3 * 3600) { const lm = await env.DB.prepare("SELECT text FROM care_msg WHERE chat=? AND dir='out' AND del=0 ORDER BY at DESC, id DESC LIMIT 1").bind(d.chat).first(); if (lm && CARE_PENDING.test(lm.text || '')) continue }
-    const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
+  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 4').bind(now - 600).all()).results || [];
+  for (const d of tg) { if (B && !B.ok(3)) break; const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
     await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), now, d.chat).run(); out.graded++;
-    if (g.alert) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '') + (g.advice ? '\n💡 ' + th(g.advice) : '')); if (B) B.use(1) } }
+    if (g.check) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '')); if (B) B.use(1) } }
   /* хранение 90 дней */
   if (Math.random() < 0.1) { const lim = now - 90 * 86400; await env.DB.batch([env.DB.prepare('DELETE FROM care_msg WHERE at < ?').bind(lim), env.DB.prepare('DELETE FROM care_resp WHERE answered < ?').bind(lim), env.DB.prepare('DELETE FROM care_dlg WHERE COALESCE(last_in,0) < ? AND COALESCE(last_out,0) < ?').bind(lim, lim)]) }
   return out }
@@ -1626,8 +1569,78 @@ async function careApi(env, s, path, req, u, ajson) { if (s.role !== 'admin') re
   return ajson({ ok: false, err: 'not found' }, 404) }
 
 /* ---------- пульт → «Нейро» (только админ): нарушения, ограничения, ошибки нейросети, журнал «Смотреть как ученик», разбор напоминаний кураторам ---------- */
+/* ---------- 27.10: аналитик поведения ----------
+   Каждый день в 9:00 МСК (cron «45 * * * *», задача insights): сводка за вчера и 7 дней по реальным данным —
+   активность на сайте (time) и в мини-приложении (ev), прогресс уроков и ДЗ (snap), Нейро (log ai/ai-err, ai_fb), кураторы (cresp/cwait), Забота, банк, технические сбои.
+   3–5 находок пишет нейросеть строго по цифрам; сводка уходит админам в Telegram и хранится (kv ins:<день>), подробно — пульт → «Аналитика». */
+const INS_FROM = d => new Date(d + 'T00:00:00+03:00').toISOString();
+async function insightsData(env, day) {
+  day = day || addDays(dayStr(), -1); const d1 = addDays(day, -1), d7 = addDays(day, -6), d14 = addDays(day, -13), from = INS_FROM(day), to = INS_FROM(addDays(day, 1)), from7 = INS_FROM(d7);
+  const D = await loadData(env), rows = (D.rows || []).filter(r => r.uid != null && !isStaffUid(env, r.uid)), byU = {}, byH = {}; rows.forEach(r => { byU[+r.uid] = r; byH[r.h] = r });
+  const q = (s, ...b) => env.DB.prepare(s).bind(...b);
+  const [tDay, t7, tLast, evDay, logK, logAi, cr, cw, care, careW, btx, bord, sn, tgN] = await env.DB.batch([
+    q('SELECT day, COUNT(*) u, SUM(site) site, SUM(video) video FROM time WHERE day>=? AND day<=? AND (site>0 OR video>0) GROUP BY day', d14, day),
+    q('SELECT COUNT(DISTINCT uid) u FROM time WHERE day>=? AND day<=? AND (site>0 OR video>0)', d7, day),
+    q('SELECT uid, MAX(day) d FROM time WHERE site>0 OR video>0 GROUP BY uid'),
+    q('SELECT day, k, COUNT(DISTINCT uid) u, SUM(n) n FROM ev WHERE day>=? AND day<=? GROUP BY day, k', d14, day),
+    q('SELECT kind, COUNT(*) n FROM log WHERE at>=? AND at<? GROUP BY kind', from, to),
+    q("SELECT COUNT(*) n, COUNT(DISTINCT uid) u, SUM(CASE WHEN at>=? THEN 1 ELSE 0 END) nd FROM log WHERE kind='ai' AND at>=? AND at<?", from, from7, to),
+    q('SELECT cid, wsec, day FROM cresp WHERE day>=? AND day<=?', d7, day),
+    q('SELECT cid, COUNT(*) n, MIN(since) s FROM cwait GROUP BY cid'),
+    q('SELECT day, COUNT(*) n, AVG(wsec) w FROM care_resp WHERE day>=? AND day<=? GROUP BY day', d7, day),
+    q('SELECT COUNT(*) n, MIN(wait_since) s FROM care_dlg WHERE wait_since IS NOT NULL'),
+    q('SELECT COUNT(DISTINCT uid) users, SUM(CASE WHEN day=? THEN 1 ELSE 0 END) yday, COUNT(*) n FROM bank_tx', day),
+    q("SELECT COUNT(DISTINCT uid) users, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order"),
+    q('SELECT h, day, pts, lessons, hw FROM snap WHERE day IN (?,?,?)', day, d1, addDays(day, -7)),
+    q('SELECT COUNT(*) n FROM student WHERE tg_chat IS NOT NULL')]).then(r => r.map(x => x.results || []));
+  let fb = { up: 0, down: 0 }; try { const f = await q('SELECT SUM(CASE WHEN vote>0 THEN 1 ELSE 0 END) up, SUM(CASE WHEN vote<0 THEN 1 ELSE 0 END) down FROM ai_fb WHERE at>=?', Date.parse(from7)).first(); fb = { up: f.up | 0, down: f.down | 0 } } catch (e) {}
+  const med = a => { a = a.filter(x => x > 0).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : null };
+  const S = {}; for (const r of sn) (S[r.day] = S[r.day] || {})[r.h] = r;
+  const delta = (a, b) => { let L = 0, H = 0, P = 0, who = 0; for (const h in (S[a] || {})) { if (!byH[h]) continue; const x = S[a][h], y = (S[b] || {})[h]; if (!y) continue; const dl = Math.max(0, x.lessons - y.lessons), dh = Math.max(0, x.hw - y.hw); L += dl; H += dh; P += Math.max(0, x.pts - y.pts); if (dl || dh) who++ } return { lessons: L, hw: H, pts: P, students: who } };
+  const last = {}; tLast.forEach(r => last[r.uid] = r.d);
+  const idle = rows.map(r => ({ uid: +r.uid, name: r.name, place: r.place, last: last[+r.uid] || null, days: last[+r.uid] ? Math.round((Date.parse(day) - Date.parse(last[+r.uid])) / 864e5) : null }))
+    .filter(x => x.days == null || x.days >= 5).sort((a, b) => (b.days == null ? 999 : b.days) - (a.days == null ? 999 : a.days));
+  const trend = []; for (let i = 13; i >= 0; i--) { const d = addDays(day, -i), t = tDay.find(x => x.day === d) || {}, a = evDay.find(x => x.day === d && x.k === 'app') || {}; trend.push({ day: d, site: t.u | 0, app: a.u | 0, min: Math.round(((t.site | 0) + (t.video | 0)) / 60) }) }
+  const tabs = {}, errs = {}; evDay.filter(x => x.day >= d7).forEach(x => { if (/^tab:|^page:/.test(x.k)) tabs[x.k] = (tabs[x.k] || 0) + (x.u | 0); if (/^err:/.test(x.k)) errs[x.k.slice(4)] = (errs[x.k.slice(4)] || 0) + (x.n | 0) });
+  const appU7 = new Set(); try { ((await q("SELECT DISTINCT uid FROM ev WHERE day>=? AND day<=? AND k='app'", d7, day).all()).results || []).forEach(r => appU7.add(r.uid)) } catch (e) {}
+  const curs = CURATORS.map(c => { const R = cr.filter(x => x.cid === c.id), Y = R.filter(x => x.day === day), w = cw.find(x => x.cid === c.id);
+    return { id: c.id, name: c.full, answered: Y.length, answered7: R.length, median: med(Y.map(x => x.wsec)), median7: med(R.map(x => x.wsec)), waiting: w ? w.n : 0, oldestH: w && w.s ? Math.round((Date.now() / 1000 - w.s) / 3600) : null } });
+  const tech = {}; logK.forEach(x => { if (/err|diag|fail|budget|cut|acc-|mod/.test(x.kind)) tech[x.kind] = x.n });
+  return { ok: true, day, n: rows.length, tgLinked: (tgN[0] || {}).n | 0,
+    active: { site: (tDay.find(x => x.day === day) || {}).u | 0, site7: (t7[0] || {}).u | 0, app: (evDay.find(x => x.day === day && x.k === 'app') || {}).u | 0, app7: appU7.size, minutes: trend[13].min },
+    progress: { day: delta(day, d1), week: delta(day, addDays(day, -7)), ontime: rows.length ? Math.round(rows.reduce((a, r) => a + (r.ontime | 0), 0) / rows.length) : null },
+    neuro: { q: (logAi[0] || {}).nd | 0, q7: (logAi[0] || {}).n | 0, users7: (logAi[0] || {}).u | 0, errors: (logK.find(x => x.kind === 'ai-err') || {}).n | 0, fbUp7: fb.up, fbDown7: fb.down },
+    curators: curs, care: { answered7: care.reduce((a, x) => a + (x.n | 0), 0), avgMin7: care.length ? Math.round(care.reduce((a, x) => a + (x.w || 0) * x.n, 0) / Math.max(1, care.reduce((a, x) => a + x.n, 0)) / 60) : null, waiting: (careW[0] || {}).n | 0 },
+    bank: { users: (btx[0] || {}).users | 0, txYday: (btx[0] || {}).yday | 0, orderUsers: (bord[0] || {}).users | 0, ordersActive: (bord[0] || {}).act | 0 },
+    idle: { count: idle.length, never: idle.filter(x => x.days == null).length, list: idle.slice(0, 25) }, usage7: tabs, clientErrors7: errs, tech, trend, x2: D.x2 || null, updated: D.updated || null } }
+async function insightsText(env, I) {
+  const brief = Object.assign({}, I, { idle: { count: I.idle.count, never: I.idle.never, top: I.idle.list.slice(0, 8).map(x => x.name + (x.days == null ? ' (не заходил)' : ' (' + x.days + ' дн)')) }, trend: I.trend.map(t => t.day.slice(5) + ':' + t.site + '/' + t.app) });
+  const sys = 'Ты продуктовый аналитик онлайн-школы OduvanovSchool (курс AI-дизайна, кабинет на GetCourse + мини-приложение в Telegram, кураторы, Нейро — ИИ-помощник). Тебе дают сводку за вчера и 7 дней. Напиши 3–5 находок для руководителя Романа.\n'
+    + 'Каждая находка — одна строка: «• что видно по цифрам — почему это важно — что сделать сегодня (конкретно: кому написать, что проверить, что поправить)». Только факты из данных, никаких выдумок и общих советов; если данных мало — так и скажи. Сначала самое срочное (сбои, ученики без ответа, провал активности). '
+    + 'Пиши на «ты», по-русски, без вступления и заголовков, без markdown кроме «•». До 900 знаков. Поля: active.site — заходили на сайт, active.app — открывали мини-приложение, progress.day — уроки/ДЗ за день, idle — без активности 5+ дней, curators.median — медиана ответа в рабочих секундах, tech — сбои (ai-err — ошибки Нейро, tg-diag — проблемы входа на сайт из Telegram).';
+  const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 900, system: sys, messages: [{ role: 'user', content: JSON.stringify(brief) }] }));
+  if (!r || !r.ok) return null; return ((j.content || []).find(b => b.type === 'text') || {}).text || null }
+function insightsMsg(I, text) { const p = I.progress.day, m = s => s == null ? '—' : s < 3600 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1).replace('.', ',') + ' ч';
+  const d = new Date(I.day + 'T12:00:00Z'), MN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  return '📊 <b>Аналитика за ' + d.getUTCDate() + ' ' + MN[d.getUTCMonth()] + '</b>\n'
+    + 'Заходили: сайт ' + I.active.site + ' · приложение ' + I.active.app + ' из ' + I.n + ' (за 7 дней ' + I.active.site7 + ' / ' + I.active.app7 + ')\n'
+    + 'Уроков ' + p.lessons + ' · ДЗ ' + p.hw + ' · двигались ' + p.students + ' учеников\n'
+    + 'Нейро: ' + I.neuro.q + ' вопросов' + (I.neuro.errors ? ' · ⚠️ ошибок ' + I.neuro.errors : '') + '\n'
+    + 'Кураторы: ' + I.curators.map(c => th(c.name.split(' ')[0]) + ' ' + c.answered + ' отв., медиана ' + m(c.median) + (c.waiting ? ', ждут ' + c.waiting : '')).join(' · ') + '\n'
+    + 'Без активности 5+ дней: ' + I.idle.count + '\n\n' + (text ? th(text) : '<i>Находки не сформировались — нейросеть недоступна, цифры выше.</i>') + '\n\nПодробно: пульт → «Аналитика»' }
+async function insightsJob(env, B, force) { const day = addDays(dayStr(), -1); if (!force && msk().getUTCHours() < 9) return { skip: 'early' };
+  const k = 'ins:' + day; if (!force && await kvGet(env, k)) return { skip: 'done' }; if (B && !B.ok(4)) return { skip: 'budget' }; if (B) B.use(4);
+  const I = await insightsData(env, day); let text = null; try { text = await insightsText(env, I) } catch (e) {}
+  await kvPut(env, k, { I, text, at: new Date().toISOString() }); const idx = (await kvGet(env, 'ins:idx')) || []; if (!idx.includes(day)) { idx.unshift(day); await kvPut(env, 'ins:idx', idx.slice(0, 60)) }
+  if (!force || force === 'send') for (const a of await admins(env)) await tgSend(env, a, insightsMsg(I, text));
+  await logIt(env, 'insights', 0, day + (text ? '' : ' без находок')); return { ok: true, day } }
 async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin') return ajson({ ok: false, err: 'Раздел только для Романа' }, 403);
   const C = MOD_CFG(env), now = Date.now();
+  /* 27.10: аналитика поведения — ?day=ГГГГ-ММ-ДД (по умолчанию вчера); fresh=1 пересчитать; send=1 разослать админам */
+  if (path === '/app/api/neuro/insights') { const day = /^\d{4}-\d{2}-\d{2}$/.test(u.searchParams.get('day') || '') ? u.searchParams.get('day') : addDays(dayStr(), -1);
+    if (u.searchParams.get('fresh') || u.searchParams.get('send')) { if (day === addDays(dayStr(), -1)) await insightsJob(env, null, u.searchParams.get('send') ? 'send' : 'quiet'); else { const I = await insightsData(env, day); await kvPut(env, 'ins:' + day, { I, text: await insightsText(env, I).catch(() => null), at: new Date().toISOString() }) } }
+    let R = await kvGet(env, 'ins:' + day); if (!R) R = { I: await insightsData(env, day), text: null, at: null, live: true };
+    const today = await insightsData(env, dayStr()); return ajson(Object.assign({ ok: true, days: (await kvGet(env, 'ins:idx')) || [], today: { active: today.active, progress: today.progress.day, neuro: today.neuro } }, R)) }
   /* 27.10: журнал сервера для разборов (только админ): ?k=tg-diag,ma-staff&from=ISO&to=ISO&q=текст — плюс журнал «Смотреть как» */
   if (path === '/app/api/neuro/log') { const ks = String(u.searchParams.get('k') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 12), from = u.searchParams.get('from') || '2000', to = u.searchParams.get('to') || '2999', q = u.searchParams.get('q') || '';
     const w = ['at >= ?', 'at <= ?'], b = [from, to]; if (ks.length) { w.push('kind IN (' + ks.map(() => '?').join(',') + ')'); b.push(...ks) } if (q) { w.push('(info LIKE ? OR CAST(uid AS TEXT) = ?)'); b.push('%' + q + '%', q) }
