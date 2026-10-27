@@ -519,7 +519,7 @@ renderAll();
 /* 26.10 · таблица на телефоне */
 (function(){const MOB=()=>innerWidth<=760,card=document.querySelector('.card.tbl'),th=document.getElementById('th'),rows=document.getElementById('rows');if(!card||!th||!rows)return;
  const sc=document.createElement('div');sc.className='rt-sc';card.insertBefore(sc,th);sc.appendChild(th);sc.appendChild(rows);
- const hint=document.createElement('div');hint.className='rt-hint';hint.textContent='→ ещё';card.appendChild(hint);let swiped=false;
+ const hint=document.createElement('div');let swiped=false;
  sc.addEventListener('scroll',()=>{if(sc.scrollLeft>8)swiped=true;hint.classList.toggle('off',swiped||sc.scrollLeft+sc.clientWidth>=sc.scrollWidth-4)},{passive:true});
  const L=[['pts','Баллы'],['rank','Звание'],['tar','Тариф'],['lessons','Уроки'],['vh','Часы уроков'],['hw','Домашки'],['ontime','В срок ×2'],['name','Ученик'],['place','Место']];
  const chips=document.createElement('div');chips.className='rt-chips';card.parentNode.insertBefore(chips,card);
