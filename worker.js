@@ -1573,6 +1573,7 @@ async function careApi(env, s, path, req, u, ajson) { if (s.role !== 'admin') re
    Каждый день в 9:00 МСК (cron «45 * * * *», задача insights): сводка за вчера и 7 дней по реальным данным —
    активность на сайте (time) и в мини-приложении (ev), прогресс уроков и ДЗ (snap), Нейро (log ai/ai-err, ai_fb), кураторы (cresp/cwait), Забота, банк, технические сбои.
    3–5 находок пишет нейросеть строго по цифрам; сводка уходит админам в Telegram и хранится (kv ins:<день>), подробно — пульт → «Аналитика». */
+const STAFF_IDS = env => String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).map(Number).filter(Boolean).concat(CURATORS.map(c => c.uid)).join(',') || '0';
 const INS_FROM = d => new Date(d + 'T00:00:00+03:00').toISOString();
 async function insightsData(env, day) {
   day = day || addDays(dayStr(), -1); const d1 = addDays(day, -1), d7 = addDays(day, -6), d14 = addDays(day, -13), from = INS_FROM(day), to = INS_FROM(addDays(day, 1)), from7 = INS_FROM(d7);
@@ -1584,14 +1585,14 @@ async function insightsData(env, day) {
     q('SELECT uid, MAX(day) d FROM time WHERE site>0 OR video>0 GROUP BY uid'),
     q('SELECT day, k, COUNT(DISTINCT uid) u, SUM(n) n FROM ev WHERE day>=? AND day<=? GROUP BY day, k', d14, day),
     q('SELECT kind, COUNT(*) n FROM log WHERE at>=? AND at<? GROUP BY kind', from, to),
-    q("SELECT COUNT(*) n, COUNT(DISTINCT uid) u, SUM(CASE WHEN at>=? THEN 1 ELSE 0 END) nd FROM log WHERE kind='ai' AND at>=? AND at<?", from, from7, to),
+    q("SELECT COUNT(*) n, COUNT(DISTINCT uid) u, SUM(CASE WHEN at>=? THEN 1 ELSE 0 END) nd FROM log WHERE kind='ai' AND at>=? AND at<? AND uid NOT IN (" + STAFF_IDS(env) + ")", from, from7, to),
     q('SELECT cid, wsec, day FROM cresp WHERE day>=? AND day<=?', d7, day),
     q('SELECT cid, COUNT(*) n, MIN(since) s FROM cwait GROUP BY cid'),
     q('SELECT day, COUNT(*) n, AVG(wsec) w FROM care_resp WHERE day>=? AND day<=? GROUP BY day', d7, day),
     q('SELECT COUNT(*) n, MIN(wait_since) s FROM care_dlg WHERE wait_since IS NOT NULL'),
     q('SELECT COUNT(DISTINCT uid) users, SUM(CASE WHEN day=? THEN 1 ELSE 0 END) yday, COUNT(*) n FROM bank_tx', day),
     q("SELECT COUNT(DISTINCT uid) users, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order"),
-    q('SELECT h, day, pts, lessons, hw FROM snap WHERE day IN (?,?,?)', day, d1, addDays(day, -7)),
+    q('SELECT h, day, pts, lessons, hw FROM snap WHERE day>=? AND day<=?', addDays(day, -7), day),
     q('SELECT COUNT(*) n FROM student WHERE tg_chat IS NOT NULL')]).then(r => r.map(x => x.results || []));
   let fb = { up: 0, down: 0 }; try { const f = await q('SELECT SUM(CASE WHEN vote>0 THEN 1 ELSE 0 END) up, SUM(CASE WHEN vote<0 THEN 1 ELSE 0 END) down FROM ai_fb WHERE at>=?', Date.parse(from7)).first(); fb = { up: f.up | 0, down: f.down | 0 } } catch (e) {}
   const med = a => { a = a.filter(x => x > 0).sort((x, y) => x - y); return a.length ? a[Math.floor((a.length - 1) / 2)] : null };
@@ -1608,7 +1609,7 @@ async function insightsData(env, day) {
   const tech = {}; logK.forEach(x => { if (/err|diag|fail|budget|cut|acc-|mod/.test(x.kind)) tech[x.kind] = x.n });
   return { ok: true, day, n: rows.length, tgLinked: (tgN[0] || {}).n | 0,
     active: { site: (tDay.find(x => x.day === day) || {}).u | 0, site7: (t7[0] || {}).u | 0, app: (evDay.find(x => x.day === day && x.k === 'app') || {}).u | 0, app7: appU7.size, minutes: trend[13].min },
-    progress: { day: delta(day, d1), week: delta(day, addDays(day, -7)), ontime: rows.length ? Math.round(rows.reduce((a, r) => a + (r.ontime | 0), 0) / rows.length) : null },
+    progress: { day: delta(day, d1), week: delta(day, Object.keys(S).sort()[0] || d1), weekFrom: Object.keys(S).sort()[0] || null, trackingFrom: (tDay[0] || {}).day || null, ontime: rows.length ? Math.round(rows.reduce((a, r) => a + (r.ontime | 0), 0) / rows.length) : null },
     neuro: { q: (logAi[0] || {}).nd | 0, q7: (logAi[0] || {}).n | 0, users7: (logAi[0] || {}).u | 0, errors: (logK.find(x => x.kind === 'ai-err') || {}).n | 0, fbUp7: fb.up, fbDown7: fb.down },
     curators: curs, care: { answered7: care.reduce((a, x) => a + (x.n | 0), 0), avgMin7: care.length ? Math.round(care.reduce((a, x) => a + (x.w || 0) * x.n, 0) / Math.max(1, care.reduce((a, x) => a + x.n, 0)) / 60) : null, waiting: (careW[0] || {}).n | 0 },
     bank: { users: (btx[0] || {}).users | 0, txYday: (btx[0] || {}).yday | 0, orderUsers: (bord[0] || {}).users | 0, ordersActive: (bord[0] || {}).act | 0 },
@@ -1617,9 +1618,9 @@ async function insightsText(env, I) {
   const brief = Object.assign({}, I, { idle: { count: I.idle.count, never: I.idle.never, top: I.idle.list.slice(0, 8).map(x => x.name + (x.days == null ? ' (не заходил)' : ' (' + x.days + ' дн)')) }, trend: I.trend.map(t => t.day.slice(5) + ':' + t.site + '/' + t.app) });
   const sys = 'Ты продуктовый аналитик онлайн-школы OduvanovSchool (курс AI-дизайна, кабинет на GetCourse + мини-приложение в Telegram, кураторы, Нейро — ИИ-помощник). Тебе дают сводку за вчера и 7 дней. Напиши 3–5 находок для руководителя Романа.\n'
     + 'Каждая находка — одна строка: «• что видно по цифрам — почему это важно — что сделать сегодня (конкретно: кому написать, что проверить, что поправить)». Только факты из данных, никаких выдумок и общих советов; если данных мало — так и скажи. Сначала самое срочное (сбои, ученики без ответа, провал активности). '
-    + 'Пиши на «ты», по-русски, без вступления и заголовков, без markdown кроме «•». До 900 знаков. Поля: active.site — заходили на сайт, active.app — открывали мини-приложение, progress.day — уроки/ДЗ за день, idle — без активности 5+ дней, curators.median — медиана ответа в рабочих секундах, tech — сбои (ai-err — ошибки Нейро, tg-diag — проблемы входа на сайт из Telegram).';
+    + 'Пиши на «ты», по-русски, без вступления и заголовков, без markdown кроме «•». До 900 знаков. Поля: active.site — заходили на сайт, active.app — открывали мини-приложение, progress.day — уроки/ДЗ за день, idle — без активности 5+ дней, curators.median — медиана ответа в рабочих секундах, tech — сбои (ai-err — ошибки Нейро, tg-diag — проблемы входа на сайт из Telegram). Учёт времени на сайте идёт с progress.trackingFrom, мини-приложения — с 27.10: «не заходили» до этих дат — не факт, а отсутствие данных.';
   const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 900, system: sys, messages: [{ role: 'user', content: JSON.stringify(brief) }] }));
-  if (!r || !r.ok) return null; return ((j.content || []).find(b => b.type === 'text') || {}).text || null }
+  if (!r || !r.ok) { await logIt(env, 'insights-ai-err', 0, (r ? r.status : 'net') + ' ' + JSON.stringify((j && j.error) || {}).slice(0, 200)); return null } return ((j.content || []).find(b => b.type === 'text') || {}).text || null }
 function insightsMsg(I, text) { const p = I.progress.day, m = s => s == null ? '—' : s < 3600 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1).replace('.', ',') + ' ч';
   const d = new Date(I.day + 'T12:00:00Z'), MN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   return '📊 <b>Аналитика за ' + d.getUTCDate() + ' ' + MN[d.getUTCMonth()] + '</b>\n'
