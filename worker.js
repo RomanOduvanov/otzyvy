@@ -138,7 +138,7 @@ async function ratingFor(env, me, forU) {
   if (cc && priv) for (const s of ((await env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cc.id).all()).results || [])) mine[String(s.uid)] = 1;
   for (const x of D.rows) { const o = Object.assign({}, x), xu = String(x.uid == null ? '' : x.uid); delete o.uid; delete o.k;
     if (priv) o.h = await pubH(env, xu);
-    if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc;
+    if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc; delete o.done; delete o.hwa; delete o.oth; /* учёба (/ma/learn) — только в своём ответе /ma/learn, в рейтинг не попадает даже своя */
     if (T[xu]) hours[o.h] = T[xu]; if ((adm || mine[xu]) && xu) ids[o.h] = +xu; rows.push(o) }
   const hOf = async v => priv ? pubH(env, String(v)) : hashUid(v);
   const out = Object.assign({}, D, { ok: true, rows, hours, me: await hOf(me), fh: okUid(forU) ? await hOf(forU) : null }); delete out.ah; delete out.hw_multi; if (adm || cc) { out.ids = ids; out.staff = adm ? 'admin' : 'curator' } return out }
@@ -1291,6 +1291,24 @@ async function tgInitCheck(env, init) { /* https://core.telegram.org/bots/webapp
   try { return JSON.parse(p.get('user') || 'null') } catch (e) { return null } }
 const RANKS_MA = [[0, 'Новичок'], [150, 'Джуниор'], [500, 'Фрилансер'], [1000, 'Арт-директор'], [1700, 'Владелец студии'], [2500, 'Дизайнер-миллионер']];
 function rankOf(pts) { let rank = RANKS_MA[0][1], next = null, from = 0; for (const [p, t] of RANKS_MA) { if (pts >= p) { rank = t; from = p } else { next = { title: t, at: p, need: p - pts }; break } } return { rank, from, next } }
+/* /ma/learn: ответ по CONTRACT.md из данных сборщика (D.modules — общее; r.done/hwa/oth/tar/acc — строка самого ученика) */
+const isoZ = v => { const t = typeof v === 'number' ? v : v ? Date.parse(v) : NaN; return isNaN(t) ? null : new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z') };
+const updAt = D => D.at || (String(D.updated || '').match(/^(\d\d)\.(\d\d)\.(\d{4}) (\d\d:\d\d)/) ? isoZ(D.updated.replace(/^(\d\d)\.(\d\d)\.(\d{4}) (\d\d:\d\d).*/, '$3-$2-$1T$4:00+03:00')) : null);
+const accOf = (a, now) => !a || a === 'inf' ? null : /^\d{4}-\d\d-\d\d$/.test(a) ? (a < new Date(now + 3 * 36e5).toISOString().slice(0, 10) ? 'dead' : a) : null;
+const LEARN_COURSE = { id: 935917158, name: 'AI-креатор с 0 до PRO', stream: '2.0' }, AMAZON_MOD = 935917189, HW_MAX = 70;
+function learnMods(D) { const L = (D.modules || []).slice(), ai = L.findIndex(m => m.amazon || +m.id === AMAZON_MOD); if (ai < 0) return L; /* Amazon — сразу после Модуля 06 */
+  const [a] = L.splice(ai, 1), i6 = L.findIndex(m => /^Модуль 06\b/.test(m.name || '')); L.splice(i6 < 0 ? L.length : i6 + 1, 0, a); return L }
+function learnX2(D, m, now) { const x = D.x2; if (x && x.module && x.module === m.name) return { lessons_until: isoZ(x.lessons_until), hw_until: isoZ(x.hw_until) };
+  const at = m.at ? Date.parse(m.at) : NaN; return !isNaN(at) && at <= now && now < at + 72 * 36e5 ? { lessons_until: isoZ(at + 48 * 36e5), hw_until: isoZ(at + 72 * 36e5) } : null }
+function learnOf(D, r, now) { const done = new Set((r.done || []).map(Number)), hwa = r.hwa || {}, tar = r.tar || null, amazon = tar === 'Премиум Амазон';
+  const modules = learnMods(D).map(m => { const am = !!m.amazon || +m.id === AMAZON_MOD, nm = String(m.name || '').match(/^Модуль (\d+)\s*—\s*(.+)$/);
+    return { id: m.id, n: am ? null : nm ? nm[1] : null, key: am ? 'amazon' : nm ? 'm' + nm[1] : null, title: am ? 'Amazon' : nm ? nm[2] : (m.name || ''), desc: m.desc || '', at: isoZ(m.at), premium: am, access: !am || amazon, x2: learnX2(D, m, now),
+      parts: (m.parts || []).filter(p => (p.lessons || []).length).map((p, i) => ({ id: p.id || null, n: p.n || i + 1, title: p.title || String(p.name || '').split(' / ').pop() || (nm ? nm[2] : m.name), lessons: (p.lessons || []).map(l => { const k = l.kind || (/^Анкета/i.test(l.t) ? 'anketa' : 'lesson'), h = k === 'hw' ? hwa[String(l.id)] || null : null;
+        const o = { id: l.id, t: l.t, kind: k, stop: !!l.stop, at: isoZ(l.at || p.at), done: done.has(+l.id) || !!(h && h.st !== 'dr') }; if (k === 'anketa' && l.about) o.about = l.about; if (k === 'hw') { o.hwMax = HW_MAX; o.hw = h ? { st: h.st, lv: h.lv || null, pts: h.pts | 0 } : null } return o }) })) } });
+  let cur = null; for (const m of modules) { if (m.premium && !amazon) continue; for (const p of m.parts) { for (const l of p.lessons) { if (l.at && Date.parse(l.at) > now) break; if (!l.done) { cur = { module: m.id, part: p.id, lesson: l.id }; break } } if (cur) break } if (cur) break }
+  const oth = r.oth || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null).map(o => { const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) })); /* цен нет — не отдаём */
+    return { id: o.id, title: o.title, key: o.key || null, kind: o.kind || 'bonus', rec: o.kind === 'rec', lessons: o.lessons | 0 || it.length, done: it.length ? it.filter(i => i.done).length : Math.min(oth[String(o.id)] | 0, o.lessons | 0 || 1e9), acc: null, items: it } });
+  return { ok: true, now: isoZ(now), tar, amazon, acc: accOf(r.acc, now), course: Object.assign({}, LEARN_COURSE, D.course || {}, { modules }), other, cur, updated: updAt(D) } }
 async function maApi(env, req, path) {
   const u = new URL(req.url);
   if (path === '/ma/auth' && req.method === 'POST') { await ensure(env); const o = JSON.parse(await req.text() || '{}'); const tu = await tgInitCheck(env, String(o.init || ''));
@@ -1343,6 +1361,10 @@ async function maApi(env, req, path) {
     const flags = (await kvGet(env, 'flags:' + uid)) || {}, mod = VW ? null : await modState(env, uid);
     return json(req, { ok: true, view: VW ? { staff: VW.staff } : null, flags, mod: mod && (mod.until > Date.now() || mod.banned) ? { until: mod.until, banned: !!mod.banned, left: Math.max(0, MOD_CFG(env).steps.length - mod.step) } : null, me: { uid, name: r.name || s.name || '', tar: r.tar || null, acc: r.acc || null, place: r.place || null, n: D.n, pts, week: r.week | 0, lessons: r.lessons | 0, total: D.total_lessons, hw: r.hw | 0, ontime: r.ontime == null ? null : r.ontime, rank: rk.rank, rankFrom: rk.from, next: rk.next, t7: t7.site + t7.video, tAll: tAll.site + tAll.video },
       x2: D.x2 || null, modules: mods, cur, updated: D.updated || null }, 200, { 'Cache-Control': 'no-store' }) }
+  /* «Учёба в приложении» (CONTRACT.md, этап 1): курс → модули → части → уроки со статусом ученика; только его данные (VW — просматриваемого) */
+  if (path === '/ma/learn') { let D = null; try { D = await loadData(env) } catch (e) {}
+    const r = D && Array.isArray(D.modules) && D.modules.length ? await rowFor(D, uid) : null;
+    return json(req, D && D.modules && D.modules.length ? learnOf(D, r || {}, Date.now()) : { ok: true, course: null, reason: 'nodata' }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/ma/top') { const D = await loadData(env), rows = (D.rows || []).slice().sort((a, b) => (a.place || 1e9) - (b.place || 1e9)); const me = await rowFor(D, uid); const mp = me && me.place || null;
     const pick = (x, i) => ({ place: x.place, name: x.name, pts: x.pts | 0, week: x.week | 0, rank: rankOf(x.pts | 0).rank, me: me ? x === me : false });
     const top = rows.slice(0, 10).map(pick), near = mp && mp > 10 ? rows.filter(x => x.place >= mp - 2 && x.place <= mp + 2).map(pick) : [];
