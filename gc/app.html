@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no,shrink-to-fit=no">
 <title>OduvanovSchool</title>
 <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -129,7 +129,8 @@ html.va #scr{padding-top:calc(60px + var(--st))}html.va #v-ai{top:calc(48px + va
 html.fs .L>.pgh{display:none}
 body.lg{background:var(--bg)}
 body.lg::before{content:"";position:fixed;left:0;right:0;top:var(--st);bottom:var(--tb);background:radial-gradient(90% 26% at 50% 0%,rgba(96,0,255,.16),transparent 70%);pointer-events:none;z-index:-1}
-body.lg::after{content:"";position:fixed;left:-10%;right:-10%;bottom:-160px;height:420px;background:radial-gradient(50% 50% at 50% 100%,rgba(96,0,255,.55),rgba(150,87,232,.12) 55%,transparent 75%);pointer-events:none;z-index:-1}
+/* 28.10: свечение снизу — строго в ширину экрана: fixed-слой шире экрана iOS добавляет к ширине страницы, уменьшает масштаб, и шапка/нижняя панель съезжают (баг «чёрная шапка налезает, панель западает»). Эллипс 60% = прежние 50% от 120% */
+body.lg::after{content:"";position:fixed;left:0;right:0;bottom:-160px;height:420px;background:radial-gradient(60% 50% at 50% 100%,rgba(96,0,255,.55),rgba(150,87,232,.12) 55%,transparent 75%);pointer-events:none;z-index:-1}
 .L{font-size:14px;line-height:1.4}.L b{font-weight:600}.L .nw{white-space:nowrap}.L>*{flex-shrink:0}.L.g10{gap:10px}
 .L>button,.L .card>button{width:100%}
 .L .hi{padding:4px 2px 2px}.L .hi b{line-height:1.15;font-weight:500}
