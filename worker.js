@@ -1549,11 +1549,16 @@ async function careMessage(env, m, edited) { await careEnsure(env); const c = aw
   await env.DB.batch(q) }
 async function careDeleted(env, dm) { await careEnsure(env); const c = await careConf(env); if (dm.business_connection_id !== c.conn || !dm.chat) return;
   const st = env.DB.prepare('UPDATE care_msg SET del=1 WHERE chat=? AND mid=?'); await env.DB.batch((dm.message_ids || []).slice(0, 50).map(id => st.bind(String(dm.chat.id), id))) }
+/* 27.10 (правка чата «Редизайн», восстановлена): оцениваем только законченный диалог — клиент закрыл («спасибо», «ок», эмодзи, стикер) или тишина ≥ 24 ч.
+   Пока клиент ждёт ответа — не оцениваем. Рабочие часы и молчание клиента — в правилах для оценщика (CARE_RULES). */
+const CARE_IDLE = 24 * 3600;
+const careDone = t => { t = String(t || '').trim().toLowerCase(); return !t || t === '[стикер]' || /^(спасибо|спасибки|спс|благодарю|большое спасибо|спасибо большое|ок|окей|ok|okay|понял|поняла|понятно|ясно|хорошо|отлично|супер|класс|договорились|принято|good|thanks|thank you)[\s!.,)👍🙏❤️🔥😊]*$/i.test(t) || /^[\p{Extended_Pictographic}\s\u200d\ufe0f]+$/u.test(t) };
+const CARE_RULES = 'Правила школы: служба заботы работает с 10:00 до 20:00 МСК — сообщения, пришедшие ночью или вне этих часов, отвечаются утром, это не нарушение и не медленный ответ. Если клиент замолчал после ответа — это не вина сотрудника, вопрос считается закрытым, если клиент не возразил. Оценивай только то, что зависит от сотрудника.';
 /* оценка ответа службы заботы ИИ: JSON со шкалами и пометкой «проверить» */
 async function careGrade(env, chat) { const ms = ((await env.DB.prepare('SELECT dir, text, at FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 40').bind(chat).all()).results || []).reverse();
   if (!ms.some(x => x.dir === 'out') || !env.ANTHROPIC_API_KEY) return null;
   const tr = ms.map(x => (x.dir === 'in' ? 'Клиент: ' : 'Служба заботы: ') + x.text).join('\n').slice(-9000);
-  const sys = 'Ты проверяешь ответы службы заботы онлайн-школы OduvanovSchool (курс по дизайну карточек маркетплейсов и ИИ). Оцени ответы сотрудника в диалоге. Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"кратко, ошибки или неверные факты, иначе пусто","promises":"кратко, лишние или опасные обещания (возвраты, сроки, скидки без оснований), иначе пусто","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и ответа одной фразой"}. check=true, если есть ошибки, грубость, лишние обещания, вопрос не решён или ответ не по делу.';
+  const sys = CARE_RULES + '\n' + 'Ты проверяешь ответы службы заботы онлайн-школы OduvanovSchool (курс по дизайну карточек маркетплейсов и ИИ). Оцени ответы сотрудника в диалоге. Верни ТОЛЬКО JSON без пояснений: {"polite":1-5,"solved":"yes"|"partly"|"no","errors":"кратко, ошибки или неверные факты, иначе пусто","promises":"кратко, лишние или опасные обещания (возвраты, сроки, скидки без оснований), иначе пусто","tone":"кратко о тоне","score":1-10,"check":true|false,"summary":"суть вопроса и ответа одной фразой"}. check=true, если есть ошибки, грубость, лишние обещания, вопрос не решён или ответ не по делу.';
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: AI_MODEL(env), max_tokens: 400, system: sys, messages: [{ role: 'user', content: tr }] }) });
   const j = await r.json(); const t = ((j.content || []).find(x => x.type === 'text') || {}).text || ''; const m = t.match(/\{[\s\S]*\}/); if (!m) return null;
   try { const g = JSON.parse(m[0]); g.at = Date.now(); return g } catch (e) { return null } }
@@ -1564,9 +1569,12 @@ async function careTick(env, B) { await careEnsure(env); const c = await careCon
     for (const d of ws) { if (B && !B.ok(2)) break; const sec = workSec(d.wait_since, now, c.hours); if (sec < c.wait * 60) continue;
       for (const a of await admins(env)) await tgSend(env, a, '🟠 <b>Служба заботы молчит ' + hrs(sec) + '</b>\n' + th(d.name || 'Клиент') + (d.username ? ' (@' + th(d.username) + ')' : '') + ' ждёт ответа. Порог — ' + c.wait + ' мин в рабочее время.');
       await env.DB.prepare('UPDATE care_dlg SET notified=1 WHERE chat=?').bind(d.chat).run(); out.notified++; if (B) B.use(2) } }
-  /* оценка: диалоги с новым ответом, где последнее сообщение старше 10 минут */
-  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 4').bind(now - 600).all()).results || [];
-  for (const d of tg) { if (B && !B.ok(3)) break; const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
+  /* оценка: только законченные диалоги — клиент закрыл разговор (careDone) или тишина ≥ CARE_IDLE; пока клиент ждёт (wait_since) — не оцениваем */
+  const tg = (await env.DB.prepare('SELECT * FROM care_dlg WHERE last_out IS NOT NULL AND wait_since IS NULL AND (graded_at IS NULL OR graded_at < last_out OR graded_at < COALESCE(last_in,0)) AND MAX(COALESCE(last_in,0), last_out) < ? ORDER BY last_out DESC LIMIT 12').bind(now - 600).all()).results || [];
+  let gn = 0;
+  for (const d of tg) { if (gn >= 4 || (B && !B.ok(3))) break; const lastAt = Math.max(d.last_in || 0, d.last_out || 0);
+    if (now - lastAt < CARE_IDLE) { const lm = await env.DB.prepare('SELECT dir, text FROM care_msg WHERE chat=? AND del=0 ORDER BY at DESC, id DESC LIMIT 1').bind(d.chat).first(); if (!lm || lm.dir !== 'in' || !careDone(lm.text)) continue }
+    gn++; const g = await careGrade(env, d.chat); if (B) B.use(1); if (!g) continue;
     await env.DB.prepare('UPDATE care_dlg SET grade=?, graded_at=? WHERE chat=?').bind(JSON.stringify(g), now, d.chat).run(); out.graded++;
     if (g.check) { for (const a of await admins(env)) await tgSend(env, a, '🔎 <b>Проверь ответ службы заботы</b> · оценка ' + (g.score || '?') + '/10\n' + th(d.name || 'Клиент') + ': ' + th(g.summary || '') + (g.errors ? '\nОшибки: ' + th(g.errors) : '') + (g.promises ? '\nОбещания: ' + th(g.promises) : '') + (g.solved && g.solved !== 'yes' ? '\nВопрос ' + (g.solved === 'no' ? 'не решён' : 'решён частично') : '')); if (B) B.use(1) } }
   /* хранение 90 дней */
