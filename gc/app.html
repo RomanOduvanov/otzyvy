@@ -164,7 +164,7 @@ function gcUrl(p){var u=p.indexOf('http')===0?p:GC+p,hs='';u=u.replace(/#.*$/,fu
 function prof(){return T&&T.u?'/pl/'+T.u:'/teach/control/stream'}
 function openGC(p){hap();if(VW&&!openGC.ok){var m=document.createElement('div');m.className='hs';m.innerHTML='<div class="sh"><button class="x" aria-label="Закрыть">×</button><h3>Страница кабинета откроется под&nbsp;тобой</h3><span class="mut">В&nbsp;режиме просмотра приложение показывает данные '+esc(VW.who.name||'ученика')+', а&nbsp;страницы GetCourse (уроки, профиль, покупки) открываются под твоим аккаунтом. Вход на&nbsp;сайте не&nbsp;меняется&nbsp;— так безопаснее: после режима просмотра ты&nbsp;остаёшься собой.</span><button class="btn" id="vaGo">Всё равно открыть</button><button class="btn2" id="vaNo">Остаться в&nbsp;приложении</button></div>';document.body.appendChild(m);
   m.onclick=function(e){if(e.target===m||e.target.className==='x'||e.target.id==='vaNo')m.remove()};m.querySelector('#vaGo').onclick=function(){m.remove();openGC.ok=1;openGC(p);openGC.ok=0};document.querySelectorAll('.busy').forEach(function(b){b.classList.remove('busy')});return}
-  ldOn('nav');location.href=gcUrl(p)}
+  evt('gc');ldOn('nav');location.href=gcUrl(p)}
 function openExt(u){if(/^https?:\/\/(t\.me|telegram\.me)\//.test(u)){try{TGW.openTelegramLink(u);return}catch(e){}}if(u.indexOf(GC)===0){location.href=gcUrl(u);return}try{TGW.openLink(u)}catch(e){window.open(u,'_blank')}}
 document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[data-go]');if(!a)return;e.preventDefault();var g=a.getAttribute('data-go');if(g.charAt(0)==='/')a.classList.add('busy');if(g.charAt(0)==='/')openGC(g);else openExt(g)});
 var VW=null;try{VW=JSON.parse(sessionStorage.getItem('maVW')||'null');if(VW&&VW.exp<Date.now())VW=null}catch(e){}
@@ -182,6 +182,9 @@ var _f=window.fetch;window.fetch=function(u,o){var su=String(u&&u.url||u);if(su.
   $('lde').classList.remove('on');if(LDN++===0)ldOn(o&&o.method==='POST');
   return _f.apply(this,arguments).then(function(r){if(--LDN<=0){LDN=0;ldOff()}return r},function(e){LDN=0;ldFail();throw e})};
 window.addEventListener('pageshow',function(e){if(e.persisted)ldOff()});
+/* 27.10: счётчики использования для аналитика (только ученики, без содержимого: что открыли, а не что написали) */
+var EVS={};function evt(k){if(!T||T.staff||VW||EVS[k])return;EVS[k]=1;try{_f(API+'/ma/ev',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T.t},body:JSON.stringify({k:k}),keepalive:true}).catch(function(){})}catch(e){}}
+window.addEventListener('error',function(e){evt('err:'+String(e&&e.message||'?').slice(0,50))});window.addEventListener('unhandledrejection',function(e){var m=String(e&&e.reason&&(e.reason.message||e.reason)||'?');if(!/auth|notg|nolink|view-ended/.test(m))evt('err:'+m.slice(0,50))});
 /* ---------- полноэкранный режим: кнопки Telegram на тёмной подложке, контент ниже их ---------- */
 var MOB=!!(TGW&&/^(ios|android|android_x)$/.test(TGW.platform));
 function canFS(){return MOB&&TGW.requestFullscreen&&TGW.isVersionAtLeast&&TGW.isVersionAtLeast('8.0')}
@@ -190,7 +193,7 @@ function fsMark(){document.documentElement.classList.toggle('fs',!!(TGW&&TGW.isF
 function applyFS(){if(!canFS())return;try{if(fsPref()){if(!TGW.isFullscreen)TGW.requestFullscreen()}else if(TGW.isFullscreen)TGW.exitFullscreen()}catch(e){}fsMark()}
 /* ---------- внутренние страницы приложения: шапка «←», кнопка «Назад» Telegram ---------- */
 var PG=[],BKI='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
-function page(title,html,after){PG.push({t:title,h:html,a:after});showPage();hap()}
+function page(title,html,after){PG.push({t:title,h:html,a:after});showPage();hap();evt('page:'+String(title).replace(/<[^>]*>|&nbsp;/g,' ').trim().slice(0,30))}
 function showPage(){var p=PG[PG.length-1];['learn','rate','bank','more'].forEach(function(k){$('v-'+k).classList.add('hid')});$('v-ai').classList.add('hid');$('scr').classList.remove('hid');
   var v=$('v-page');v.innerHTML='<div class="pgh"><button class="bk" id="pgBack" aria-label="Назад">'+BKI+'</button><b>'+p.t+'</b></div>'+p.h;v.classList.remove('hid');$('pgBack').onclick=pageBack;try{TGW.BackButton.show()}catch(e){}window.scrollTo(0,0);if(p.a)p.a(v)}
 function pageBack(){PG.pop();if(PG.length)showPage();else{$('v-page').classList.add('hid');tab(CUR,true)}}
@@ -376,11 +379,11 @@ function send(again){if(BUSY)return;var t,img;if(again&&again.t!==undefined){t=a
 /* ---------- вкладки ---------- */
 var R={learn:rLearn,rate:rRate,bank:rBank,more:rMore,ai:rAI};
 function tab(t,noHash){CUR=t;hap();if(PG.length){PG=[]}$('v-page').classList.add('hid');try{if(t==='learn'||!(STB&&t==='bank'&&document.querySelector('.ebro')))TGW.BackButton[t==='learn'?'hide':'show']()}catch(e){}['learn','rate','bank','more'].forEach(function(k){$('v-'+k).classList.toggle('hid',k!==t)});$('v-ai').classList.toggle('hid',t!=='ai');$('scr').classList.toggle('hid',t==='ai');
-  document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-t')===t)});R[t]();if(!noHash)history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
+  document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-t')===t)});R[t]();evt('tab:'+t);if(!noHash)history.replaceState(null,'','#'+t);window.scrollTo(0,0)}
 document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){tab(b.getAttribute('data-t'))}});
 function start(){var sp0=TGW&&TGW.initDataUnsafe&&TGW.initDataUnsafe.start_param||'',va=(sp0.match(/^va_(\d+)$/)||(location.hash.match(/^#va=(\d+)$/))||[])[1];
   if(va&&T&&T.staff&&!start.va){start.va=1;try{history.replaceState(null,'','#learn')}catch(e){}viewAs(+va);return}
-  vaBar();$('v-load').classList.remove('hid');api('/ma/home').then(function(j){if(!j.ok)throw 0;HOME=j;$('v-load').classList.add('hid');$('tabs').classList.remove('hid');
+  vaBar();$('v-load').classList.remove('hid');api('/ma/home').then(function(j){if(!j.ok)throw 0;HOME=j;evt('app');$('v-load').classList.add('hid');$('tabs').classList.remove('hid');
   var sp=sp0.replace(/^va_\d+$/,''),h=(location.hash||'').slice(1),map={rating:'rate',rate:'rate',neuro:'ai',ai:'ai',bank:'bank',orders:'bank',more:'more',learn:'learn'};
   if(sp&&!map[sp]){var L={buy:'/sales/control/userProduct/my',profile:'__prof',schedule:'/teach/control/schedule',course:'/teach/control/stream/view/id/935917158'};var go=L[sp]||(/^l\d+$/.test(sp)?'/pl/teach/control/lesson/view?id='+sp.slice(1):/^s\d+$/.test(sp)?'/teach/control/stream/view/id/'+sp.slice(1):null);
     if(go==='__prof'){tab('more',true);pProfile();return}if(sp==='pult'&&T&&T.staff&&!VW){tab('more',true);pPult();return}var seen='';try{seen=sessionStorage.getItem('maSP')}catch(e){}if(go&&seen!==sp){try{sessionStorage.setItem('maSP',sp)}catch(e){}openGC(go);return}}
