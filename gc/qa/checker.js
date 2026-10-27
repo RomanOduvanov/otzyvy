@@ -78,7 +78,7 @@
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n, typo = {}, plu = {};
     while ((n = walker.nextNode())) { var t = n.textContent; if (!t.trim() || !n.parentElement || !vis(n.parentElement) || /^(SCRIPT|STYLE|TEXTAREA|CODE)$/.test(n.parentElement.tagName)) continue;
       var pe = n.parentElement, fs = parseFloat(getComputedStyle(pe).fontSize);
-      if (fs < 10) add('font-tiny', 'warn', pe, 'шрифт ' + fs + 'px');
+      if (fs > 0 && fs < 10) add('font-tiny', 'warn', pe, 'шрифт ' + fs + 'px');
       if (/\b(undefined|NaN|null|\[object Object\])\b/.test(t)) add('garbage', 'error', pe, 'в тексте: ' + t.trim().slice(0, 60));
       var m = t.match(PREP); if (m && t.trim().length > 12) { var k = 'предлог «' + m[2] + '»: ' + t.trim().slice(0, 50); if (!typo[k]) { typo[k] = 1; add('nbsp', 'info', pe, k) } }
       if (DASH.test(t)) { var k2 = 'тире: ' + t.trim().slice(0, 50); if (!typo[k2]) { typo[k2] = 1; add('nbsp', 'info', pe, k2) } }
