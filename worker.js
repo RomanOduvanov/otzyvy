@@ -1313,7 +1313,7 @@ function learnOf(D, r, now, lv) { const done = new Set((r.done || []).map(Number
      Закрытые по дате пропускаются; если перед ним в той же части есть непройденный стоп-урок — cur он. Впереди нечего — первый открытый непройденный с начала, иначе null */
   const seq = [], opn = l => !l.at || Date.parse(l.at) <= now; for (const m of modules) if (m.access) for (const p of m.parts) p.lessons.forEach((l, i) => seq.push({ m, p, l, i }));
   let last = -1; seq.forEach((x, i) => { if (x.l.done) last = i }); const pick = x => { if (!x) return null; const s0 = x.p.lessons.slice(0, x.i).find(l => l.stop && !l.done && opn(l)); return { module: x.m.id, part: x.p.id, lesson: (s0 || x.l).id } };
-  const cur = pick(seq.slice(last + 1).find(x => opn(x.l) && !x.l.done) || seq.find(x => opn(x.l) && !x.l.done));
+  const cur = pick(last >= 0 ? seq.slice(last + 1).find(x => opn(x.l) && !x.l.done) : seq.find(x => opn(x.l) && !x.l.done)); /* 28.10: впереди всё пройдено — не отправляем назад к пропущенным урокам Модуля 00, «Дальше по курсу» не показываем */
   const oth = r.oth || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null).map(o => { const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) || LV.has(+i.id) })); /* цен нет — не отдаём */
     return { id: o.id, title: o.title, key: o.key || null, kind: o.kind || 'bonus', rec: o.kind === 'rec', lessons: o.lessons | 0 || it.length, done: it.length ? it.filter(i => i.done).length : Math.min(oth[String(o.id)] | 0, o.lessons | 0 || 1e9), acc: null, items: it } });
   return { ok: true, now: isoZ(now), tar, amazon, acc: accOf(r.acc, now), course: Object.assign({}, LEARN_COURSE, D.course || {}, { modules }), other, cur, updated: updAt(D) } }
