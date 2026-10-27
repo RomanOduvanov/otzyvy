@@ -132,13 +132,14 @@ async function loadData(env) { if (RC && Date.now() - RC.at < 60e3) return RC.D;
 async function ratingFor(env, me, forU) {
   const D = await loadData(env), priv = !!(D.rows.length && D.rows[0].uid != null), oldMe = priv ? null : await hashUid(me);
   const T = {}; if (priv) for (const r of ((await env.DB.prepare('SELECT uid, SUM(site) s, SUM(video) v FROM time GROUP BY uid').all()).results || [])) T[String(r.uid)] = [r.s | 0, r.v | 0];
-  const adm = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(me)), rows = [], hours = {}, ids = {};
+  const adm = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(me)), rows = [], hours = {}, ids = {}, cc = !adm && CURATORS.find(c => c.uid === +me), mine = {};
+  if (cc && priv) for (const s of ((await env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cc.id).all()).results || [])) mine[String(s.uid)] = 1;
   for (const x of D.rows) { const o = Object.assign({}, x), xu = String(x.uid == null ? '' : x.uid); delete o.uid; delete o.k;
     if (priv) o.h = await pubH(env, xu);
     if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc;
-    if (T[xu]) hours[o.h] = T[xu]; if (adm && xu) ids[o.h] = +xu; rows.push(o) }
+    if (T[xu]) hours[o.h] = T[xu]; if ((adm || mine[xu]) && xu) ids[o.h] = +xu; rows.push(o) }
   const hOf = async v => priv ? pubH(env, String(v)) : hashUid(v);
-  const out = Object.assign({}, D, { ok: true, rows, hours, me: await hOf(me), fh: okUid(forU) ? await hOf(forU) : null }); delete out.ah; if (adm) out.ids = ids; return out }
+  const out = Object.assign({}, D, { ok: true, rows, hours, me: await hOf(me), fh: okUid(forU) ? await hOf(forU) : null }); delete out.ah; delete out.hw_multi; if (adm || cc) { out.ids = ids; out.staff = adm ? 'admin' : 'curator' } return out }
 async function snapshot(env, D) {
   const day = dayStr(); const st = env.DB.prepare('INSERT OR REPLACE INTO snap (h, day, pts, lessons, hw, place) VALUES (?,?,?,?,?,?)');
   await env.DB.batch(D.rows.map(r => st.bind(r.h, day, r.pts | 0, r.lessons | 0, r.hw | 0, r.place | 0)));
@@ -429,8 +430,8 @@ async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days
     const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
     const byDay = {}; for (const r of rs) (byDay[r.day] = byDay[r.day] || []).push(r.wsec);
     const wait = ((await env.DB.prepare('SELECT w.uid, w.since, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h) }));
-    res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec)), in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
-      days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d]), n: byDay[d].length })), waiting: wait }) }
+    res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec).filter(x => x > 0)), offHours: rs.filter(r => !(r.wsec > 0)).length, in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
+      days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d].filter(x => x > 0)), n: byDay[d].length })), waiting: wait }) }
   return { ok: true, days, curators: res } }
 /* вебхук сам добавляет бизнес-события (без ручной ссылки /tg/setup) */
 async function ensureBizHook(env) { const i = await tg(env, 'getWebhookInfo', {}); const w = i && i.result; if (!w || !w.url) return false;
@@ -1175,7 +1176,7 @@ const APPC = {}; /* кэш списка в памяти изолята на 30 �
 async function appStudents(env, cid) { const ck = APPC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v; const v = await appStudents0(env, cid); APPC[cid] = { at: Date.now(), v }; return v }
 async function appStudents0(env, cid) { /* D1 на бесплатном тарифе — до 50 запросов за вызов, поэтому всё одним набором запросов */
   const D = await loadData(env); const byH = {}; for (const r of D.rows) byH[r.h] = r;
-  const q = cid === 'all' ? env.DB.prepare('SELECT * FROM student WHERE curator IS NOT NULL') : env.DB.prepare('SELECT * FROM student WHERE curator=?').bind(cid);
+  const q = cid === 'all' ? env.DB.prepare('SELECT * FROM student') : env.DB.prepare('SELECT * FROM student WHERE curator=?').bind(cid);
   const today = dayStr(), wk = addDays(today, -6);
   const [rs, ts, ls, us, ws] = await env.DB.batch([q,
     env.DB.prepare('SELECT uid, SUM(site)+SUM(video) t FROM time WHERE day>=? GROUP BY uid').bind(wk),
@@ -1186,10 +1187,14 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
   for (const x of us.results || []) U[x.chat] = x.username; for (const x of ws.results || []) if (x.uid) W[x.uid] = x.since;
   const out = [];
   const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}; if (priv) for (const r of D.rows) byU[String(r.uid)] = r;
-  for (const s of rs.results || []) { const r = (priv ? byU[String(s.uid)] : byH[await hashUid(s.uid)]) || null;
+  const MU = {}; for (const m of (D.hw_multi || [])) if (m.status !== 'accepted') MU[+m.uid] = (MU[+m.uid] || 0) + 1;
+  const SR = (rs.results || []).filter(s => !isStaffUid(env, s.uid)), have = {}; for (const s of SR) have[s.uid] = 1;
+  /* админ «Все»: весь поток из рейтинга, даже без записи в базе и без куратора; без строк «id …» у тех, кого нет в рейтинге и кто не заходил */
+  if (cid === 'all' && priv) for (const x of D.rows) if (x.uid != null && !have[+x.uid] && !isStaffUid(env, x.uid)) { have[+x.uid] = 1; SR.push({ uid: +x.uid, name: x.name, curator: null, tg_chat: null }) }
+  for (const s of SR) { const r = (priv ? byU[String(s.uid)] : byH[await hashUid(s.uid)]) || null; if (cid === 'all' && !r && !s.name && !s.tg_chat && !L[s.uid]) continue;
     out.push({ uid: s.uid, name: (r && r.name) || s.name || ('id ' + s.uid), cur: s.curator, tar: r && r.tar || null, acc: r && r.acc || null,
       place: r && r.place || null, pts: r ? r.pts | 0 : null, week: r ? r.week | 0 : null, lessons: r ? r.lessons | 0 : null, hw: r ? r.hw | 0 : null, ontime: r && r.ontime != null ? r.ontime : null,
-      t7: T[s.uid] || 0, last: L[s.uid] || null, tg: !!s.tg_chat, tgu: s.tg_chat && U[s.tg_chat] || null, tgid: s.tg_chat || null, wait: W[s.uid] || null }) }
+      t7: T[s.uid] || 0, last: L[s.uid] || null, tg: !!s.tg_chat, tgu: s.tg_chat && U[s.tg_chat] || null, tgid: s.tg_chat || null, wait: W[s.uid] || null, multi: MU[s.uid] || 0 }) }
   return { n: D.n, total: D.total_lessons, students: out };
 }
 async function appApi(env, req, path) {
@@ -1273,7 +1278,7 @@ async function maApi(env, req, path) {
     return json(req, { ok: true, u: s.uid, t: await mkToken(env, 'a', String(s.uid)), v: await mkToken(env, 'v', String(s.uid)), name: s.name || tu.first_name || '' }, 200, { 'Cache-Control': 'no-store' }) }
   /* диагностика «случайного выхода»: страница кабинета в мини-аппе показала вход (без личных данных, ключи в адресе вырезаны) */
   if (path === '/ma/diag' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
-    await logIt(env, 'tg-diag', +o.u || 0, JSON.stringify({ k: String(o.kind || '').slice(0, 20), p: String(o.page || '').slice(0, 200), r: String(o.ref || '').slice(0, 200), hl: +o.hl || 0, ua: String(o.ua || '').slice(0, 160) }));
+    await logIt(env, 'tg-diag', +o.u || 0, JSON.stringify({ k: String(o.kind || '').slice(0, 20), eu: +o.eu || undefined, sub: o.sub ? 1 : undefined, p: String(o.page || '').slice(0, 200), r: String(o.ref || '').slice(0, 200), hl: +o.hl || 0, ua: String(o.ua || '').slice(0, 160) }));
     return json(req, { ok: true }) }
   /* «Смотреть как ученик» — выдаёт токен просмотра. Сессия команды (мини-апп/пульт): админ — любого, куратор — своих. Журнал входов. */
   if (path === '/ma/viewas' && req.method === 'POST') { const st = await appSession(env, req); if (!st || (st.role !== 'admin' && st.role !== 'curator')) return deny(req);
@@ -1401,18 +1406,18 @@ async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 's
   return r && r.id }
 /* Список учеников для команды: имя, тариф, куратор, поток — из данных рейтинга и таблицы student; доход в рублях. Куратор — только свои. */
 async function bankStaffList(env, st) {
-  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT uid, name, curator FROM student').all()).results || []), byU = {};
+  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {};
   for (const s of studs) byU[s.uid] = s;
   const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COUNT(id) n, MAX(day) last FROM bank_tx GROUP BY uid').all()).results || [])) sums[r.uid] = r;
   const ords = {}; for (const r of ((await env.DB.prepare("SELECT uid, COUNT(id) n, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order GROUP BY uid").all()).results || [])) ords[r.uid] = r;
   const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
-  const add = (uid, name, tar, place) => { if (!uid || seen[uid]) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
+  const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {};
-    out.push({ uid, name: name || s.name || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
+    out.push({ uid, name: name || s.name || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
   for (const s of studs) add(+s.uid, s.name, null, null);
   for (const uid in sums) add(+uid, null, null, null);
-  out.sort((a, b) => b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+  out.sort((a, b) => (!a.name - !b.name) || b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
   return { ok: true, role: st.role, cid: st.cid || null, curators: st.role === 'admin' ? CURATORS.map(c => ({ id: c.id, full: c.full })) : CURATORS.filter(c => c.id === st.cid).map(c => ({ id: c.id, full: c.full })), students: out } }
 async function bankApi(env, req, path) {
   const u = new URL(req.url); await bankEnsure(env);
@@ -1560,6 +1565,11 @@ async function careApi(env, s, path, req, u, ajson) { if (s.role !== 'admin') re
 /* ---------- пульт → «Нейро» (только админ): нарушения, ограничения, ошибки нейросети, журнал «Смотреть как ученик», разбор напоминаний кураторам ---------- */
 async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin') return ajson({ ok: false, err: 'Раздел только для Романа' }, 403);
   const C = MOD_CFG(env), now = Date.now();
+  /* 27.10: журнал сервера для разборов (только админ): ?k=tg-diag,ma-staff&from=ISO&to=ISO&q=текст — плюс журнал «Смотреть как» */
+  if (path === '/app/api/neuro/log') { const ks = String(u.searchParams.get('k') || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 12), from = u.searchParams.get('from') || '2000', to = u.searchParams.get('to') || '2999', q = u.searchParams.get('q') || '';
+    const w = ['at >= ?', 'at <= ?'], b = [from, to]; if (ks.length) { w.push('kind IN (' + ks.map(() => '?').join(',') + ')'); b.push(...ks) } if (q) { w.push('(info LIKE ? OR CAST(uid AS TEXT) = ?)'); b.push('%' + q + '%', q) }
+    const r = await env.DB.prepare('SELECT at, kind, uid, info FROM log WHERE ' + w.join(' AND ') + ' ORDER BY at DESC LIMIT 400').bind(...b).all();
+    return ajson({ ok: true, log: r.results || [], valog: ((await kvGet(env, 'valog')) || []).filter(x => (x.at || '') >= from.slice(0, 10) || (x.until || '') >= from.slice(0, 10)).slice(-100) }) }
   if (path === '/app/api/neuro/status') { const idx = (await kvGet(env, 'modidx')) || [], D = await loadData(env), list = [];
     const st = idx.length ? ((await env.DB.prepare('SELECT k, v FROM kv WHERE k IN (' + idx.slice(-300).map(() => '?').join(',') + ')').bind(...idx.slice(-300).map(x => 'mod:' + x)).all()).results || []) : [];
     const studs = {}; for (const r of ((await env.DB.prepare('SELECT uid, name, curator FROM student').all()).results || [])) studs[r.uid] = r;
