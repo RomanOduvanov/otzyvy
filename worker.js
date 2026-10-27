@@ -1619,7 +1619,8 @@ async function insightsText(env, I) {
   const sys = 'Ты продуктовый аналитик онлайн-школы OduvanovSchool (курс AI-дизайна, кабинет на GetCourse + мини-приложение в Telegram, кураторы, Нейро — ИИ-помощник). Тебе дают сводку за вчера и 7 дней. Напиши 3–5 находок для руководителя Романа.\n'
     + 'Каждая находка — одна строка: «• что видно по цифрам — почему это важно — что сделать сегодня (конкретно: кому написать, что проверить, что поправить)». Только факты из данных, никаких выдумок и общих советов; если данных мало — так и скажи. Сначала самое срочное (сбои, ученики без ответа, провал активности). '
     + 'Пиши на «ты», по-русски, без вступления и заголовков, без markdown кроме «•». До 900 знаков. Поля: active.site — заходили на сайт, active.app — открывали мини-приложение, progress.day — уроки/ДЗ за день, idle — без активности 5+ дней, curators.median — медиана ответа в рабочих секундах, tech — сбои (ai-err — ошибки Нейро, tg-diag — проблемы входа на сайт из Telegram). Учёт времени на сайте идёт с progress.trackingFrom, мини-приложения — с 27.10: «не заходили» до этих дат — не факт, а отсутствие данных.';
-  const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 900, system: sys, messages: [{ role: 'user', content: JSON.stringify(brief) }] }));
+  const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 3000, output_config: { effort: 'low' }, system: sys, messages: [{ role: 'user', content: JSON.stringify(brief) }] }));
+  if (r && r.ok && !((j.content || []).find(b => b.type === 'text') || {}).text) await logIt(env, 'insights-ai-err', 0, 'нет текста: ' + (j.stop_reason || '') + ' ' + (j.content || []).map(b => b.type).join(','));
   if (!r || !r.ok) { await logIt(env, 'insights-ai-err', 0, (r ? r.status : 'net') + ' ' + JSON.stringify((j && j.error) || {}).slice(0, 200)); return null } return ((j.content || []).find(b => b.type === 'text') || {}).text || null }
 function insightsMsg(I, text) { const p = I.progress.day, m = s => s == null ? '—' : s < 3600 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1).replace('.', ',') + ' ч';
   const d = new Date(I.day + 'T12:00:00Z'), MN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -1631,7 +1632,7 @@ function insightsMsg(I, text) { const p = I.progress.day, m = s => s == null ? '
     + 'Без активности 5+ дней: ' + I.idle.count + '\n\n' + (text ? th(text) : '<i>Находки не сформировались — нейросеть недоступна, цифры выше.</i>') + '\n\nПодробно: пульт → «Аналитика»' }
 async function insightsJob(env, B, force) { const day = addDays(dayStr(), -1); if (!force && msk().getUTCHours() < 9) return { skip: 'early' };
   const k = 'ins:' + day; if (!force && await kvGet(env, k)) return { skip: 'done' }; if (B && !B.ok(4)) return { skip: 'budget' }; if (B) B.use(4);
-  const I = await insightsData(env, day); let text = null; try { text = await insightsText(env, I) } catch (e) {}
+  const I = await insightsData(env, day); let text = null; try { text = await insightsText(env, I) } catch (e) { await logIt(env, 'insights-ai-err', 0, 'исключение: ' + String(e && e.message || e).slice(0, 200)) }
   await kvPut(env, k, { I, text, at: new Date().toISOString() }); const idx = (await kvGet(env, 'ins:idx')) || []; if (!idx.includes(day)) { idx.unshift(day); await kvPut(env, 'ins:idx', idx.slice(0, 60)) }
   if (!force || force === 'send') for (const a of await admins(env)) await tgSend(env, a, insightsMsg(I, text));
   await logIt(env, 'insights', 0, day + (text ? '' : ' без находок')); return { ok: true, day } }
