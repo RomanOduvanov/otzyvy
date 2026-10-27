@@ -61,6 +61,8 @@ export const SCHEMA = [
   /* v42: скрытые незавершённые заказы «Мои покупки» (STU-12) — на сервере, а не в localStorage */
   'CREATE TABLE IF NOT EXISTS fmp_hidden (uid INTEGER NOT NULL, num TEXT NOT NULL, at TEXT, PRIMARY KEY (uid, num))',
   /* 27.10: использование мини-приложения учениками (счётчики, без содержимого): app, tab:<вкладка>, page:<страница>, gc, err:<ошибка> */
+  /* /ma/learn: открытые учеником уроки (маяк со страницы урока GetCourse / приложения) — только для его «пройдено», наружу не отдаётся */
+  'CREATE TABLE IF NOT EXISTS lv (uid INTEGER NOT NULL, lesson INTEGER NOT NULL, at TEXT, PRIMARY KEY (uid, lesson))',
   'CREATE TABLE IF NOT EXISTS ev (day TEXT NOT NULL, uid INTEGER NOT NULL, k TEXT NOT NULL, n INTEGER DEFAULT 1, PRIMARY KEY (day, uid, k))'
 ];
 async function ensureAll(env) { await env.DB.batch(SCHEMA.map(s => env.DB.prepare(s))) }
@@ -1300,17 +1302,19 @@ function learnMods(D) { const L = (D.modules || []).slice(), ai = L.findIndex(m 
   const [a] = L.splice(ai, 1), i6 = L.findIndex(m => /^Модуль 06\b/.test(m.name || '')); L.splice(i6 < 0 ? L.length : i6 + 1, 0, a); return L }
 function learnX2(D, m, now) { const x = D.x2; if (x && x.module && x.module === m.name) return { lessons_until: isoZ(x.lessons_until), hw_until: isoZ(x.hw_until) };
   const at = m.at ? Date.parse(m.at) : NaN; return !isNaN(at) && at <= now && now < at + 72 * 36e5 ? { lessons_until: isoZ(at + 48 * 36e5), hw_until: isoZ(at + 72 * 36e5) } : null }
-function learnOf(D, r, now) { const done = new Set((r.done || []).map(Number)), hwa = r.hwa || {}, tar = r.tar || null, amazon = tar === 'Премиум Амазон';
+const LIDS = new WeakMap(); /* id уроков курса и других тренингов (для проверки маяка), на объект D */
+function lessonIds(D) { let S = LIDS.get(D); if (!S) { S = new Set(); for (const m of D.modules || []) for (const p of m.parts || []) for (const l of p.lessons || []) S.add(+l.id); for (const o of D.other || []) for (const i of o.items || []) S.add(+i.id); LIDS.set(D, S) } return S }
+function learnOf(D, r, now, lv) { const done = new Set((r.done || []).map(Number)), LV = new Set(lv || []), hwa = r.hwa || {}, tar = r.tar || null, amazon = tar === 'Премиум Амазон';
   const modules = learnMods(D).map(m => { const am = !!m.amazon || +m.id === AMAZON_MOD, nm = String(m.name || '').match(/^Модуль (\d+)\s*—\s*(.+)$/);
     return { id: m.id, n: am ? null : nm ? nm[1] : null, key: am ? 'amazon' : nm ? 'm' + nm[1] : null, title: am ? 'Amazon' : nm ? nm[2] : (m.name || ''), desc: m.desc || '', at: isoZ(m.at), premium: am, access: !am || amazon, x2: learnX2(D, m, now),
       parts: (m.parts || []).filter(p => (p.lessons || []).length).map((p, i) => ({ id: p.id || null, n: p.n || i + 1, title: p.title || String(p.name || '').split(' / ').pop() || (nm ? nm[2] : m.name), lessons: (p.lessons || []).map(l => { const k = l.kind || (/^Анкета/i.test(l.t) ? 'anketa' : 'lesson'), h = k === 'hw' ? hwa[String(l.id)] || null : null;
-        const o = { id: l.id, t: l.t, kind: k, stop: !!l.stop, at: isoZ(l.at || p.at), done: done.has(+l.id) || !!(h && h.st !== 'dr') }; if (k === 'anketa' && l.about) o.about = l.about; if (k === 'hw') { o.hwMax = HW_MAX; o.hw = h ? { st: h.st, lv: h.lv || null, pts: h.pts | 0 } : null } return o }) })) } });
+        const o = { id: l.id, t: l.t, kind: k, stop: !!l.stop, at: isoZ(l.at || p.at), done: done.has(+l.id) || (k === 'lesson' && LV.has(+l.id)) || !!(h && h.st !== 'dr') }; if (k === 'anketa' && l.about) o.about = l.about; if (k === 'hw') { o.hwMax = HW_MAX; o.hw = h ? { st: h.st, lv: h.lv || null, pts: h.pts | 0 } : null } return o }) })) } });
   /* cur — граница прогресса: последний пройденный урок по порядку курса (Amazon — только в тарифе), дальше первый открытый непройденный; ничего не пройдено — первый открытый.
      Закрытые по дате пропускаются; если перед ним в той же части есть непройденный стоп-урок — cur он. Впереди нечего — первый открытый непройденный с начала, иначе null */
   const seq = [], opn = l => !l.at || Date.parse(l.at) <= now; for (const m of modules) if (m.access) for (const p of m.parts) p.lessons.forEach((l, i) => seq.push({ m, p, l, i }));
   let last = -1; seq.forEach((x, i) => { if (x.l.done) last = i }); const pick = x => { if (!x) return null; const s0 = x.p.lessons.slice(0, x.i).find(l => l.stop && !l.done && opn(l)); return { module: x.m.id, part: x.p.id, lesson: (s0 || x.l).id } };
   const cur = pick(seq.slice(last + 1).find(x => opn(x.l) && !x.l.done) || seq.find(x => opn(x.l) && !x.l.done));
-  const oth = r.oth || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null).map(o => { const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) })); /* цен нет — не отдаём */
+  const oth = r.oth || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null).map(o => { const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) || LV.has(+i.id) })); /* цен нет — не отдаём */
     return { id: o.id, title: o.title, key: o.key || null, kind: o.kind || 'bonus', rec: o.kind === 'rec', lessons: o.lessons | 0 || it.length, done: it.length ? it.filter(i => i.done).length : Math.min(oth[String(o.id)] | 0, o.lessons | 0 || 1e9), acc: null, items: it } });
   return { ok: true, now: isoZ(now), tar, amazon, acc: accOf(r.acc, now), course: Object.assign({}, LEARN_COURSE, D.course || {}, { modules }), other, cur, updated: updAt(D) } }
 async function maApi(env, req, path) {
@@ -1345,6 +1349,14 @@ async function maApi(env, req, path) {
     L.unshift({ id, who: st.name || st.role, role: st.role, chat: st.chat || null, target, name: (r && r.name) || (sr && sr.name) || null, at: new Date().toISOString() }); await kvPut(env, 'valog', L.slice(0, 300));
     await logIt(env, 'viewas', target, st.role + ' ' + (st.name || ''));
     return json(req, { ok: true, id, w: await mkView(env, target, staffUid), who: { uid: target, name: (r && r.name) || (sr && sr.name) || null, tar: (r && r.tar) || null, curName: c ? c.full : null } }, 200, { 'Cache-Control': 'no-store' }) }
+  /* маяк «урок открыт»: POST /ma/lv {l, t} (t — токен записи ученика: FS_CALL/sendBeacon кладут его в тело) или ?t= / Bearer; команда и «смотреть как» не пишутся.
+     Пишутся только уроки курса и других тренингов из данных сборщика */
+  if (path === '/ma/lv' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+    const tk = u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || String(o.t || ''); if (/\.w\./.test(tk)) return json(req, { ok: true });
+    const lu = await authUid(env, tk, 'a'); if (!lu) return deny(req); if (isStaffUid(env, lu)) return json(req, { ok: true });
+    const l = +o.l; if (!okUid(l)) return json(req, { ok: false, err: 'l' }, 400); let D = null; try { D = await loadData(env) } catch (e) {}
+    if (!D || !lessonIds(D).has(l)) return json(req, { ok: true, skip: 1 });
+    await ensure(env); await env.DB.prepare('INSERT OR IGNORE INTO lv (uid, lesson, at) VALUES (?,?,?)').bind(lu, l, new Date().toISOString()).run(); return json(req, { ok: true }) }
   const TK = u.searchParams.get('t') || (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''), VW = /\.w\./.test(TK) ? await viewTok(env, TK) : null;
   const uid = await authUid(env, TK, 'av'); if (!uid) return deny(req);
   if (path === '/ma/ev' && req.method === 'POST') { if (VW || isStaffUid(env, uid)) return json(req, { ok: true }); let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
@@ -1367,8 +1379,9 @@ async function maApi(env, req, path) {
       x2: D.x2 || null, modules: mods, cur, updated: D.updated || null }, 200, { 'Cache-Control': 'no-store' }) }
   /* «Учёба в приложении» (CONTRACT.md, этап 1): курс → модули → части → уроки со статусом ученика; только его данные (VW — просматриваемого) */
   if (path === '/ma/learn') { let D = null; try { D = await loadData(env) } catch (e) {}
-    const r = D && Array.isArray(D.modules) && D.modules.length ? await rowFor(D, uid) : null;
-    return json(req, D && D.modules && D.modules.length ? learnOf(D, r || {}, Date.now()) : { ok: true, course: null, reason: 'nodata' }, 200, { 'Cache-Control': 'no-store' }) }
+    const r = D && Array.isArray(D.modules) && D.modules.length ? await rowFor(D, uid) : null; let lv = [];
+    try { lv = ((await env.DB.prepare('SELECT lesson FROM lv WHERE uid=?').bind(uid).all()).results || []).map(x => +x.lesson) } catch (e) {} /* таблицы ещё нет — до первого маяка */
+    return json(req, D && D.modules && D.modules.length ? learnOf(D, r || {}, Date.now(), lv) : { ok: true, course: null, reason: 'nodata' }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/ma/top') { const D = await loadData(env), rows = (D.rows || []).slice().sort((a, b) => (a.place || 1e9) - (b.place || 1e9)); const me = await rowFor(D, uid); const mp = me && me.place || null;
     const pick = (x, i) => ({ place: x.place, name: x.name, pts: x.pts | 0, week: x.week | 0, rank: rankOf(x.pts | 0).rank, me: me ? x === me : false });
     const top = rows.slice(0, 10).map(pick), near = mp && mp > 10 ? rows.filter(x => x.place >= mp - 2 && x.place <= mp + 2).map(pick) : [];
