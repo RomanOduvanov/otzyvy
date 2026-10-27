@@ -52,7 +52,12 @@ window.__gm = {done: false, step: 'start', err: []};
   // пройдено — span.lesson-list__video-watched («просмотрено») или .user-state-label/.user-state-* с accomplished/answered/viewed (как в layout.js).
   G.step = 'passed';
   const passed = {}, stops = new Set(); G.seen = {};
-  const pq = []; for (const s of subs) for (const [uid, r] of Object.entries(s.users || {})) if (students[uid] && r.visited > 0) pq.push([uid, s.id]);
+  // уроки прямо в тренинге модуля (Модуль 00: sub id == id модуля) — stat/stream модуля считает «посетил» иначе (у всех 0), поэтому для таких
+  // подтренингов и для тех, где у всех 0 или статистика не загрузилась, берём «посетил» > 0 по всему потоку (stat ROOT)
+  const pq = []; let fb = 0; for (const s of subs) { const weak = MODS.includes(s.id) || !Object.values(s.users || {}).some(r => r.visited > 0);
+    for (const uid of Object.keys(students)) { const v = ((s.users || {})[uid] || {}).visited || 0;
+      if (v > 0 || (weak && students[uid].visited > 0)) { pq.push([uid, s.id]); if (!(v > 0)) fb++; } } }
+  console.log('passed: из них по «посетил» всего потока (уроки в самом модуле / нет статистики подтренинга)', fb);
   G.pairs = pq.length; G.pdone = 0; const t0 = Date.now(); console.log('passed: пар ученик×подтренинг', pq.length);
   const LID = /lesson\/view(?:\/id\/|\?id=)(\d+)/, DONE_CLS = /accomplished|answered|has_answer|viewed|watched|passed|complete/i, DONE_TASK = /accomplished|answered|has_answer|passed|complete/i, DONE_TXT = /просмотрено|пройден|выполнен|ответ отправлен|принят|засчитан/i;
   const TASK = new Set(subs.flatMap(s => s.lessons.filter(l => l.kind !== 'lesson').map(l => l.id)));
