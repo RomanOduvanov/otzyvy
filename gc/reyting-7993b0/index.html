@@ -267,7 +267,7 @@ body{padding-bottom:80px}
 <div class="search"><input id="q" placeholder="Найди себя по имени"></div>
 <div class="card tbl"><div class="th" id="th"><button data-k="place">#</button><button data-k="name">Ученик</button><button data-k="rank">Звание</button><button data-k="tar">Тариф</button><button data-k="lessons">Уроки</button><button data-k="vh" title="Сколько часов ученик смотрел видео уроков">Часы уроков</button><button data-k="hw">Домашки</button><button data-k="ontime">В срок ×2</button><button data-k="pts" class="r">Баллы</button></div><div id="rows"></div></div>
 <h2>Как зарабатывать <span>баллы</span></h2>
-<div class="rules"><div class="card rl"><b>10</b><span>за каждый пройденный урок</span></div><div class="card rl"><b>15</b><span>за анкету обратной связи</span></div><div class="card rl"><b>20 · 40 · 70</b><span>за домашку: лёгкий, средний, максимальный уровень — после «Принято» куратором</span></div><div class="card rl"><b>×2</b><span>уроки и анкеты в первые 48 часов после открытия модуля, домашки — в первые 72 часа</span></div></div>
+<div class="rules"><div class="card rl"><b>10</b><span>за каждый пройденный урок</span></div><div class="card rl"><b>15</b><span>за анкету обратной связи</span></div><div class="card rl"><b>20 · 40 · 70</b><span>за домашку: лёгкий, средний, максимальный уровень — после «Принято» куратором</span></div><div class="card rl"><b>×2</b><span>уроки и&nbsp;анкеты в&nbsp;первые 48&nbsp;часов после открытия модуля, домашки&nbsp;— в&nbsp;первые 72&nbsp;часа</span></div></div>
 <div class="foot">Рейтинг обновляется утром и вечером. Дизайнер-миллионер — только при 2500 баллах и 80% заданий, сделанных в срок ×2.</div>
 </div>
 <script>
@@ -304,7 +304,7 @@ const FS={
  CROWN:'<svg class="crown" viewBox="0 0 24 24" aria-label="Лидер потока"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".5" stop-color="#ffcf4d"/><stop offset="1" stop-color="#e09a1a"/></linearGradient></defs><path fill="url(#cg)" d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-2 10H5z"/><rect x="5" y="19" width="14" height="2" rx="1" fill="#e09a1a"/></svg>',
  /* достижения: [название, условие, проверка, иконка] */
  ACH:[
-  ['Ранняя пташка','пройти уроки модуля в первые 48 часов',(r,s)=>r.medals.includes('Ранняя пташка'),'M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1M7 17a5 5 0 0 1 10 0M4 20h16'],
+  ['Ранняя пташка','пройти уроки модуля в первые 48 часов',(r,s)=>r.medals.includes('Ранняя пташка'),'M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1M7 17a5 5 0 0 1 10 0M4 20h16'],
   ['Голос потока','заполнить 8+ анкет обратной связи',(r,s)=>r.medals.includes('Голос потока'),'M4 5h16v11H9l-5 4z'],
   ['Максималист','сдать 3 домашки на максимальном уровне',(r,s)=>r.medals.includes('Максималист'),'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z'],
   ['Первый в потоке','первым сдать принятую домашку',(r,s)=>r.medals.includes('Первый в потоке'),'M6 21V4M6 4h11l-2.5 4L17 12H6'],
@@ -540,5 +540,5 @@ renderAll();
   d.innerHTML='<h3>'+x.place+'. '+esc(x.name)+'</h3><span>Баллы: <b>'+fmt(x.pts)+'</b></span><span>Место: <b>'+x.place+'</b></span><span>Звание: <b>'+esc(x.rank)+'</b></span><span>Тариф: <b>'+esc(x.tar||'—')+'</b></span><span>Уроки: <b>'+x.lessons+'</b></span><span>Часы уроков: <b>'+(x.vh?FS.hrs(x.vh):'—')+'</b></span><span>Домашки: <b>'+x.hw+'</b></span><span>В срок ×2: <b>'+x.ontime+'%</b></span><span class="full">Медали: <b>'+((x.medals||[]).map(esc).join(', ')||'пока нет')+'</b></span><span class="full"><button>Открыть профиль →</button></span><span class="x">Свернуть</span>';
   d.querySelector('button').onclick=ev=>{ev.stopPropagation();w.remove();openProf(x.h)};w.onclick=ev=>{if(ev.target===w||ev.target.classList.contains('x'))w.remove()};document.body.appendChild(w)},true);
  aug();addEventListener('resize',()=>{rows.querySelectorAll('.rt-sub').forEach(s=>s.remove());aug()})})();
-}).catch(()=>{document.getElementById('upd').textContent='Рейтинг виден только в личном кабинете OduvanovSchool'});
+}).catch(()=>{document.getElementById('upd').textContent='Рейтинг виден только в личном кабинете OduvanovSchool.'});
 </script><div class="pm" id="pm" role="dialog" aria-modal="true"><div class="pm-b"><button class="pm-x" id="pmx" aria-label="Закрыть">×</button><div id="pmc"></div></div></div></body></html>

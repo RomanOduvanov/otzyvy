@@ -46,6 +46,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .log{display:flex;flex-direction:column;gap:8px}.log div{display:flex;gap:12px;padding:10px 12px;border-radius:14px;background:var(--s0);border:1px solid var(--hair);font-size:13.5px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:12px 18px;border-radius:14px;background:#0f1f15;border:1px solid rgba(74,222,128,.4);color:#c9f7d8;font-size:14px;z-index:9;display:none}
 .hid{display:none!important}
+html.ma body{min-height:0;background:transparent}html.ma .wrap{padding:4px 16px 32px;max-width:none}html.ma .hd{padding:0 0 12px}html.ma .hd h1,html.ma .hd p,html.ma #bOut{display:none}html.ma .login{min-height:60vh}html.ma .toast{bottom:16px}
 html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40px 40px;max-width:none}html.emb .login{min-height:0;padding:40px 0}html.emb #bOut{display:none}
 @media (max-width:760px){.wrap{padding:18px 14px 100px}html.emb .wrap{padding:8px 16px 40px}.hd h1{font-size:32px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.k{min-width:0}.k .d,.k .l{overflow-wrap:anywhere}.k .v{font-size:24px}}
 
@@ -53,7 +54,8 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 .bcIn{display:flex;gap:8px;flex-wrap:wrap}.bcIn #bcBtn{flex:0 1 200px}.bcIn #bcLink{flex:1 1 220px}#bcText{width:100%;min-height:128px}
 .seg.sx{max-width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}.seg.sx::-webkit-scrollbar{display:none}.seg.sx button{flex:none;white-space:nowrap}
 .inp{box-sizing:border-box;max-width:100%;font-size:16px}
-@media (max-width:760px){#bcGrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"a" "b" "c" "d"}.bcIn input{flex:1 1 100%!important;width:100%}#bSend{width:100%}.ctl{flex-wrap:wrap}.ctl>.row{width:100%}#q{width:100%!important}#flt{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}#flt button{flex:none;white-space:nowrap}.hd{flex-direction:column;align-items:flex-start}.hd .row{width:100%;justify-content:space-between}#curSeg{max-width:100%;overflow-x:auto}#tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}#tabs button{flex:none}}
+@media (max-width:760px){#bcGrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"a" "b" "c" "d"}.bcIn input{flex:1 1 100%!important;width:100%}#bSend{width:100%}.ctl{flex-wrap:wrap}.ctl>.row{width:100%}#q{width:100%!important}#flt{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}#flt button{flex:none;white-space:nowrap}.hd{flex-direction:column;align-items:flex-start}.hd .row{width:100%;justify-content:space-between}#curSeg{max-width:100%;overflow-x:auto}#tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}#tabs button{flex:none}#tabs.fade{-webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);mask-image:linear-gradient(90deg,#000 78%,transparent)}#tabs::-webkit-scrollbar{display:none}.tabsHint{display:block!important}}
+.tabsHint{display:none;font-size:12px;color:var(--ink3);margin-top:-6px}#bHours:disabled{opacity:.45}
 .nt td,.nt th{white-space:normal}.nh{display:flex;flex-direction:column;gap:6px;margin-top:8px}.nh div{font-size:13px;padding:8px 10px;border-radius:10px;background:var(--s0);border:1px solid var(--hair)}
 #nrBox .row,#czBox .row{flex-wrap:wrap}#nrBox .inp,#czBox .inp{max-width:100%}
 .vb{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:9px;background:rgba(195,139,255,.16);color:#e2c9ff!important;font-size:12px;font-weight:600;white-space:nowrap}
@@ -95,10 +97,10 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <div class="row" style="font-size:17px">с <select class="inp" id="hFrom"></select> до <select class="inp" id="hTo"></select> <button class="btn" id="bHours">Сохранить</button></div><span class="muted" id="hInfo"></span></div></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="bank.js?v=6"></script>
+<script src="bank.js?v=7"></script>
 <script>
 (function(){
-var EMB=/[?&]embed=1/.test(location.search);if(EMB){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
+var MA=/[?&]ma=1\b/.test(location.search),EMB=MA||/[?&]embed=1/.test(location.search);if(MA)document.documentElement.classList.add('ma');if(EMB&&!MA){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
 var API=(/workers\.dev$/.test(location.hostname)?location.origin:'https://oduvanov-api.romanoduvanov52.workers.dev')+'/app/api/', T=null, ME=null, CUR='', DATA=null, STATS=null, F='all', SORT={k:'wait',d:-1}, SEL={}, RCPT='all';
 try{T=localStorage.getItem('oaTok')}catch(e){}
 function $(id){return document.getElementById(id)}
@@ -123,7 +125,7 @@ function renderK(){var S=DATA.students,tg=S.filter(function(s){return s.tg}).len
   var st=(STATS&&STATS.curators)||[],ans=0,med=[],in2=[];st.forEach(function(c){ans+=c.answered;if(c.median!=null)med.push(c.median);if(c.in2h!=null)in2.push(c.in2h)});
   var old=wt.length?Math.min.apply(null,wt.map(function(s){return s.wait})):null;
   $('kpis').innerHTML=kp('u','Ученики',S.length,'из '+DATA.n+' в потоке','on')+kp('t','В Telegram',tg,S.length?Math.round(tg/S.length*100)+'% подключили':'—')
-   +kp('w','Ждут ответа',wt.length,old?'дольше всех '+wtxt(old):'никто не ждёт',wt.length?'bad':'')+kp('c','Медиана ответа',med.length?(st.length>1?st.map(function(c){return c.median!=null?hm(c.median):'—'}).join(' / '):hm(med[0])):'—',(st.length>1?st.map(function(c){return c.full.split(' ')[0]}).join(' / ')+' · ':'')+ans+' ответов за 14 дн')
+   +kp('w','Ждут ответа',wt.length,old?'дольше всех '+wtxt(old):'никто не ждёт',wt.length?'bad':'')+kp('c','Медиана ответа',med.length?(st.length>1?st.map(function(c){return c.median!=null?hm(c.median):'—'}).join(' / '):hm(med[0])):'—',(st.length>1?st.map(function(c){return c.full.split(' ')[0]}).join(' / ')+' · ':'')+ans+' '+plr(ans,'ответ','ответа','ответов')+' за&nbsp;14&nbsp;дн'+(st.some(function(c){return c.offHours})?' · ответы вне рабочих часов в&nbsp;медиану не&nbsp;входят':''))
    +kp('z','Ответ за 2 часа',in2.length?(st.length>1?st.map(function(c){return c.in2h!=null?c.in2h+'%':'—'}).join(' / '):in2[0]+'%'):'—','цель — 100%')+kp('u','Не заходили 5+ дн',id,'стоит написать им')}
 function rowsF(){var q=($('q').value||'').toLowerCase();return DATA.students.filter(function(s){if(q&&s.name.toLowerCase().indexOf(q)<0)return false;
   if(F==='wait')return !!s.wait;if(F==='idle')return idle(s);if(F==='notg')return !s.tg;return true}).sort(function(a,b){var k=SORT.k,x=a[k],y=b[k];
@@ -132,7 +134,7 @@ function renderT(){var R=rowsF(),h='';R.forEach(function(s){var tg=s.tg?'<a clas
   h+='<tr><td><input type="checkbox" class="chk" data-u="'+s.uid+'"'+(SEL[s.uid]?' checked':'')+'></td><td class="nm"><b>'+esc(s.name)+'</b><small>'+(s.tar?esc(s.tar):'тариф —')+(CUR==='all'&&s.cur?' · '+esc(curName(s.cur)):'')+'</small></td>'
   +'<td>'+(s.place?s.place:'—')+'</td><td>'+(s.pts!=null?s.pts:'—')+'</td><td>'+(s.week?'<span class="up">+'+s.week+'</span>':'<span class="muted">0</span>')+'</td>'
   +'<td>'+(s.lessons!=null?'<span class="bar"><i style="width:'+Math.min(100,Math.round(s.lessons/(DATA.total||1)*100))+'%"></i></span>'+s.lessons+'/'+DATA.total:'—')+'</td><td>'+(s.hw!=null?s.hw:'—')+'</td>'
-  +'<td>'+(s.t7?hm(s.t7):'<span class="muted">0</span>')+'</td><td>'+ago(s.last)+'</td><td>'+(s.wait?'<span class="chip bad">ждёт '+wtxt(s.wait)+'</span>':'<span class="chip ok">ок</span>')+'</td><td>'+tg+'</td><td><a class="vb" target="_blank" rel="noopener" href="https://t.me/oduvanov_school_bot?startapp=va_'+s.uid+'" title="Открыть мини-приложение глазами ученика (только просмотр)">👁 Как ученик</a></td></tr>'});
+  +'<td>'+(s.t7?hm(s.t7):'<span class="muted">0</span>')+'</td><td>'+ago(s.last)+'</td><td>'+(s.wait?'<span class="chip bad">ждёт '+wtxt(s.wait)+'</span>':'<span class="chip ok">ок</span>')+(s.multi?' <span class="chip w" title="В ответе на ДЗ отмечено несколько уровней — проверь, какой засчитать">уровни ×'+s.multi+'</span>':'')+'</td><td>'+tg+'</td><td><a class="vb" target="_blank" rel="noopener" href="https://t.me/oduvanov_school_bot?startapp=va_'+s.uid+'" title="Открыть мини-приложение глазами ученика (только просмотр)">👁 Как ученик</a></td></tr>'});
   $('tb').innerHTML=h||'<tr><td colspan="12" class="muted" style="text-align:center;padding:30px">Никого</td></tr>';var n=Object.keys(SEL).length;$('selN').textContent=n?('Выбрано: '+n):'';$('bSelMsg').classList.toggle('hid',!n)}
 $('tb').onchange=function(e){var u=e.target.getAttribute('data-u');if(!u)return;if(e.target.checked)SEL[u]=1;else delete SEL[u];renderT()};
 $('chkAll').onchange=function(){var on=this.checked;rowsF().forEach(function(s){if(on)SEL[s.uid]=1;else delete SEL[s.uid]});renderT()};
@@ -163,9 +165,13 @@ for(var h=0;h<=24;h++){$('hFrom').insertAdjacentHTML('beforeend','<option value=
 $('bHours').onclick=function(){var f=+$('hFrom').value,t=+$('hTo').value;if(f>=t){$('hInfo').textContent='Начало должно быть раньше конца';return}
   api('hours',{method:'POST',body:JSON.stringify({c:CUR,from:f,to:t})}).then(function(j){$('hInfo').textContent=j.ok?'Сохранено: с '+f+':00 до '+t+':00 МСК':'Не сохранилось';load()})};
 var ALL=null,STALL=null;
+function plr(n,a,b,c){n=Math.abs(n)%100;var k=n%10;return n>10&&n<20?c:k>1&&k<5?b:k===1?a:c}
+function tabsFade(){var t=$('tabs');if(t)t.classList.toggle('fade',t.scrollWidth-t.clientWidth-t.scrollLeft>4)}
+$('tabs').addEventListener('scroll',tabsFade);addEventListener('resize',tabsFade);
 function view(){if(ME.role!=='admin'||!ALL){return}var v=CUR;DATA={n:ALL.n,total:ALL.total,students:v==='all'?ALL.students:ALL.students.filter(function(s){return s.cur===v})};
   STATS={curators:v==='all'?STALL.curators:STALL.curators.filter(function(c){return c.id===v})};renderAll()}
 function renderAll(){renderK();renderT();upPrev();var c=(STATS.curators||[])[0];if(c&&c.hours&&CUR!=='all'){$('hFrom').value=c.hours[0];$('hTo').value=c.hours[1]}
+  var ah=CUR==='all';$('bHours').disabled=ah;$('hFrom').disabled=ah;$('hTo').disabled=ah;if(ah)$('hInfo').textContent='Выбери куратора вверху, чтобы изменить его часы.';else if(/^Выбери/.test($('hInfo').textContent))$('hInfo').textContent='';tabsFade()
   $('t-hr').querySelector('.card').style.opacity=CUR==='all'?.4:1;if($('t-bc').classList.contains('hid')===false)loadLog()}
 function load(){$('upd').textContent='Обновляю…';var c=ME.role==='admin'?'all':CUR;
   Promise.all([api('students?c='+c),api('stats?c='+c)]).then(function(a){if(ME.role==='admin'){ALL=a[0];STALL=a[1];view()}else{DATA=a[0];STATS=a[1];renderAll()}
@@ -182,7 +188,7 @@ function czLoad(){var B=$('czBox');B.innerHTML='<div class="card muted">Загр
       +'<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:rgba(255,255,255,.85)"><li>Зайди в Telegram с аккаунта @'+esc(c.care)+'.</li><li>Настройки → <b>Telegram для бизнеса</b> → <b>Чат-боты</b>.</li><li>Впиши <b>@'+esc(c.bot)+'</b> и выбери «Все личные чаты».</li><li>В правах бота <b>сними</b> «Отвечать на сообщения» — боту нужно только читать.</li><li>Готово: сюда придёт подтверждение, а тебе — сообщение от бота.</li></ol>'
       +'<div class="row"><a class="btn" target="_blank" href="https://t.me/'+esc(c.bot)+'">Открыть бота</a><span class="muted" style="font-size:13px">Если Business Mode у бота выключен — включи в BotFather: Bot Settings → Business Mode.</span></div></div>'}
     else h+='<div class="card row" style="justify-content:space-between"><span><b style="font-weight:500">✅ Бот подключён к @'+esc(c.username||c.care)+'</b><br><span class="muted" style="font-size:13px">Видит новые сообщения с&nbsp;'+(c.at?new Date(c.at).toLocaleDateString('ru-RU',{day:'numeric',month:'long'}):'—')+'. Тексты хранятся 90 дней.'+(c.canReply?' <span class="dn">У бота есть право отвечать — сними его.</span>':'')+'</span></span></div>';
-    h+='<div class="kpis">'+kp('w','Ждут ответа',S.waiting,'прямо сейчас',S.waiting?'bad':'')+kp('c','Ответ сегодня',czT(S.day.avg),'среднее · '+S.day.n+' ответов')+kp('c','Ответ за 7 дней',czT(S.week.avg),'медиана '+czT(S.week.med)+' · '+S.week.n+' ответов')+kp('z','Решено',S.week.solved!=null?S.week.solved+'%':'—','по оценке ИИ за 7 дней')+kp('u','Средняя оценка',S.week.score!=null?S.week.score+'/10':'—',(S.week.check||0)+' на проверку',S.week.check?'bad':'')+'</div>';
+    h+='<div class="kpis">'+kp('w','Ждут ответа',S.waiting,'прямо сейчас',S.waiting?'bad':'')+kp('c','Ответ сегодня',czT(S.day.avg),'среднее · '+S.day.n+' '+plr(S.day.n,'ответ','ответа','ответов'))+kp('c','Ответ за 7 дней',czT(S.week.avg),'медиана '+czT(S.week.med)+' · '+S.week.n+' '+plr(S.week.n,'ответ','ответа','ответов'))+kp('z','Решено',S.week.solved!=null?S.week.solved+'%':'—','по оценке ИИ за 7 дней')+kp('u','Средняя оценка',S.week.score!=null?S.week.score+'/10':'—',(S.week.check||0)+' на проверку',S.week.check?'bad':'')+'</div>';
     h+='<div class="card row" style="gap:10px"><span class="muted">Сигнал мне, если молчат дольше</span><input class="inp" id="czW" type="number" min="5" max="480" value="'+c.wait+'" style="width:80px"><span class="muted">мин, рабочее время с</span><select class="inp" id="czF"></select><span class="muted">до</span><select class="inp" id="czTo"></select><button class="sb pri" id="czSave">Сохранить</button><span class="muted" id="czInf" style="font-size:13px"></span></div>';
     var L=D.filter(function(d){return CZF==='all'||(CZF==='wait'?d.wait_since:CZF==='check'?(d.grade&&d.grade.check):true)}),worst=D.filter(function(d){return d.grade}).sort(function(a,b){return (a.grade.score||10)-(b.grade.score||10)}).slice(0,3);
     if(worst.length)h+='<div class="card"><b style="font-weight:500">Худшие диалоги недели</b><div class="log" style="margin-top:10px">'+worst.map(function(d){return '<div style="cursor:pointer" data-c="'+esc(d.chat)+'"><span style="flex:1"><b style="font-weight:500">'+esc(d.name||'Клиент')+'</b> — '+esc(d.grade.summary||'')+'</span>'+czG(d.grade)+'</div>'}).join('')+'</div></div>';
@@ -219,7 +225,7 @@ function nrLoad(){var B=$('nrBox');B.innerHTML='<div class="card muted">Загр
         +'<b style="font-weight:500">События сервера</b>'+(j.log.map(function(l){return '<div><span class="muted" style="width:60px;flex:none">'+new Date(l.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+'</span>'+esc(l.kind+' '+(l.info||''))+'</div>'}).join('')||'<div class="muted">нет</div>')})}}).catch(function(e){B.innerHTML='<div class="card dn">Не загрузилось: '+esc(e.message)+'</div>'})}
 /* вход без Telegram: из кабинета (токен FS_AUTH через eco.js) — сервер проверяет и выдаёт сессию с ролью */
 function bridge(force){return new Promise(function(res){if(!EMB||window.parent===window)return res(null);var done=0,h=function(e){if(e.source!==window.parent||!e.data||!('ecoAuth' in e.data))return;removeEventListener('message',h);done=1;res(e.data.ecoAuth)};addEventListener('message',h);try{parent.postMessage({ecoNeedAuth:1,force:!!force},'*')}catch(x){}setTimeout(function(){if(!done){removeEventListener('message',h);res(null)}},5000)})}
-function viaSite(force){return bridge(force).then(function(a){if(!a||!a.t)return null;return fetch(API+'login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok||j.role==='student')return null;T=j.token;try{localStorage.setItem('oaTok',T)}catch(e){}return T})}).catch(function(){return null})}
+function viaSite(force){return bridge(force).then(function(a){if(a&&a.s){T=a.s;try{localStorage.setItem('oaTok',T)}catch(e){}return T}if(!a||!a.t)return null;return fetch(API+'login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok||j.role==='student')return null;T=j.token;try{localStorage.setItem('oaTok',T)}catch(e){}return T})}).catch(function(){return null})}
 function start(){api('me').then(function(m){ME=m;$('login').classList.add('hid');$('app').classList.remove('hid');
   if(m.role==='admin'){$('tabCz').classList.remove('hid');$('tabNr').classList.remove('hid');CUR=CUR||'all';$('hTitle').textContent='Кураторы';$('hSub').textContent='Все ученики, ответы кураторов и рассылки';var sg=$('curSeg');sg.classList.remove('hid');
     sg.innerHTML='<button data-c="all">Все</button>'+m.curators.map(function(c){return '<button data-c="'+c.id+'">'+esc(c.full.split(' ')[0])+'</button>'}).join('');
@@ -227,7 +233,10 @@ function start(){api('me').then(function(m){ME=m;$('login').classList.add('hid')
   else{CUR=m.cid;$('hTitle').textContent='Пульт куратора';$('hSub').textContent=(m.name||'')+' · твои ученики, ответы и рассылки'}
   load();setInterval(load,120000)}).catch(function(){})}
 $('login').classList.add('hid');
-(T?Promise.resolve(T):viaSite()).then(function(t){if(t)start();else $('login').classList.remove('hid')});
+/* 27.10: пульт внутри мини-приложения (?ma=1) — вход по staff-сессии приложения, ссылки Telegram открывает приложение */
+if(MA){document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';if(/^(https?:\/\/(t\.me|telegram\.me)\/|tg:)/.test(h)){e.preventDefault();e.stopPropagation();try{parent.postMessage({maGo:h},'*')}catch(x){}}},true);
+  $('login').querySelector('p').innerHTML='Пульт открывается по&nbsp;твоему входу в&nbsp;приложение. Закрой и&nbsp;открой мини-приложение ещё раз.';$('bLogin').classList.add('hid')}
+(MA?viaSite():T?Promise.resolve(T):viaSite()).then(function(t){if(t)start();else $('login').classList.remove('hid')});
 /* ---------- оценка ответов Нейро (ночь 27.10): доля 👍, последние 👎 с вопросом и ответом. Отдельный блок под #nrBox, nrLoad не трогает ---------- */
 (function(){var _nr=nrLoad;nrLoad=function(){_nr.apply(this,arguments);nrFb()};
   function nrFb(){var F=$('nrFb');if(!F){F=document.createElement('div');F.id='nrFb';F.style.cssText='display:flex;flex-direction:column;gap:16px;margin-top:16px';$('nrBox').after(F)}
@@ -238,7 +247,7 @@ $('login').classList.add('hid');
         +(dn.map(function(x){return '<details style="border-top:1px solid var(--hair);padding:10px 0"><summary style="cursor:pointer;list-style:none"><span class="muted">'+nrT(x.at)+' · '+esc(x.name||('ученик '+x.uid))+(x.view?' · тест команды':'')+'</span><br><b style="font-weight:500">'+esc(x.q||'')+'</b>'+(x.why?'<br><span class="chip bad" style="margin-top:6px">'+esc(x.why)+'</span>':'')+'</summary><div style="white-space:pre-wrap;margin-top:8px;color:var(--ink2);font-size:14px">'+esc(x.a||'')+(x.tools?'\n\nинструменты: '+esc(x.tools):'')+'</div></details>'}).join('')||'<span class="muted">Пока ни одного 👎</span>')+'</div></div>';
       F.innerHTML=h;
       $('nrFbCp').onclick=function(){var t=dn.map(function(x,i){return '#'+(i+1)+' '+new Date(x.at).toISOString().slice(0,16)+(x.why?' · причина: '+x.why:'')+'\nВопрос: '+x.q+'\nОтвет Нейро: '+x.a}).join('\n\n---\n\n');
-        var ok=function(){toast('Скопировано: '+dn.length+' ответов')};try{navigator.clipboard.writeText(t).then(ok,function(){fb(t)})}catch(e){fb(t)}
+        var ok=function(){toast('Скопировано: '+dn.length+' '+plr(dn.length,'ответ','ответа','ответов'))};try{navigator.clipboard.writeText(t).then(ok,function(){fb(t)})}catch(e){fb(t)}
         function fb(s){var a=document.createElement('textarea');a.value=s;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}}
     }).catch(function(e){F.innerHTML='<div class="card dn">Оценки не загрузились: '+esc(e.message||'')+'</div>'})}})();
 })();
