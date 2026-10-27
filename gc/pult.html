@@ -98,7 +98,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <div class="row" style="font-size:17px">с <select class="inp" id="hFrom"></select> до <select class="inp" id="hTo"></select> <button class="btn" id="bHours">Сохранить</button></div><span class="muted" id="hInfo"></span></div></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="bank.js?v=10"></script>
+<script src="bank.js?v=11"></script>
 <script>
 (function(){
 var MA=/[?&]ma=1\b/.test(location.search),EMB=MA||/[?&]embed=1/.test(location.search);if(MA)document.documentElement.classList.add('ma');if(EMB&&!MA){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
