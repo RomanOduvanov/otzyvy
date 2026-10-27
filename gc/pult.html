@@ -54,7 +54,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 .bcIn{display:flex;gap:8px;flex-wrap:wrap}.bcIn #bcBtn{flex:0 1 200px}.bcIn #bcLink{flex:1 1 220px}#bcText{width:100%;min-height:128px}
 .seg.sx{max-width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}.seg.sx::-webkit-scrollbar{display:none}.seg.sx button{flex:none;white-space:nowrap}
 .inp{box-sizing:border-box;max-width:100%;font-size:16px}
-@media (max-width:760px){#bcGrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"a" "b" "c" "d"}.bcIn input{flex:1 1 100%!important;width:100%}#bSend{width:100%}.ctl{flex-wrap:wrap}.ctl>.row{width:100%}#q{width:100%!important}#flt{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}#flt button{flex:none;white-space:nowrap}.hd{flex-direction:column;align-items:flex-start}.hd .row{width:100%;justify-content:space-between}#curSeg{max-width:100%;overflow-x:auto}#tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}#tabs button{flex:none}#tabs.fade{-webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);mask-image:linear-gradient(90deg,#000 78%,transparent)}#tabs::-webkit-scrollbar{display:none}.tabsHint{display:block!important}}
+@media (max-width:760px){#bcGrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"a" "b" "c" "d"}.bcIn input{flex:1 1 100%!important;width:100%}#bSend{width:100%}.ctl{flex-wrap:wrap}.ctl>.row{width:100%}#q{width:100%!important}#flt{max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}#flt button{flex:none;white-space:nowrap}.hd{flex-direction:column;align-items:flex-start}.hd .row{width:100%;justify-content:space-between}#curSeg{max-width:100%;overflow-x:auto}#tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}#tabs button{flex:none}.seg button{height:36px}.sb{height:40px}.vb{height:36px}#tabs.fade{-webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);mask-image:linear-gradient(90deg,#000 78%,transparent)}#tabs::-webkit-scrollbar{display:none}.tabsHint{display:block!important}}
 .tabsHint{display:none;font-size:12px;color:var(--ink3);margin-top:-6px}#bHours:disabled{opacity:.45}
 .nt td,.nt th{white-space:normal}.nh{display:flex;flex-direction:column;gap:6px;margin-top:8px}.nh div{font-size:13px;padding:8px 10px;border-radius:10px;background:var(--s0);border:1px solid var(--hair)}
 #nrBox .row,#czBox .row{flex-wrap:wrap}#nrBox .inp,#czBox .inp{max-width:100%}
@@ -97,7 +97,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <div class="row" style="font-size:17px">с <select class="inp" id="hFrom"></select> до <select class="inp" id="hTo"></select> <button class="btn" id="bHours">Сохранить</button></div><span class="muted" id="hInfo"></span></div></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="bank.js?v=8"></script>
+<script src="bank.js?v=9"></script>
 <script>
 (function(){
 var MA=/[?&]ma=1\b/.test(location.search),EMB=MA||/[?&]embed=1/.test(location.search);if(MA)document.documentElement.classList.add('ma');if(EMB&&!MA){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
