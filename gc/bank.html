@@ -5,22 +5,22 @@
 <style>
 *{box-sizing:border-box}html,body{margin:0;background:#000106;color:#fff;font:400 15px/1.45 "Inter Tight",Inter,system-ui,sans-serif;font-feature-settings:"tnum"}
 body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.35),transparent 70%) fixed,#000106}
-.wrap{max-width:760px;margin:0 auto;padding:28px 20px 100px;display:flex;flex-direction:column;gap:18px}
-.hd h1{margin:0;font-size:40px;line-height:1.05;font-weight:500;letter-spacing:-.03em}.hd p{margin:8px 0 0;color:rgba(255,255,255,.58)}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 20px 100px;display:flex;flex-direction:column;gap:18px}
+.hd{padding:24px 0 24px;border-bottom:1px solid rgba(255,255,255,.08)}.hd h1{margin:0;font-size:56px;line-height:1.04;font-weight:500;letter-spacing:-.03em}.hd p{margin:10px 0 0;font-size:17px;color:rgba(255,255,255,.58)}
 .login{display:grid;place-items:center;padding:40px 0}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center;padding:36px 28px;border-radius:32px;background:#161616;border:1px solid rgba(255,255,255,.08)}
 .lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}
 .btn:disabled{opacity:.5}.btn2{height:46px;width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#1c1c1c;color:#fff;font:500 15px "Inter Tight",sans-serif;cursor:pointer}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
-html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}html.emb body{background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.28),transparent 70%) fixed,#000106}html.emb .wrap{padding:20px 16px 48px}html.emb .hd h1{font-size:36px}
-@media (max-width:600px){.hd h1{font-size:32px}}
+html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}html.emb body{background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.28),transparent 70%) fixed,#000106}html.emb .wrap{padding:20px 16px 48px}@media (min-width:900px){html.emb .wrap{padding:20px 40px 64px}}
+@media (max-width:879px){.hd{padding:8px 0 16px}.hd h1{font-size:36px}.hd p{font-size:15px;margin-top:6px}}@media (max-width:420px){.hd h1{font-size:32px}}
 </style></head><body>
 <div class="wrap">
-<header class="hd"><h1>Мой банк</h1><p>Каждая оплата и&nbsp;каждый заказ&nbsp;— в&nbsp;одном месте</p></header>
+<header class="hd"><h1>Мой банк</h1><p>Всё, что ты&nbsp;заработал на&nbsp;дизайне с&nbsp;начала обучения</p></header>
 <div id="login" class="login hid"><div class="lg"><h2 id="lgH">Вход через Telegram</h2><p id="lgP">Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.</p>
 <button class="btn" id="bLogin">Войти через Telegram</button><button class="btn2" id="bStaff">Я из команды школы</button><span class="muted" id="lgSt"></span></div></div>
 <div id="bank"></div>
 </div>
-<script src="bank.js?v=9"></script>
+<script src="bank.js?v=10"></script>
 <script>
 (function(){
 /* 27.10: во фрейме кабинета страница на весь экран со своей прокруткой (фрейм fs-full растягивает тема) — одна полоса прокрутки, высоту наружу не шлём */
@@ -43,7 +43,8 @@ function go(kind,b){b.disabled=true;$('lgSt').textContent='Открываю Tele
       fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';$('login').classList.add('hid');
         if(kind==='student'){EB=c.token;try{localStorage.setItem('ebTok',EB)}catch(e){}own()}else{ST=c.token;try{localStorage.setItem('oaTok',ST)}catch(e){}team()}}
         else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})}
-function own(){$('login').classList.add('hid');head(VIEW==='orders'?'Учёт заказов':'Мой банк',VIEW==='orders'?'Заказы клиентов, сроки и&nbsp;статусы':null);ECOBANK.mount($('bank'),{view:VIEW,api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}viaSite(true).then(function(r){if(r==='student')own();else if(r)team();else if(ST&&GC&&!TU)team();else login('student')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
+var SUB={bank:'Всё, что ты&nbsp;заработал на&nbsp;дизайне с&nbsp;начала обучения',orders:'Клиенты, дедлайны, ТЗ и&nbsp;деньги&nbsp;— в&nbsp;одном месте'};
+function own(){$('login').classList.add('hid');head(VIEW==='orders'?'Мои заказы':'Мой банк',SUB[VIEW]);ECOBANK.mount($('bank'),{view:VIEW,onView:function(v,ro){if(!ro)head(v==='orders'?'Мои заказы':'Мой банк',SUB[v])},api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}viaSite(true).then(function(r){if(r==='student')own();else if(r)team();else if(ST&&GC&&!TU)team();else login('student')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
 function team(){$('login').classList.add('hid');var target=TU||(GC&&!STAFF[GC]?GC:0);head(target?'Банк ученика':VIEW==='orders'?'Заказы учеников':'Банк учеников',target?'Только просмотр: доход, оплаты и&nbsp;заказы ученика':'Ученики школы: доход, оплаты и&nbsp;заказы');
   ECOBANK.staff($('bank'),{uid:target,view:VIEW,api:function(p,o){return req(ST,p,o,function(){ST=null;try{localStorage.removeItem('oaTok')}catch(e){}viaSite(true).then(function(r){if(r&&r!=='student')team();else login('staff')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+ST},open:function(u){window.open(u,'_blank')}})}
 /* вход из кабинета без Telegram: кабинет отдаёт токен своего пользователя (eco.js → FS_AUTH), сервер проверяет его и роль */
