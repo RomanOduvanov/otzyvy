@@ -434,7 +434,7 @@ async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days
     const rs = ((await env.DB.prepare('SELECT wsec, sec, day FROM cresp WHERE cid=? AND answered>=? ORDER BY wsec').bind(c.id, from).all()).results || []);
     const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
     const byDay = {}; for (const r of rs) (byDay[r.day] = byDay[r.day] || []).push(r.wsec);
-    const wait = ((await env.DB.prepare('SELECT w.uid, w.since, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h) }));
+    const wait = ((await env.DB.prepare('SELECT w.uid, w.since, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h) })); /* 30.10 QA №7: свои тесты команды не считаем — как в списке учеников */
     res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec).filter(x => x > 0)), offHours: rs.filter(r => !(r.wsec > 0)).length, in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
       days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d].filter(x => x > 0)), n: byDay[d].length })), waiting: wait }) }
   return { ok: true, days, curators: res } }
@@ -1489,7 +1489,9 @@ const BANK_ALTER = ["ALTER TABLE bank_tx ADD COLUMN cur TEXT", "ALTER TABLE bank
   "ALTER TABLE bank_order ADD COLUMN cur TEXT", "ALTER TABLE bank_order ADD COLUMN dl_tz TEXT",
   /* 29.10: подтверждение куратором (баллы только за conf=1), мягкое удаление (del_at, мс), ожидаемая оплата заказа и напоминание */
   "ALTER TABLE bank_tx ADD COLUMN conf INTEGER DEFAULT 0", "ALTER TABLE bank_tx ADD COLUMN conf_by TEXT", "ALTER TABLE bank_tx ADD COLUMN conf_at TEXT", "ALTER TABLE bank_tx ADD COLUMN del_at INTEGER",
-  "ALTER TABLE bank_order ADD COLUMN pay_at TEXT", "ALTER TABLE bank_order ADD COLUMN remind_at TEXT", "ALTER TABLE bank_order ADD COLUMN reminded TEXT"];
+  "ALTER TABLE bank_order ADD COLUMN pay_at TEXT", "ALTER TABLE bank_order ADD COLUMN remind_at TEXT", "ALTER TABLE bank_order ADD COLUMN reminded TEXT",
+  /* 30.10 QA №34: чек-лист заказа (JSON [{t,ok}], ≤ 20 пунктов; колонка chk — слово CHECK в SQLite зарезервировано, в API поле называется check) и «ждёт предоплату» */
+  "ALTER TABLE bank_order ADD COLUMN chk TEXT", "ALTER TABLE bank_order ADD COLUMN prepay INTEGER DEFAULT 0"];
 let BANK_OK = false;
 async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.concat(BKS_SCHEMA).map(s => env.DB.prepare(s)));
   const [c1, c2] = await env.DB.batch([env.DB.prepare("SELECT name FROM pragma_table_info('bank_tx')"), env.DB.prepare("SELECT name FROM pragma_table_info('bank_order')")]);
@@ -1502,6 +1504,11 @@ const bStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const bDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : dayStr();
 const bCur = v => B_CUR.includes(String(v || '').toUpperCase()) ? String(v).toUpperCase() : 'RUB';
 const bDl = v => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(v || '')) ? String(v) : null;
+/* чек-лист заказа: [{t: ≤ 80 символов, ok: 0|1}], не больше 20 пунктов, пустые пункты отбрасываются; хранится JSON-строкой */
+function bChk(v) { if (typeof v === 'string') { try { v = JSON.parse(v) } catch (e) { v = [] } } if (!Array.isArray(v)) v = [];
+  return JSON.stringify(v.map(x => x && typeof x === 'object' ? { t: bStr(x.t, 80), ok: x.ok && x.ok !== '0' ? 1 : 0 } : { t: bStr(x, 80), ok: 0 }).filter(x => x.t).slice(0, 20)) }
+const bChkA = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a : [] } catch (e) { return [] } };
+const bPre = v => v && v !== '0' && v !== 'false' ? 1 : 0;
 const bTz = v => /^[A-Za-z_]+(\/[A-Za-z0-9_+\-]+){0,2}$/.test(String(v || '')) ? String(v).slice(0, 40) : null;
 /* курс ЦБ РФ на дату: cbr-xml-daily (зеркало ЦБ); на выходные и праздники — ближайший предыдущий рабочий день. Кеш в kv на день. */
 async function cbrRate(env, day, cur) { if (cur === 'RUB') return 1; const k = 'cbr:' + day; let r = await kvGet(env, k);
@@ -1537,21 +1544,39 @@ async function bankStaffList(env, st) {
   const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COALESCE(SUM(CASE WHEN conf=1 THEN COALESCE(rub, amount) ELSE 0 END),0) conf, SUM(CASE WHEN COALESCE(conf,0)=0 THEN 1 ELSE 0 END) pend, COUNT(id) n, MAX(day) last FROM bank_tx WHERE del_at IS NULL GROUP BY uid').all()).results || [])) sums[r.uid] = r;
   const goals = {}; for (const r of ((await env.DB.prepare('SELECT uid, sum, until FROM bank_goal WHERE show=1').all()).results || [])) goals[r.uid] = { sum: r.sum, until: r.until };
   const ords = {}; for (const r of ((await env.DB.prepare("SELECT uid, COUNT(id) n, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order GROUP BY uid").all()).results || [])) ords[r.uid] = r;
+  /* 30.10 QA №6: m6 — ₽ за 6 месяцев (старые → новые, последний — текущий месяц по МСК), c6 — число оплат; один запрос на всех */
+  const M6 = [], mk0 = dayStr().slice(0, 7); for (let i = 5; i >= 0; i--) { let [y, m] = mk0.split('-').map(Number); m -= i; while (m < 1) { m += 12; y-- } M6.push(y + '-' + String(m).padStart(2, '0')) }
+  const mon = {}; for (const r of ((await env.DB.prepare('SELECT uid, substr(day,1,7) m, COALESCE(SUM(COALESCE(rub, amount)),0) s, COUNT(id) n FROM bank_tx WHERE del_at IS NULL AND day>=? GROUP BY uid, substr(day,1,7)').bind(M6[0] + '-01').all()).results || [])) (mon[r.uid] = mon[r.uid] || {})[r.m] = r;
   const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
   const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {}, tot = Math.round(m.total || 0), cf = Math.round(m.conf || 0), bs = bStatus(tot);
     out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
-      conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null }) };
+      conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null,
+      m6: M6.map(k => Math.round(((mon[uid] || {})[k] || {}).s || 0)), c6: M6.map(k => ((mon[uid] || {})[k] || {}).n || 0) }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
   for (const s of studs) add(+s.uid, s.name, null, null);
   for (const uid in sums) add(+uid, null, null, null);
   out.sort((a, b) => (!a.name - !b.name) || b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
   return { ok: true, role: st.role, cid: st.cid || null, curators: st.role === 'admin' ? CURATORS.map(c => ({ id: c.id, full: c.full })) : CURATORS.filter(c => c.id === st.cid).map(c => ({ id: c.id, full: c.full })), students: out } }
+/* 30.10 QA №11: все заказы учеников для «Заказов учеников» — без клиента, Telegram, ТЗ и файлов; куратор — только свои, админ — все. Без loadData: имена страница берёт из /bank/staff/list. */
+async function bankStaffOrders(env, st) {
+  if (st.role === 'curator' && !st.cid) return { ok: true, role: st.role, orders: [] };
+  const own = st.role === 'curator', W0 = own ? ' WHERE s.curator=?' : '';
+  const [od, pd] = await env.DB.batch([
+    (q => own ? q.bind(st.cid) : q)(env.DB.prepare('SELECT o.uid, o.id, o.product, o.status, o.deadline, o.dl_tz, o.pay_at, o.price, o.cur, o.upd, o.at, o.prepay, o.chk, s.curator FROM bank_order o LEFT JOIN student s ON s.uid=o.uid' + W0 + ' ORDER BY o.id DESC LIMIT 5000')),
+    (q => own ? q.bind(st.cid) : q)(env.DB.prepare('SELECT t.order_id oid, t.uid, COALESCE(t.cur,\'RUB\') cur, SUM(t.amount) a, SUM(COALESCE(t.rub, t.amount)) r FROM bank_tx t LEFT JOIN student s ON s.uid=t.uid WHERE t.order_id IS NOT NULL AND t.del_at IS NULL' + (own ? ' AND s.curator=?' : '') + ' GROUP BY t.order_id, t.uid, COALESCE(t.cur,\'RUB\')'))]);
+  const paid = {}; for (const x of pd.results || []) { const k = x.uid + ':' + x.oid, p = paid[k] = paid[k] || { rub: 0 }; p[x.cur] = (p[x.cur] || 0) + (x.a || 0); p.rub += x.r || 0 }
+  const rows = (od.results || []).filter(o => !isStaffUid(env, o.uid)), rates = { RUB: 1 };
+  for (const c of new Set(rows.map(o => o.cur || 'RUB'))) if (!rates[c]) rates[c] = await cbrRate(env, dayStr(), c);
+  return { ok: true, role: st.role, orders: rows.map(o => { const c = o.cur || 'RUB', p = paid[o.uid + ':' + o.id] || {}, ck = bChkA(o.chk);
+    return { uid: o.uid, cid: o.curator || null, id: o.id, product: o.product || '', status: o.status || 'new', deadline: o.deadline || null, dl_tz: o.dl_tz || null, pay_at: o.pay_at || null, price: o.price || 0, cur: c,
+      price_rub: rates[c] ? Math.round((o.price || 0) * rates[c]) : null, paid: p[c] || 0, paid_rub: Math.round(p.rub || 0), upd: o.upd || null, at: o.at || null, prepay: o.prepay ? 1 : 0, check_n: ck.length, check_ok: ck.filter(z => z.ok).length } }) } }
 async function bankApi(env, req, path) {
   const u = new URL(req.url); await bankEnsure(env);
   const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
   const W = await bankWho(env, req, u);
   if (path === '/bank/staff/list') { if (!W.staff) return deny(req); return json(req, await bankStaffList(env, W.staff), 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/staff/orders') { if (!W.staff) return deny(req); return json(req, await bankStaffOrders(env, W.staff), 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/bank/tx/conf' || path === '/bank/staff/pending' || path === '/bank/staff/file' || path === '/bank/staff/export') { await ensure(env); return bankStaffApi(env, req, path, u) }
   /* приглашение по карте из мини-аппа (startapp=c<h>): карточка пригласившего; с initData — учёт перехода */
   if (path === '/bank/ref' && req.method === 'POST') { const o = await body(), h = String(o.h || '').replace(/^c/, ''); if (!/^[0-9a-f]{10}$/.test(h)) return json(req, { ok: false, err: 'Ссылка неверная' }, 400);
@@ -1562,13 +1587,13 @@ async function bankApi(env, req, path) {
   if (W.ro && path !== '/bank/summary') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения, без контактов клиентов и файлов' }, 403);
   if (path === '/bank/summary') {
     const [tx, od, fl, gl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id, conf, conf_by, conf_at FROM bank_tx WHERE uid=? AND del_at IS NULL ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
-      env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
+      env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at, chk, prepay FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
       env.DB.prepare('SELECT id, kind, ref, name, mime, size FROM bank_file WHERE uid=? AND kind=\'order\'').bind(uid), env.DB.prepare('SELECT sum, until, show FROM bank_goal WHERE uid=?').bind(uid)]);
     const T = (tx.results || []).map(x => Object.assign(x, { cur: x.cur || 'RUB', rub: x.rub != null ? x.rub : x.amount, conf: x.conf ? 1 : 0, conf_by: x.conf ? (x.conf_by || null) : null, conf_by_name: x.conf ? byName(x.conf_by) : null, conf_at: x.conf ? (x.conf_at || null) : null })), months = {}; let total = 0, confRub = 0;
     for (const x of T) { total += x.rub; if (x.conf) confRub += x.rub; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.rub }
     const files = {}; for (const f of fl.results || []) (files[f.ref] = files[f.ref] || []).push({ id: f.id, name: f.name, mime: f.mime, size: f.size });
     const paid = {}, paidRub = {}; for (const x of T) if (x.order_id) { paidRub[x.order_id] = (paidRub[x.order_id] || 0) + x.rub; (paid[x.order_id] = paid[x.order_id] || {})[x.cur] = (paid[x.order_id][x.cur] || 0) + x.amount }
-    let orders = (od.results || []).map(o => { const c = o.cur || 'RUB'; return Object.assign(o, { cur: c, files: files[o.id] || [], paid: (paid[o.id] || {})[c] || 0, paid_rub: paidRub[o.id] || 0 }) });
+    let orders = (od.results || []).map(o => { const c = o.cur || 'RUB', ck = bChkA(o.chk); delete o.chk; return Object.assign(o, { cur: c, files: files[o.id] || [], paid: (paid[o.id] || {})[c] || 0, paid_rub: paidRub[o.id] || 0, check: ck, prepay: o.prepay ? 1 : 0 }) });
     /* для «ждёт оплаты» в рублях: цена заказа в валюте → по курсу сегодня */
     const need = {}; for (const o of orders) if (o.cur !== 'RUB' && o.status !== 'done' && o.status !== 'cancel') need[o.cur] = 1;
     const rates = { RUB: 1 }; for (const c of Object.keys(need)) rates[c] = await cbrRate(env, dayStr(), c);
@@ -1581,7 +1606,7 @@ async function bankApi(env, req, path) {
     if (W.ro) { /* команде — без контактов клиента, ТЗ и файлов */
       tx2 = T.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : null, file_id: null, file: x.file_id ? 1 : 0, hidden: true }));
       soon2 = soon.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : '' }));
-      orders = orders.map(o => Object.assign({}, o, { client: o.client ? B_HIDDEN : null, tg: null, brief: o.brief ? B_HIDDEN : null, files: [], files_n: o.files.length, hidden: true })) }
+      orders = orders.map(o => { const x = Object.assign({}, o, { client: o.client ? B_HIDDEN : null, tg: null, brief: o.brief ? B_HIDDEN : null, files: [], files_n: o.files.length, hidden: true, check_n: o.check.length, check_ok: o.check.filter(z => z.ok).length }); delete x.check; return x }) }
     const who = W.ro ? await (async () => { const D = await loadData(env), r = (D.rows || []).find(x => +x.uid === uid) || {}, s = await env.DB.prepare('SELECT name, curator FROM student WHERE uid=?').bind(uid).first() || {}, c = s.curator && CURATORS.find(x => x.id === s.curator);
       return { uid, name: r.name || s.name || null, tar: r.tar || null, curName: c ? c.full : null } })() : null;
     const sh = W.ro ? null : await shareH(env, uid), refs = sh ? ((await env.DB.prepare('SELECT COUNT(*) n FROM bank_ref WHERE h=?').bind(sh).first()) || {}).n || 0 : null;
@@ -1620,15 +1645,19 @@ async function bankApi(env, req, path) {
     if (!f.client && !f.product) return json(req, { ok: false, err: 'Укажи клиента или что за заказ' }, 400);
     const payAt = o.pay_at === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(String(o.pay_at || '')) ? String(o.pay_at) : null; /* ожидаемая дата оплаты (напоминание бота в этот день) */
     let id = +o.id || 0;
+    const hasChk = o.check !== undefined, chk = hasChk ? bChk(o.check) : null, hasPre = o.prepay !== undefined, pre = hasPre ? bPre(o.prepay) : 0; /* нет поля в теле — не меняем */
     if (id) { const ex = await env.DB.prepare('SELECT id, pay_at FROM bank_order WHERE id=? AND uid=?').bind(id, uid).first(); if (!ex) return json(req, { ok: false }, 404);
       const pa = payAt === undefined ? ex.pay_at : payAt, rs = pa !== ex.pay_at; /* дату поменяли — напоминание заново */
-      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, cur=?, deadline=?, dl_tz=?, status=?, brief=?, src=?, upd=?, pay_at=?, remind_at=CASE WHEN ? THEN NULL ELSE remind_at END, reminded=CASE WHEN ? THEN NULL ELSE reminded END WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, pa, rs ? 1 : 0, rs ? 1 : 0, id, uid).run() }
-    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, now, payAt || null).first(); id = r.id }
+      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, cur=?, deadline=?, dl_tz=?, status=?, brief=?, src=?, upd=?, pay_at=?, remind_at=CASE WHEN ? THEN NULL ELSE remind_at END, reminded=CASE WHEN ? THEN NULL ELSE reminded END, chk=CASE WHEN ? THEN ? ELSE chk END, prepay=CASE WHEN ? THEN ? ELSE prepay END WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, pa, rs ? 1 : 0, rs ? 1 : 0, hasChk ? 1 : 0, chk, hasPre ? 1 : 0, pre, id, uid).run() }
+    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at, chk, prepay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, now, payAt || null, hasChk ? chk : null, pre).first(); id = r.id }
     if (o.tx_id) await env.DB.prepare('UPDATE bank_tx SET order_id=? WHERE id=? AND uid=?').bind(id, +o.tx_id, uid).run();
     const fs = Array.isArray(o.files) ? o.files.slice(0, 5) : [];
     const cnt = (await env.DB.prepare('SELECT COUNT(*) n FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, id).first()).n;
     for (const x of fs.slice(0, Math.max(0, 10 - cnt))) { try { await bankFile(env, uid, 'order', id, x) } catch (e) { return json(req, { ok: false, id, err: e.message }, 400) } }
     return json(req, { ok: true, id }) }
+  if (path === '/bank/order/check' && req.method === 'POST') { const o = await body(); if (o.check === undefined) return json(req, { ok: false, err: 'нет чек-листа' }, 400);
+    const r = await env.DB.prepare('UPDATE bank_order SET chk=? WHERE id=? AND uid=?').bind(bChk(o.check), +o.id || 0, uid).run();
+    return (r.meta && r.meta.changes) ? json(req, { ok: true }) : json(req, { ok: false, err: 'Заказ не найден' }, 404) }
   if (path === '/bank/order/status' && req.method === 'POST') { const o = await body(); if (!B_ST.includes(o.status)) return json(req, { ok: false }, 400);
     await env.DB.prepare('UPDATE bank_order SET status=?, upd=? WHERE id=? AND uid=?').bind(o.status, new Date().toISOString(), +o.id, uid).run();
     if (o.pay_at !== undefined) { const pa = /^\d{4}-\d{2}-\d{2}$/.test(String(o.pay_at || '')) ? String(o.pay_at) : null; await env.DB.prepare('UPDATE bank_order SET pay_at=?, remind_at=NULL, reminded=NULL WHERE id=? AND uid=?').bind(pa, +o.id, uid).run() }
@@ -1898,14 +1927,40 @@ async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, 
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
-const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin'];
+const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue'];
+/* 30.10 (QA №7, №13): очередь ДЗ. Её знает только GetCourse (лента ответов входа куратора), поэтому кабинет «Проверка ДЗ» на сайте (?fs=cur)
+   после загрузки ленты и после каждого «Принять / Вернуть» присылает POST /cur/queue {n, old48, oldest, by?:{<cid>|none:{n, old48, oldest}}} (by — только у Романа:
+   его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
+   /cur/me и /cur/admin отдают hw_q (ждут проверки), hw_old (дольше 48 ч), hw_oldest, hw_q_at. Число старше 7 дней не показываем. */
+const hwqClean = x => { if (!x || typeof x !== 'object') return null; const n = Math.round(+x.n); if (!(n >= 0 && n <= 1e4)) return null;
+  const o = Math.round(+x.old48 || 0), od = Math.round(+x.oldest || 0); return { n, old48: o >= 0 && o <= n ? o : 0, oldest: od > 1e12 && od < msNow() + 864e5 ? od : null } };
+async function hwQueues(env) { const fresh = x => x && x.at > msNow() - 7 * 864e5 ? x : null, adm = fresh(await kvGet(env, 'hwq:admin')), Q = {};
+  for (const c of CURATORS) { const mine = fresh(await kvGet(env, 'hwq:' + c.id)), a = adm && adm.by && adm.by[c.id] ? Object.assign({ at: adm.at }, adm.by[c.id]) : null;
+    Q[c.id] = [mine, a].filter(Boolean).sort((x, y) => y.at - x.at)[0] || null }
+  const cs = CURATORS.map(c => Q[c.id]).filter(Boolean), olds = cs.map(x => x.oldest).filter(Boolean);
+  Q.all = adm ? adm : cs.length ? { n: cs.reduce((t, x) => t + x.n, 0), old48: cs.reduce((t, x) => t + (x.old48 || 0), 0), oldest: olds.length ? Math.min(...olds) : null, at: Math.min(...cs.map(x => x.at)), part: cs.length < CURATORS.length } : null;
+  return Q }
+const hwqOut = q => q ? { hw_q: q.n, hw_old: q.old48 || 0, hw_oldest: q.oldest || null, hw_q_at: q.at } : { hw_q: null, hw_old: null, hw_oldest: null, hw_q_at: null };
 async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(env); const s = await staffSess(env, req, u); if (!s) return deny(req);
   const adm = s.role === 'admin', o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, okCid = v => CURATORS.some(c => c.id === v), now = msNow();
-  if (path === '/cur/me') { const cid = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : null) : s.cid; if (!cid) return json(req, { ok: false, err: 'Выбери куратора: ?cid=' }, 400);
-    const [ns, nw, nh] = await env.DB.batch([env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cid), env.DB.prepare('SELECT COUNT(DISTINCT uid) n FROM cwait WHERE cid=?').bind(cid), env.DB.prepare('SELECT COUNT(*) n FROM cur_hw WHERE cid=? AND at>=?').bind(cid, now - 30 * 864e5)]);
-    const card = await curCard(env, cid);
-    return json(req, { ok: true, cid, name: card.name, role: s.role, students: (ns.results || []).filter(x => !isStaffUid(env, x.uid)).length, wait: ((nw.results || [])[0] || {}).n || 0, hw: ((nh.results || [])[0] || {}).n || 0, hw_days: 30,
-      avg_reply_min: card.avg_reply_min, stars: card.stars, stars_n: card.stars_n, hours: card.hours, online: card.online }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/cur/queue') { if (req.method === 'POST') { const q = hwqClean(o); if (!q) return json(req, { ok: false, err: 'n — число работ в очереди' }, 400); if (!adm && !s.cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400);
+      const rec = Object.assign(q, { at: now }); if (adm && o.by && typeof o.by === 'object') { rec.by = {}; for (const k of Object.keys(o.by).slice(0, 20)) if (okCid(k) || k === 'none') { const x = hwqClean(o.by[k]); if (x) rec.by[k] = x } }
+      await kvPut(env, 'hwq:' + (adm ? 'admin' : s.cid), rec); return json(req, { ok: true, at: now }) }
+    const Q = await hwQueues(env), cq = u.searchParams.get('cid'); return json(req, Object.assign({ ok: true }, hwqOut(Q[adm ? (okCid(cq) ? cq : 'all') : s.cid])), 200, { 'Cache-Control': 'no-store' }) }
+  /* /cur/me: куратор — свои цифры; Роман — выбранного куратора (?cid=) или всей школы (без cid; раньше был отказ «Выбери куратора», QA №7) */
+  if (path === '/cur/me') { const cq = u.searchParams.get('cid'), cid = adm ? (okCid(cq) ? cq : 'all') : s.cid; if (!cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400);
+    const all = cid === 'all', from = now - 30 * 864e5;
+    const [nw, nh, ne] = await env.DB.batch([all ? env.DB.prepare('SELECT cid, uid FROM cwait') : env.DB.prepare('SELECT cid, uid FROM cwait WHERE cid=?').bind(cid), all ? env.DB.prepare('SELECT COUNT(*) n FROM cur_hw WHERE at>=?').bind(from) : env.DB.prepare('SELECT COUNT(*) n FROM cur_hw WHERE cid=? AND at>=?').bind(cid, from),
+      env.DB.prepare('SELECT t.uid, COALESCE(SUM(COALESCE(t.rub, t.amount)),0) total, COALESCE(SUM(CASE WHEN t.conf=1 THEN COALESCE(t.rub, t.amount) ELSE 0 END),0) conf FROM bank_tx t JOIN student s ON s.uid=t.uid WHERE t.del_at IS NULL' + (all ? '' : ' AND s.curator=?') + ' GROUP BY t.uid').bind(...(all ? [] : [cid]))]);
+    const er = (ne.results || []).filter(x => !isStaffUid(env, x.uid)), earned = Math.round(er.reduce((t, x) => t + (x.total || 0), 0)), earned_conf = Math.round(er.reduce((t, x) => t + (x.conf || 0), 0));
+    let card, students;
+    if (all) { const [rs, rt] = await env.DB.batch([env.DB.prepare('SELECT wsec FROM cresp WHERE answered>=?').bind(from / 1000 | 0), env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate')]), med = medOf((rs.results || []).map(r => r.wsec).filter(x => x > 0)), sr = (rt.results || [])[0] || {};
+      card = { name: 'Все кураторы', avg_reply_min: med == null ? null : Math.max(1, Math.round(med / 60)), stars: sr.n ? Math.round(sr.a * 10) / 10 : null, stars_n: sr.n | 0, hours: null, online: null };
+      students = ((await appStudents(env, 'all')).students || []).length }
+    else { card = await curCard(env, cid); students = ((await qAll(env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cid))).filter(x => !isStaffUid(env, x.uid))).length }
+    const hwc = ((nh.results || [])[0] || {}).n || 0, Q = await hwQueues(env);
+    return json(req, Object.assign({ ok: true, cid, name: card.name, role: s.role, students, wait: (nw.results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).length, hw: hwc, hw_checked: hwc, hw_days: 30, earned, earned_conf,
+      avg_reply_min: card.avg_reply_min, stars: card.stars, stars_n: card.stars_n, hours: card.hours, online: card.online }, hwqOut(Q[cid])), 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/cur/hwlog' && req.method === 'POST') { const st = await staffCan(env, s, +o.uid); if (!st) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
     const status = o.status === 'rework' ? 'rework' : o.status === 'accept' ? 'accept' : null; if (!status) return json(req, { ok: false, err: 'status: accept или rework' }, 400);
     const cid = adm ? (st.curator || null) : s.cid, pts = Math.max(0, Math.min(1000, Math.round(+o.pts || 0))), lesson = bStr(o.lesson, 200), comment = bStr(o.comment, 2000), lid = okUid(o.lesson_id) ? +o.lesson_id : null, aid = okUid(o.answer_id) ? +o.answer_id : null;
@@ -1955,13 +2010,14 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
   if (path === '/cur/admin') { if (!adm) return json(req, { ok: false, err: 'Раздел только для Романа' }, 403);
     const st = await curStats(env, 30), from = now - 30 * 864e5;
     const [sc, hw, rt, er] = await env.DB.batch([env.DB.prepare('SELECT uid, curator FROM student'), env.DB.prepare('SELECT cid, COUNT(*) n FROM cur_hw WHERE at>=? GROUP BY cid').bind(from), env.DB.prepare('SELECT cid, AVG(stars) a, COUNT(*) n FROM chat_rate GROUP BY cid'),
-      env.DB.prepare('SELECT s.curator cid, COALESCE(SUM(COALESCE(t.rub, t.amount)),0) total, COALESCE(SUM(CASE WHEN t.conf=1 THEN COALESCE(t.rub, t.amount) ELSE 0 END),0) conf FROM bank_tx t JOIN student s ON s.uid=t.uid WHERE t.del_at IS NULL GROUP BY s.curator')]);
+      env.DB.prepare('SELECT t.uid, s.curator cid, COALESCE(SUM(COALESCE(t.rub, t.amount)),0) total, COALESCE(SUM(CASE WHEN t.conf=1 THEN COALESCE(t.rub, t.amount) ELSE 0 END),0) conf FROM bank_tx t JOIN student s ON s.uid=t.uid WHERE t.del_at IS NULL GROUP BY t.uid')]);
     const n = {}, cur = {}; for (const x of sc.results || []) { cur[x.uid] = x.curator; if (x.curator && !isStaffUid(env, x.uid)) n[x.curator] = (n[x.curator] || 0) + 1 }
-    const H = {}, R = {}, E = {}; for (const x of hw.results || []) H[x.cid] = x.n; for (const x of rt.results || []) R[x.cid] = x; for (const x of er.results || []) E[x.cid || ''] = x;
+    const H = {}, R = {}, E = {}; for (const x of hw.results || []) H[x.cid] = x.n; for (const x of rt.results || []) R[x.cid] = x; for (const x of er.results || []) { if (isStaffUid(env, x.uid)) continue; /* QA №7: банк команды (тесты Романа) — не заработок учеников, как в «Банке учеников» */ const e = E[x.cid || ''] = E[x.cid || ''] || { total: 0, conf: 0 }; e.total += x.total || 0; e.conf += x.conf || 0 }
+    const Q = await hwQueues(env);
     const curators = CURATORS.map(c => { const k = st.curators.find(x => x.id === c.id) || {}; return { cid: c.id, name: c.full, students: n[c.id] || 0, wait: (k.waiting || []).length, median_min: k.median == null ? null : Math.max(1, Math.round(k.median / 60)), in2h: k.in2h == null ? null : k.in2h, answered: k.answered || 0, tg: k.tg || null, connected: !!k.connected, hours: k.hours || null,
-      stars: R[c.id] ? Math.round(R[c.id].a * 10) / 10 : null, stars_n: R[c.id] ? R[c.id].n : 0, hw_checked: H[c.id] || 0, earned: Math.round((E[c.id] || {}).total || 0), earned_conf: Math.round((E[c.id] || {}).conf || 0) } });
+      stars: R[c.id] ? Math.round(R[c.id].a * 10) / 10 : null, stars_n: R[c.id] ? R[c.id].n : 0, hw_checked: H[c.id] || 0, earned: Math.round((E[c.id] || {}).total || 0), earned_conf: Math.round((E[c.id] || {}).conf || 0), hw_wait: Q[c.id] ? Q[c.id].n : null, hw_old: Q[c.id] ? Q[c.id].old48 || 0 : null, hw_q_at: Q[c.id] ? Q[c.id].at : null } });
     let none = []; try { const D = await loadData(env); none = (D.rows || []).filter(r => r.uid != null && !cur[+r.uid] && !isStaffUid(env, r.uid)).map(r => ({ uid: +r.uid, name: r.name, tar: r.tar || null, place: r.place || null })) } catch (e) {}
-    return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length }, 200, { 'Cache-Control': 'no-store' }) }
+    const qa = Q.all; return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length, hw_wait: qa ? qa.n : null, hw_old: qa ? qa.old48 || 0 : null, hw_oldest: qa ? qa.oldest || null : null, hw_q_at: qa ? qa.at : null, hw_part: !!(qa && qa.part) }, 200, { 'Cache-Control': 'no-store' }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- Служба заботы: контроль качества ответов (Telegram Business) ----------
