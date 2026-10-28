@@ -45,6 +45,7 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS log (at TEXT, kind TEXT, uid INTEGER, info TEXT)',
   'CREATE TABLE IF NOT EXISTS tg_admin (chat TEXT PRIMARY KEY, name TEXT, added TEXT)',
   'CREATE TABLE IF NOT EXISTS student (uid INTEGER PRIMARY KEY, name TEXT, tg_chat TEXT, tg_token TEXT, tg_at TEXT, curator TEXT, cur_at TEXT)',
+  'CREATE TABLE IF NOT EXISTS gc_name (uid INTEGER PRIMARY KEY, name TEXT, at TEXT)',
   'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
   'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
   'CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)',
@@ -584,6 +585,23 @@ async function syncPay(env, from, to, B, polls = 3) {
   return { n: rows.length, from: info._from, to: info._to };
 }
 /* быстрая досинхронизация последних 3 дней — после оплаты (процесс GetCourse зовёт /pay) и по кнопке «Обновить»; не чаще раза в minGap секунд */
+/* 29.10 (бэклог №3): имена учеников из GetCourse — раз в сутки экспорт пользователей (GC_KEY), берём только тех, кто есть у нас (ученики, банк, рейтинг).
+   Пустые имена в student заполняются; банк и «Смотреть как» показывают имя из GetCourse, если нет своего. */
+async function syncNames(env, B, force) { if (!env.GC_KEY) return null; const today = dayStr();
+  if (!force && !(await kvGet(env, 'exp:users')) && ((await kvGet(env, 'names_day')) === today || msk().getUTCHours() < 4)) return { skip: 'fresh' };
+  const info = await gcExportStep(env, 'users', 'users', '2020-01-01', today, GC_HOST, env.GC_KEY, B, 3); if (!info) return { pending: true };
+  const F = info.fields.map(f => String(f).trim()), fx = re => F.findIndex(f => re.test(f));
+  const I = { id: fx(/^(id|ID|Id|Номер)$/), fn: fx(/^Имя$/i), ln: fx(/^Фамилия$/i), full: fx(/^(ФИО|Пользователь|Имя Фамилия)$/i) };
+  if (I.id < 0 || (I.fn < 0 && I.full < 0)) { await logIt(env, 'names-err', 0, 'колонки: ' + F.slice(0, 30).join(', ')); await kvPut(env, 'names_day', today); return { err: 'cols' } }
+  const D = await loadData(env), want = {};
+  const [a, b] = await env.DB.batch([env.DB.prepare('SELECT uid FROM student'), env.DB.prepare('SELECT DISTINCT uid FROM bank_tx')]);
+  for (const r of [...(a.results || []), ...(b.results || [])]) want[r.uid] = 1; for (const r of (D.rows || [])) if (r.uid != null) want[+r.uid] = 1;
+  const now = new Date().toISOString(), stm = env.DB.prepare('INSERT OR REPLACE INTO gc_name (uid, name, at) VALUES (?,?,?)'), rows = [];
+  for (const r of info.items) { const uid = +r[I.id]; if (!want[uid]) continue;
+    const nm = (I.fn >= 0 ? [r[I.fn], I.ln >= 0 ? r[I.ln] : ''].join(' ') : String(r[I.full] || '')).replace(/\s+/g, ' ').trim(); if (nm) rows.push(stm.bind(uid, nm.slice(0, 80), now)) }
+  for (let i = 0; i < rows.length; i += 90) await env.DB.batch(rows.slice(i, i + 90));
+  await env.DB.prepare("UPDATE student SET name=(SELECT g.name FROM gc_name g WHERE g.uid=student.uid) WHERE (name IS NULL OR name='') AND uid IN (SELECT uid FROM gc_name)").run();
+  await kvPut(env, 'names_day', today); for (const k in APPC) delete APPC[k]; await logIt(env, 'names', 0, rows.length + ' имён из ' + info.items.length); return { n: rows.length, all: info.items.length } }
 async function syncSoon(env, minGap = 30) { if (!env.GC_KEY) return null;
   const last = await kvGet(env, 'pay_try'); if (last && Date.now() - +last < minGap * 1000) return null;
   await kvPut(env, 'pay_try', String(Date.now()));
@@ -757,6 +775,7 @@ export default {
       if (path === '/fin/staff' && req.method === 'POST') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env);
         let o; try { o = JSON.parse(await req.text() || '{}') } catch (e) { return json(req, { ok: false, err: 'json' }, 400) } const ids = (Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid);
         await kvPut(env, 'statUids', ids); await logIt(env, 'stat-staff', 0, ids.join(',')); return json(req, { ok: true, n: ids.length }) }
+      if (path === '/fin/names' && req.method === 'POST') { if (!(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env); return json(req, await syncNames(env, budget(40), true)) }
       if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) return deny(req);
         const ok = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || ((await kvGet(env, 'statUids')) || []).map(Number).includes(uid);
         return ok ? json(req, { ok: true, k: await statKey(env) }) : json(req, { ok: false }, 403) }
@@ -840,11 +859,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay'], '45 * * * *': ['cur', 'care', 'insights', 'pay', 'report'] };
+const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay', 'names'], '45 * * * *': ['cur', 'care', 'insights', 'pay', 'report'] };
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1486,14 +1505,15 @@ async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 's
   return r && r.id }
 /* Список учеников для команды: имя, тариф, куратор, поток — из данных рейтинга и таблицы student; доход в рублях. Куратор — только свои. */
 async function bankStaffList(env, st) {
-  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {};
+  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {}, GN = {};
+  try { for (const r of ((await env.DB.prepare('SELECT uid, name FROM gc_name').all()).results || [])) GN[r.uid] = r.name } catch (e) {}
   for (const s of studs) byU[s.uid] = s;
   const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COUNT(id) n, MAX(day) last FROM bank_tx GROUP BY uid').all()).results || [])) sums[r.uid] = r;
   const ords = {}; for (const r of ((await env.DB.prepare("SELECT uid, COUNT(id) n, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order GROUP BY uid").all()).results || [])) ords[r.uid] = r;
   const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
   const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {};
-    out.push({ uid, name: name || s.name || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
+    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
   for (const s of studs) add(+s.uid, s.name, null, null);
   for (const uid in sums) add(+uid, null, null, null);
