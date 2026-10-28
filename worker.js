@@ -457,6 +457,7 @@ async function tgUpdate(env, up) {
   if (up.business_message) return bizMessage(env, up.business_message);
   if (up.edited_business_message) return bizMessage(env, up.edited_business_message, true);
   if (up.deleted_business_messages) return careDeleted(env, up.deleted_business_messages);
+  if (up.callback_query && /^(bp|ch[rs]):/.test(up.callback_query.data || '')) return bksCallback(env, up.callback_query);
   if (up.callback_query && /^cw[dn]:/.test(up.callback_query.data || '')) { const q = up.callback_query, [k, cid, wchat] = q.data.split(':');
     const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(cid).first(); if (!ct || String(q.from.id) !== String(ct.tg_id)) return tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Это напоминание другого куратора' });
     const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(cid, wchat).first();
@@ -471,8 +472,10 @@ async function tgUpdate(env, up) {
       if (p) await tgSend(env, chat, 'Готово, отчёты больше не будут приходить. Если это ошибка — ' + th(p.student || 'ученик') + ' может снова подключить их в своём профиле.') }
     return }
   const m = up.message; if (!m || !m.chat || m.chat.type !== 'private') return; const chat = String(m.chat.id), text = String(m.text || '').trim();
+  if (await bksReply(env, m, chat)) return; /* ответ на «Ответить здесь» / уведомление чата → в чат на платформе */
   if (await neuroTg(env, m, chat, text)) return;
   const st = text.match(/^\/start(?:\s+(\S+))?/);
+  if (st && st[1] && /^c[0-9a-f]{10}$/.test(st[1])) return refStart(env, chat, st[1].slice(1), m.from);
   if (st && st[1] && st[1].startsWith('login_')) return appLoginTg(env, chat, st[1].slice(6), m.from);
   if (/^\/panel/.test(text)) { const ok = (await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first()) || (await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first());
     if (ok) return tgSend(env, chat, '<b>Пульт куратора</b>: ученики, ожидание ответа, рассылки и часы работы.', [[{ text: 'Открыть пульт', url: (env.BASE_URL || 'https://oduvanov-api.romanoduvanov52.workers.dev') + '/app' }]]) }
@@ -510,6 +513,7 @@ async function tgUpdate(env, up) {
   if (/^\/stop/.test(text)) { const r = await env.DB.prepare('UPDATE parent SET active=0 WHERE tg_chat=?').bind(chat).run(); await env.DB.prepare('DELETE FROM tg_admin WHERE chat=?').bind(chat).run();
     return tgSend(env, chat, 'Готово, уведомления отключены.') }
   if (/^\/report/.test(text)) { const p = await env.DB.prepare('SELECT * FROM parent WHERE tg_chat=? AND active=1').bind(chat).first(); if (p) return tgSendReport(env, p) }
+  if (await bksStudentMsg(env, m, chat, text)) return; /* ученик с куратором пишет боту → в чат с куратором */
   return tgSend(env, chat, '<b>OduvanovSchool</b> — бот онлайн-школы Романа Одуванова.\n\nЕсли вы родитель ученика, попросите его открыть профиль в личном кабинете, нажать «Отчёт для родителей» → Telegram и отправить вам ссылку.\n\nВопросы по обучению — в службу заботы.', [[{ text: 'Служба заботы', url: CARE }]]);
 }
 /* оплата из GetCourse: процесс «Вызвать URL» → /pay?k=…&… (GET или POST, любые поля) */
@@ -669,6 +673,8 @@ export default {
       /* пульт живёт и на GitHub Pages (gc/pult.html) — ответы API с CORS для своих доменов */
       if (path.startsWith('/ma/')) return maApi(env, req, path);
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
+      if (path.startsWith('/chat/')) return chatApi(env, req, path);
+      if (CUR_API.includes(path)) return curApi(env, req, path);
       if (path.startsWith('/app/api/')) { const r0 = await appApi(env, req, path), h0 = new Headers(r0.headers); for (const [k, v] of Object.entries(cors(req))) h0.set(k, v); return new Response(r0.body, { status: r0.status, headers: h0 }) }
       if (path !== '/') await ensure(env);
       if (path === '/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensureAll(env); await kvPut(env, 'schema_v', SCHEMA_V); return json(req, { ok: true, schema: SCHEMA_V }) }
@@ -697,6 +703,10 @@ export default {
         const t = await req.text(); if (t.length > 1.5e6) return json(req, { ok: false, err: 'big' }, 413); let D; try { D = JSON.parse(t) } catch (e) { return json(req, { ok: false, err: 'json' }, 400) }
         if (!D || !Array.isArray(D.rows) || !D.rows.length || D.rows.some(r => !okUid(r.uid) || !r.h)) return json(req, { ok: false, err: 'rows: нужны uid и h в каждой строке' }, 400);
         await kvPut(env, 'rating', t); await kvPut(env, 'rating_at', new Date().toISOString()); RC = null; await logIt(env, 'rating-put', 0, D.rows.length + ' rows'); return json(req, { ok: true, rows: D.rows.length }) }
+      /* баллы за заработок для gamify.py: только подтверждённые куратором оплаты, floor(₽/10000)*100 */
+      if (path === '/rating/bankpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env);
+        const out = {}; for (const r of ((await env.DB.prepare('SELECT uid, SUM(COALESCE(rub, amount)) c FROM bank_tx WHERE conf=1 AND del_at IS NULL GROUP BY uid').all()).results || [])) { const p = bPts(r.c); if (p > 0 && !isStaffUid(env, r.uid)) out[r.uid] = p }
+        return json(req, out, 200, { 'Cache-Control': 'no-store' }) }
       if (path === '/rating') { const w = await who(env, u.searchParams.get('v') || u.searchParams.get('t'), 'av'); if (!w.uid) return deny(req);
         return json(req, await ratingFor(env, w.uid, u.searchParams.get('for')), 200, { 'Cache-Control': 'private, max-age=60' }) }
       /* расписание для виджета «Ближайшие открытия»: без личных данных */
@@ -777,7 +787,10 @@ export default {
         await kvPut(env, 'statUids', ids); await logIt(env, 'stat-staff', 0, ids.join(',')); return json(req, { ok: true, n: ids.length }) }
       if (path === '/fin/names' && req.method === 'POST') { if (!(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env); return json(req, await syncNames(env, budget(40), true)) }
       if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) return deny(req);
-        const ok = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || ((await kvGet(env, 'statUids')) || []).map(Number).includes(uid);
+        /* 29.10: кураторам статистика школы и продажи закрыты на сервере, даже если в GetCourse у них есть право «статистика» */
+        const cur = CURATORS.some(c => c.uid === uid) || !!(await env.DB.prepare('SELECT s.uid FROM student s JOIN cur_tg c ON c.tg_id=s.tg_chat WHERE s.uid=?').bind(uid).first());
+        const ok = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || (!cur && ((await kvGet(env, 'statUids')) || []).map(Number).includes(uid));
+        if (!ok) await logIt(env, 'fin-k-deny', uid, cur ? 'curator' : 'no-right');
         return ok ? json(req, { ok: true, k: await statKey(env) }) : json(req, { ok: false }, 403) }
       if (path === '/fin') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const g = n => (u.searchParams.get(n) || '').match(/^\d{4}-\d{2}-\d{2}$/) ? u.searchParams.get(n) : null; return json(req, await finData(env, g('from'), g('to'), g('pfrom'), g('pto'))) }
       if (path === '/fin/plan' && req.method === 'POST') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const o = JSON.parse(await req.text() || '{}');
@@ -859,11 +872,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay', 'names'], '45 * * * *': ['cur', 'care', 'insights', 'pay', 'report'] };
+const CRON_JOBS = { '5 * * * *': ['report', 'care'], '25 * * * *': ['pay', 'names'], '45 * * * *': ['cur', 'bank', 'care', 'insights', 'pay', 'report'] };
 async function cronRun(env, cron) {
-  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'care', 'insights', 'pay'], out = {};
+  const B = budget(45), jobs = CRON_JOBS[cron] || ['report', 'cur', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1285,7 +1298,8 @@ async function appApi(env, req, path) {
   if (path === '/app/api/stats') { const st = await curStats(env, Math.min(90, Math.max(1, +u.searchParams.get('days') || 14))); return ajson({ ok: true, c, curators: c === 'all' ? st.curators : st.curators.filter(x => x.id === c) }) }
   if (path === '/app/api/hours' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
     if (cc === 'all' || !(o.from >= 0 && o.to <= 24 && o.from < o.to)) return ajson({ ok: false }, 400);
-    await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]); return ajson({ ok: true }) }
+    await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]);
+    if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).filter(x => x >= 0 && x <= 6))]; if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
   if (path === '/app/api/bclog') return ajson({ ok: true, log: (await kvGet(env, 'bclog:' + c)) || [] });
   if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
     const text = String(o.text || '').trim().slice(0, 3000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
@@ -1389,6 +1403,12 @@ async function maApi(env, req, path) {
     const ks = (Array.isArray(o.k) ? o.k : [o.k]).map(k => String(k || '').replace(/[^\wа-яё:. -]/gi, '').slice(0, 64)).filter(Boolean).slice(0, 10), d = dayStr();
     if (ks.length) { await ensure(env); await env.DB.batch(ks.map(k => env.DB.prepare('INSERT INTO ev (day, uid, k, n) VALUES (?,?,?,1) ON CONFLICT(day, uid, k) DO UPDATE SET n=n+1').bind(d, uid, k))) }
     return json(req, { ok: true }) }
+  /* что бот присылает ученику: {cur, hw, efir, lessons, rating, bank} 1|0 (+ quiet [с, до] часов МСК); ответ куратора (cur) выключить нельзя */
+  if (path === '/ma/notif') { if (req.method === 'POST') { if (VW) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403); let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+      const N = await notifGet(env, uid); for (const k of Object.keys(NOTIF_DEF)) if (o[k] != null) N[k] = o[k] && o[k] !== '0' ? 1 : 0; N.cur = 1;
+      if (o.quiet !== undefined) N.quiet = Array.isArray(o.quiet) && o.quiet.length === 2 && o.quiet.every(h => h >= 0 && h <= 24) ? o.quiet.map(h => h | 0) : null;
+      await kvPut(env, 'notif:' + uid, N) }
+    return json(req, Object.assign({ ok: true }, await notifGet(env, uid)), 200, { 'Cache-Control': 'no-store' }) }
   /* флаги интерфейса (баннер «иконка на экране» и подсказки): сервер — запасная копия CloudStorage Telegram */
   if (path === '/ma/flag') { const k = 'flags:' + uid, F = (await kvGet(env, k)) || {};
     if (req.method === 'POST' && !VW) { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {} const key = String(o.k || '').replace(/[^a-z0-9_]/gi, '').slice(0, 30); if (key) { F[key] = { v: String(o.v || '').slice(0, 30), at: Date.now(), n: ((F[key] && F[key].n) || 0) + 1 }; await kvPut(env, k, F) } }
@@ -1463,9 +1483,12 @@ const BANK_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS bank_file (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, kind TEXT, ref INTEGER, name TEXT, mime TEXT, size INTEGER, data TEXT, at TEXT)',
   'CREATE INDEX IF NOT EXISTS bank_file_ref ON bank_file (uid, kind, ref)'];
 const BANK_ALTER = ["ALTER TABLE bank_tx ADD COLUMN cur TEXT", "ALTER TABLE bank_tx ADD COLUMN rub INTEGER", "ALTER TABLE bank_tx ADD COLUMN rate REAL",
-  "ALTER TABLE bank_order ADD COLUMN cur TEXT", "ALTER TABLE bank_order ADD COLUMN dl_tz TEXT"];
+  "ALTER TABLE bank_order ADD COLUMN cur TEXT", "ALTER TABLE bank_order ADD COLUMN dl_tz TEXT",
+  /* 29.10: подтверждение куратором (баллы только за conf=1), мягкое удаление (del_at, мс), ожидаемая оплата заказа и напоминание */
+  "ALTER TABLE bank_tx ADD COLUMN conf INTEGER DEFAULT 0", "ALTER TABLE bank_tx ADD COLUMN conf_by TEXT", "ALTER TABLE bank_tx ADD COLUMN conf_at TEXT", "ALTER TABLE bank_tx ADD COLUMN del_at INTEGER",
+  "ALTER TABLE bank_order ADD COLUMN pay_at TEXT", "ALTER TABLE bank_order ADD COLUMN remind_at TEXT", "ALTER TABLE bank_order ADD COLUMN reminded TEXT"];
 let BANK_OK = false;
-async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.map(s => env.DB.prepare(s)));
+async function bankEnsure(env) { if (BANK_OK) return; await env.DB.batch(BANK_SCHEMA.concat(BKS_SCHEMA).map(s => env.DB.prepare(s)));
   const [c1, c2] = await env.DB.batch([env.DB.prepare("SELECT name FROM pragma_table_info('bank_tx')"), env.DB.prepare("SELECT name FROM pragma_table_info('bank_order')")]);
   const has = { bank_tx: (c1.results || []).map(r => r.name), bank_order: (c2.results || []).map(r => r.name) };
   for (const a of BANK_ALTER) { const t = a.split(' ')[2], c = a.split(' ADD COLUMN ')[1].split(' ')[0]; if (!has[t].includes(c)) { try { await env.DB.prepare(a).run() } catch (e) {} } }
@@ -1508,12 +1531,14 @@ async function bankStaffList(env, st) {
   const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {}, GN = {};
   try { for (const r of ((await env.DB.prepare('SELECT uid, name FROM gc_name').all()).results || [])) GN[r.uid] = r.name } catch (e) {}
   for (const s of studs) byU[s.uid] = s;
-  const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COUNT(id) n, MAX(day) last FROM bank_tx GROUP BY uid').all()).results || [])) sums[r.uid] = r;
+  const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COALESCE(SUM(CASE WHEN conf=1 THEN COALESCE(rub, amount) ELSE 0 END),0) conf, SUM(CASE WHEN COALESCE(conf,0)=0 THEN 1 ELSE 0 END) pend, COUNT(id) n, MAX(day) last FROM bank_tx WHERE del_at IS NULL GROUP BY uid').all()).results || [])) sums[r.uid] = r;
+  const goals = {}; for (const r of ((await env.DB.prepare('SELECT uid, sum, until FROM bank_goal WHERE show=1').all()).results || [])) goals[r.uid] = { sum: r.sum, until: r.until };
   const ords = {}; for (const r of ((await env.DB.prepare("SELECT uid, COUNT(id) n, SUM(CASE WHEN status NOT IN ('done','cancel') THEN 1 ELSE 0 END) act FROM bank_order GROUP BY uid").all()).results || [])) ords[r.uid] = r;
   const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
   const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
-    const m = sums[uid] || {}, o = ords[uid] || {};
-    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: m.total || 0, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0 }) };
+    const m = sums[uid] || {}, o = ords[uid] || {}, tot = Math.round(m.total || 0), cf = Math.round(m.conf || 0), bs = bStatus(tot);
+    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
+      conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
   for (const s of studs) add(+s.uid, s.name, null, null);
   for (const uid in sums) add(+uid, null, null, null);
@@ -1524,15 +1549,20 @@ async function bankApi(env, req, path) {
   const body = async () => { try { return JSON.parse(await req.text() || '{}') } catch (e) { return {} } };
   const W = await bankWho(env, req, u);
   if (path === '/bank/staff/list') { if (!W.staff) return deny(req); return json(req, await bankStaffList(env, W.staff), 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/tx/conf' || path === '/bank/staff/pending' || path === '/bank/staff/file' || path === '/bank/staff/export') { await ensure(env); return bankStaffApi(env, req, path, u) }
+  /* приглашение по карте из мини-аппа (startapp=c<h>): карточка пригласившего; с initData — учёт перехода */
+  if (path === '/bank/ref' && req.method === 'POST') { const o = await body(), h = String(o.h || '').replace(/^c/, ''); if (!/^[0-9a-f]{10}$/.test(h)) return json(req, { ok: false, err: 'Ссылка неверная' }, 400);
+    await ensure(env); const c = await refCard(env, h); if (!c) return json(req, { ok: false, err: 'Ссылка устарела' }, 404); const tu = o.init ? await tgInitCheck(env, String(o.init)) : null;
+    if (tu && tu.id) await refSave(env, h, String(tu.id), c); return json(req, { ok: true, card: { name: c.name, sum: c.sum, status: c.status }, links: c.links, text: refText(c) }) }
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
   const uid = W.uid; if (!uid) return deny(req);
   if (W.ro && path !== '/bank/summary') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения, без контактов клиентов и файлов' }, 403);
   if (path === '/bank/summary') {
-    const [tx, od, fl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id FROM bank_tx WHERE uid=? ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
-      env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
-      env.DB.prepare('SELECT id, kind, ref, name, mime, size FROM bank_file WHERE uid=? AND kind=\'order\'').bind(uid)]);
-    const T = (tx.results || []).map(x => Object.assign(x, { cur: x.cur || 'RUB', rub: x.rub != null ? x.rub : x.amount })), months = {}; let total = 0;
-    for (const x of T) { total += x.rub; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.rub }
+    const [tx, od, fl, gl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id, conf, conf_by, conf_at FROM bank_tx WHERE uid=? AND del_at IS NULL ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
+      env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
+      env.DB.prepare('SELECT id, kind, ref, name, mime, size FROM bank_file WHERE uid=? AND kind=\'order\'').bind(uid), env.DB.prepare('SELECT sum, until, show FROM bank_goal WHERE uid=?').bind(uid)]);
+    const T = (tx.results || []).map(x => Object.assign(x, { cur: x.cur || 'RUB', rub: x.rub != null ? x.rub : x.amount, conf: x.conf ? 1 : 0, conf_by: x.conf ? (x.conf_by || null) : null, conf_by_name: x.conf ? byName(x.conf_by) : null, conf_at: x.conf ? (x.conf_at || null) : null })), months = {}; let total = 0, confRub = 0;
+    for (const x of T) { total += x.rub; if (x.conf) confRub += x.rub; const m = x.day.slice(0, 7); months[m] = (months[m] || 0) + x.rub }
     const files = {}; for (const f of fl.results || []) (files[f.ref] = files[f.ref] || []).push({ id: f.id, name: f.name, mime: f.mime, size: f.size });
     const paid = {}, paidRub = {}; for (const x of T) if (x.order_id) { paidRub[x.order_id] = (paidRub[x.order_id] || 0) + x.rub; (paid[x.order_id] = paid[x.order_id] || {})[x.cur] = (paid[x.order_id][x.cur] || 0) + x.amount }
     let orders = (od.results || []).map(o => { const c = o.cur || 'RUB'; return Object.assign(o, { cur: c, files: files[o.id] || [], paid: (paid[o.id] || {})[c] || 0, paid_rub: paidRub[o.id] || 0 }) });
@@ -1540,37 +1570,66 @@ async function bankApi(env, req, path) {
     const need = {}; for (const o of orders) if (o.cur !== 'RUB' && o.status !== 'done' && o.status !== 'cancel') need[o.cur] = 1;
     const rates = { RUB: 1 }; for (const c of Object.keys(need)) rates[c] = await cbrRate(env, dayStr(), c);
     for (const o of orders) o.price_rub = rates[o.cur] ? Math.round((o.price || 0) * rates[o.cur]) : null;
-    let tx2 = T;
+    /* «Скоро»: сдал работу (review) и знает дату оплаты — остаток к оплате в валюте заказа */
+    const soon = orders.filter(o => o.status === 'review' && o.pay_at).map(o => ({ order_id: o.id, product: o.product || '', client: o.client || '', sum: Math.max(0, (o.price || 0) - (o.paid || 0)), cur: o.cur, sum_rub: o.cur === 'RUB' ? Math.max(0, (o.price || 0) - (o.paid || 0)) : o.price_rub != null && o.price ? Math.round(Math.max(0, o.price - (o.paid || 0)) * o.price_rub / o.price) : null, pay_at: o.pay_at }))
+      .filter(x => x.sum > 0).sort((a, b) => a.pay_at < b.pay_at ? -1 : a.pay_at > b.pay_at ? 1 : 0);
+    const g0 = (gl.results || [])[0], goal = g0 && g0.sum ? { sum: g0.sum, until: g0.until, show: g0.show ? 1 : 0 } : null;
+    let tx2 = T, soon2 = soon;
     if (W.ro) { /* команде — без контактов клиента, ТЗ и файлов */
-      tx2 = T.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : null, file_id: null, hidden: true }));
+      tx2 = T.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : null, file_id: null, file: x.file_id ? 1 : 0, hidden: true }));
+      soon2 = soon.map(x => Object.assign({}, x, { client: x.client ? B_HIDDEN : '' }));
       orders = orders.map(o => Object.assign({}, o, { client: o.client ? B_HIDDEN : null, tg: null, brief: o.brief ? B_HIDDEN : null, files: [], files_n: o.files.length, hidden: true })) }
     const who = W.ro ? await (async () => { const D = await loadData(env), r = (D.rows || []).find(x => +x.uid === uid) || {}, s = await env.DB.prepare('SELECT name, curator FROM student WHERE uid=?').bind(uid).first() || {}, c = s.curator && CURATORS.find(x => x.id === s.curator);
       return { uid, name: r.name || s.name || null, tar: r.tar || null, curName: c ? c.full : null } })() : null;
-    return json(req, { ok: true, total, months, tx: tx2, orders, today: dayStr(), ro: !!W.ro, who }, 200, { 'Cache-Control': 'no-store' }) }
+    const sh = W.ro ? null : await shareH(env, uid), refs = sh ? ((await env.DB.prepare('SELECT COUNT(*) n FROM bank_ref WHERE h=?').bind(sh).first()) || {}).n || 0 : null;
+    return json(req, { ok: true, total, months, tx: tx2, orders, today: dayStr(), ro: !!W.ro, who, goal: W.ro && goal && !goal.show ? null : goal,
+      status: bStatus(total), points: bPoints(confRub, total), conf_rub: confRub, soon: soon2, share: sh ? { h: sh, code: 'c' + sh, link: maLink(env, 'c' + sh), start: 'https://t.me/' + BOT(env) + '?start=c' + sh } : null, refs }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/goal' && req.method === 'POST') { const o = await body(), sum = bInt(o.sum);
+    if (!sum) { await env.DB.prepare('DELETE FROM bank_goal WHERE uid=?').bind(uid).run(); return json(req, { ok: true, goal: null }) }
+    const until = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(o.until || '')) ? String(o.until) : null; if (!until) return json(req, { ok: false, err: 'Выбери срок цели' }, 400);
+    const show = o.show === 0 || o.show === '0' || o.show === false ? 0 : 1;
+    await env.DB.prepare('INSERT INTO bank_goal (uid, sum, until, show, at) VALUES (?,?,?,?,?) ON CONFLICT(uid) DO UPDATE SET sum=excluded.sum, until=excluded.until, show=excluded.show, at=excluded.at').bind(uid, sum, until, show, new Date().toISOString()).run();
+    await logIt(env, 'bank-goal', uid, sum + ' ' + until); return json(req, { ok: true, goal: { sum, until, show } }) }
+  /* новая оплата или изменение (id): поменялись сумма или валюта — подтверждение куратора сбрасывается */
   if (path === '/bank/tx' && req.method === 'POST') { const o = await body(); const amount = bInt(o.amount); if (!amount) return json(req, { ok: false, err: 'Укажи сумму' }, 400);
-    const cur = bCur(o.cur), day = bDay(o.day);
+    const cur = bCur(o.cur), day = bDay(o.day), id = +o.id || 0;
+    const ex = id ? await env.DB.prepare('SELECT * FROM bank_tx WHERE id=? AND uid=? AND del_at IS NULL').bind(id, uid).first() : null; if (id && !ex) return json(req, { ok: false, err: 'Запись не найдена' }, 404);
     let rate = 1; if (cur !== 'RUB') { rate = await cbrRate(env, day, cur); if (!rate) return json(req, { ok: false, err: 'Не получилось взять курс ЦБ. Попробуй через минуту' }, 503) }
-    const oid = o.order_id ? +o.order_id : null; if (oid && !(await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(oid, uid).first())) return json(req, { ok: false, err: 'нет заказа' }, 400);
-    let fid = null; try { fid = await bankFile(env, uid, 'tx', 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
-    const r = await env.DB.prepare('INSERT INTO bank_tx (uid, amount, cur, rub, rate, day, what, src, client, order_id, file_id, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, amount, cur, Math.round(amount * rate), cur === 'RUB' ? null : Math.round(rate * 10000) / 10000, day, bStr(o.what, 200), bStr(o.src, 60), bStr(o.client, 120), oid, fid, new Date().toISOString()).first();
+    const oid = o.order_id !== undefined ? (o.order_id ? +o.order_id : null) : (ex ? ex.order_id : null); if (oid && !(await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(oid, uid).first())) return json(req, { ok: false, err: 'нет заказа' }, 400);
+    let fid = null; try { fid = await bankFile(env, uid, 'tx', id || 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
+    const rubV = Math.round(amount * rate), rateV = cur === 'RUB' ? null : Math.round(rate * 10000) / 10000, f = k => o[k] !== undefined ? o[k] : (ex ? ex[k] : null);
+    if (ex) { const conf = ex.amount === amount && (ex.cur || 'RUB') === cur ? (ex.conf ? 1 : 0) : 0, dropF = (fid || o.file_del) && ex.file_id;
+      const q = [env.DB.prepare('UPDATE bank_tx SET amount=?, cur=?, rub=?, rate=?, day=?, what=?, src=?, client=?, order_id=?, file_id=?, conf=?, conf_by=?, conf_at=? WHERE id=? AND uid=?').bind(amount, cur, rubV, rateV, day, bStr(f('what'), 200), bStr(f('src'), 60), bStr(f('client'), 120), oid, fid || (o.file_del ? null : ex.file_id), conf, conf ? ex.conf_by : null, conf ? ex.conf_at : null, id, uid)];
+      if (dropF) q.push(env.DB.prepare("DELETE FROM bank_file WHERE id=? AND uid=? AND kind='tx'").bind(ex.file_id, uid));
+      await env.DB.batch(q); await logIt(env, 'bank-tx-edit', uid, id + ' ' + amount + ' ' + cur + (ex.conf && !conf ? ' unconf' : ''));
+      return json(req, { ok: true, id, rub: rubV, conf, unconf: !!(ex.conf && !conf) }) }
+    const r = await env.DB.prepare('INSERT INTO bank_tx (uid, amount, cur, rub, rate, day, what, src, client, order_id, file_id, at, conf) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0) RETURNING id').bind(uid, amount, cur, rubV, rateV, day, bStr(o.what, 200), bStr(o.src, 60), bStr(o.client, 120), oid, fid, new Date().toISOString()).first();
     if (fid) await env.DB.prepare('UPDATE bank_file SET ref=? WHERE id=?').bind(r.id, fid).run();
-    await logIt(env, 'bank-tx', uid, amount + ' ' + cur); return json(req, { ok: true, id: r.id, rub: Math.round(amount * rate) }) }
-  if (path === '/bank/tx/del' && req.method === 'POST') { const o = await body(); const x = await env.DB.prepare('SELECT file_id FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid).first(); if (!x) return json(req, { ok: false }, 404);
-    await env.DB.batch([env.DB.prepare('DELETE FROM bank_tx WHERE id=? AND uid=?').bind(+o.id, uid), env.DB.prepare('DELETE FROM bank_file WHERE uid=? AND kind=\'tx\' AND ref=?').bind(uid, +o.id)]); return json(req, { ok: true }) }
+    await logIt(env, 'bank-tx', uid, amount + ' ' + cur); return json(req, { ok: true, id: r.id, rub: rubV, conf: 0 }) }
+  /* удаление мягкое: 60 с можно вернуть (/bank/tx/restore), потом запись и скрин удаляются насовсем */
+  if (path === '/bank/tx/del' && req.method === 'POST') { const o = await body(); const x = await env.DB.prepare('SELECT id FROM bank_tx WHERE id=? AND uid=? AND del_at IS NULL').bind(+o.id, uid).first(); if (!x) return json(req, { ok: false }, 404);
+    await bankPurge(env); await env.DB.prepare('UPDATE bank_tx SET del_at=? WHERE id=? AND uid=?').bind(Date.now(), +o.id, uid).run(); await logIt(env, 'bank-tx-del', uid, String(o.id)); return json(req, { ok: true, undo: 60 }) }
+  if (path === '/bank/tx/restore' && req.method === 'POST') { const o = await body();
+    const r = await env.DB.prepare('UPDATE bank_tx SET del_at=NULL WHERE id=? AND uid=? AND del_at IS NOT NULL AND del_at>=?').bind(+o.id, uid, Date.now() - 62e3).run();
+    return (r.meta && r.meta.changes) ? json(req, { ok: true, id: +o.id }) : json(req, { ok: false, err: 'Вернуть уже нельзя — прошло больше минуты' }, 410) }
   if (path === '/bank/order' && req.method === 'POST') { const o = await body(), now = new Date().toISOString();
     const f = { client: bStr(o.client, 120), tg: bStr(o.tg, 64).replace(/^https?:\/\/t\.me\//, '').replace(/^@/, ''), product: bStr(o.product, 200), price: bInt(o.price), cur: bCur(o.cur), deadline: bDl(o.deadline), dl_tz: bTz(o.dl_tz), status: B_ST.includes(o.status) ? o.status : 'new', brief: bStr(o.brief, 4000), src: bStr(o.src, 60) };
     if (!f.client && !f.product) return json(req, { ok: false, err: 'Укажи клиента или что за заказ' }, 400);
+    const payAt = o.pay_at === undefined ? undefined : /^\d{4}-\d{2}-\d{2}$/.test(String(o.pay_at || '')) ? String(o.pay_at) : null; /* ожидаемая дата оплаты (напоминание бота в этот день) */
     let id = +o.id || 0;
-    if (id) { const ex = await env.DB.prepare('SELECT id FROM bank_order WHERE id=? AND uid=?').bind(id, uid).first(); if (!ex) return json(req, { ok: false }, 404);
-      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, cur=?, deadline=?, dl_tz=?, status=?, brief=?, src=?, upd=? WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, id, uid).run() }
-    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, now).first(); id = r.id }
+    if (id) { const ex = await env.DB.prepare('SELECT id, pay_at FROM bank_order WHERE id=? AND uid=?').bind(id, uid).first(); if (!ex) return json(req, { ok: false }, 404);
+      const pa = payAt === undefined ? ex.pay_at : payAt, rs = pa !== ex.pay_at; /* дату поменяли — напоминание заново */
+      await env.DB.prepare('UPDATE bank_order SET client=?, tg=?, product=?, price=?, cur=?, deadline=?, dl_tz=?, status=?, brief=?, src=?, upd=?, pay_at=?, remind_at=CASE WHEN ? THEN NULL ELSE remind_at END, reminded=CASE WHEN ? THEN NULL ELSE reminded END WHERE id=? AND uid=?').bind(f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, pa, rs ? 1 : 0, rs ? 1 : 0, id, uid).run() }
+    else { const r = await env.DB.prepare('INSERT INTO bank_order (uid, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(uid, f.client, f.tg, f.product, f.price, f.cur, f.deadline, f.dl_tz, f.status, f.brief, f.src, now, now, payAt || null).first(); id = r.id }
     if (o.tx_id) await env.DB.prepare('UPDATE bank_tx SET order_id=? WHERE id=? AND uid=?').bind(id, +o.tx_id, uid).run();
     const fs = Array.isArray(o.files) ? o.files.slice(0, 5) : [];
     const cnt = (await env.DB.prepare('SELECT COUNT(*) n FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, id).first()).n;
     for (const x of fs.slice(0, Math.max(0, 10 - cnt))) { try { await bankFile(env, uid, 'order', id, x) } catch (e) { return json(req, { ok: false, id, err: e.message }, 400) } }
     return json(req, { ok: true, id }) }
   if (path === '/bank/order/status' && req.method === 'POST') { const o = await body(); if (!B_ST.includes(o.status)) return json(req, { ok: false }, 400);
-    await env.DB.prepare('UPDATE bank_order SET status=?, upd=? WHERE id=? AND uid=?').bind(o.status, new Date().toISOString(), +o.id, uid).run(); return json(req, { ok: true }) }
+    await env.DB.prepare('UPDATE bank_order SET status=?, upd=? WHERE id=? AND uid=?').bind(o.status, new Date().toISOString(), +o.id, uid).run();
+    if (o.pay_at !== undefined) { const pa = /^\d{4}-\d{2}-\d{2}$/.test(String(o.pay_at || '')) ? String(o.pay_at) : null; await env.DB.prepare('UPDATE bank_order SET pay_at=?, remind_at=NULL, reminded=NULL WHERE id=? AND uid=?').bind(pa, +o.id, uid).run() }
+    return json(req, { ok: true }) }
   if (path === '/bank/order/del' && req.method === 'POST') { const o = await body();
     await env.DB.batch([env.DB.prepare('DELETE FROM bank_order WHERE id=? AND uid=?').bind(+o.id, uid), env.DB.prepare('DELETE FROM bank_file WHERE uid=? AND kind=\'order\' AND ref=?').bind(uid, +o.id), env.DB.prepare('UPDATE bank_tx SET order_id=NULL WHERE uid=? AND order_id=?').bind(uid, +o.id)]); return json(req, { ok: true }) }
   if (path === '/bank/file/del' && req.method === 'POST') { const o = await body(); await env.DB.prepare('DELETE FROM bank_file WHERE id=? AND uid=?').bind(+o.id, uid).run(); return json(req, { ok: true }) }
@@ -1579,6 +1638,328 @@ async function bankApi(env, req, path) {
     return new Response(bin, { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
   return json(req, { ok: false, err: 'not found' }, 404);
 }
+
+/* ---------- 29.10 «Банк, кураторы и связь» (docs/plan/bks-impl.md, контракт сервера) ----------
+   Банк: цель, статус карты (по всей сумме), баллы за заработок (только подтверждённые куратором: floor(rub/10000)*100), «Скоро» (заказы review + pay_at),
+   мягкое удаление оплаты (60 с на «Вернуть»), напоминание об ожидаемой оплате (cron 45), приглашение по карте (/start c<h>).
+   Чат на платформе: chat_msg/chat_rate, файлы — bank_file kind 'chat'. Ожидание ответа — те же cwait/cresp, что у лички Telegram (chat = 'app<uid>').
+   Кабинет куратора: /cur/me, /cur/hwlog, /cur/hwstat, /cur/assign, /cur/mass, /cur/admin. Уведомления ученика: /ma/notif (kv notif:<uid>).
+   Кнопки бота открывают мини-апп: startapp=bank | chat (ученик) | chat_<uid> (команда: диалог) | chats (команда: список) | l<id урока>. */
+const BKS_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS bank_goal (uid INTEGER PRIMARY KEY, sum INTEGER, until TEXT, show INTEGER DEFAULT 1, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS bank_share (h TEXT PRIMARY KEY, uid INTEGER NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS bank_ref (h TEXT NOT NULL, chat TEXT NOT NULL, at TEXT, PRIMARY KEY (h, chat))',
+  'CREATE TABLE IF NOT EXISTS chat_msg (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, cid TEXT, dir TEXT NOT NULL, text TEXT, file_id INTEGER, reply_to INTEGER, via TEXT, who TEXT, at INTEGER NOT NULL, read_at INTEGER, del INTEGER DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS chat_msg_uid ON chat_msg (uid, id)',
+  'CREATE INDEX IF NOT EXISTS chat_msg_cid ON chat_msg (cid, at)',
+  'CREATE TABLE IF NOT EXISTS chat_rate (mid INTEGER PRIMARY KEY, uid INTEGER, cid TEXT, stars INTEGER, at INTEGER)',
+  'CREATE TABLE IF NOT EXISTS cur_hw (id INTEGER PRIMARY KEY AUTOINCREMENT, cid TEXT, uid INTEGER, answer_id INTEGER, lesson_id INTEGER, lesson TEXT, status TEXT, pts INTEGER, comment TEXT, sent_at INTEGER, at INTEGER)',
+  'CREATE INDEX IF NOT EXISTS cur_hw_cid ON cur_hw (cid, at)'];
+const B_STATUS = [['plastic', 0, 'Пластиковая'], ['violet', 1e4, 'Фиолетовая'], ['copper', 5e4, 'Медная'], ['silver', 1e5, 'Серебряная'], ['gold', 3e5, 'Золотая'], ['black', 5e5, 'Чёрная'], ['plat', 1e6, 'Платиновая']];
+function bStatus(total) { let i = 0; B_STATUS.forEach((s, k) => { if (total >= s[1]) i = k }); const s = B_STATUS[i], n = B_STATUS[i + 1];
+  return { key: s[0], name: s[2], from: s[1], next: n ? { key: n[0], name: n[2], from: n[1] } : null, left: n ? n[1] - total : 0 } }
+const bPts = rub => Math.floor(Math.max(0, +rub || 0) / 1e4) * 100;
+/* conf — баллы за подтверждённые оплаты; pending — сколько добавится, когда куратор подтвердит остальные; nextIn — сколько ₽ (по всей сумме) до следующих +100 */
+const bPoints = (conf, total) => ({ conf: bPts(conf), pending: Math.max(0, bPts(total) - bPts(conf)), nextIn: 1e4 - (Math.max(0, Math.round(total)) % 1e4) });
+const NB = ' ', nbt = s => nb(s).replace(/ —/g, NB + '—');
+const num3 = n => String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
+const money = (n, cur) => num3(n) + NB + ({ USD: '$', EUR: '€' }[cur] || '₽');
+const maLink = (env, code) => 'https://t.me/' + BOT(env) + '?startapp=' + code;
+const datv = n => /[ая]$/.test(n) ? n.slice(0, -1) + 'е' : /[йь]$/.test(n) ? n.slice(0, -1) + 'ю' : n + 'у';
+const qAll = async st => ((await st.all()).results || []);
+const msNow = () => Date.now();
+async function bksSt(env) { await ensure(env); await bankEnsure(env) }
+async function bankTotals(env, uid) { const r = await env.DB.prepare('SELECT COALESCE(SUM(COALESCE(rub, amount)),0) total, COALESCE(SUM(CASE WHEN conf=1 THEN COALESCE(rub, amount) ELSE 0 END),0) conf FROM bank_tx WHERE uid=? AND del_at IS NULL').bind(uid).first();
+  return { total: Math.round(r.total || 0), conf: Math.round(r.conf || 0) } }
+/* мягко удалённые оплаты старше 65 с — удаляются насовсем вместе со скринами */
+async function bankPurge(env) { const lim = msNow() - 65e3;
+  await env.DB.batch([env.DB.prepare("DELETE FROM bank_file WHERE kind='tx' AND ref IN (SELECT id FROM bank_tx WHERE del_at IS NOT NULL AND del_at<?)").bind(lim), env.DB.prepare('DELETE FROM bank_tx WHERE del_at IS NOT NULL AND del_at<?').bind(lim)]) }
+async function stuName(env, uid) { try { const D = await loadData(env), r = (D.rows || []).find(x => +x.uid === +uid); if (r && r.name) return r.name } catch (e) {}
+  const g = await env.DB.prepare('SELECT name FROM gc_name WHERE uid=?').bind(uid).first().catch(() => null); if (g && g.name) return g.name;
+  const s = await env.DB.prepare('SELECT name FROM student WHERE uid=?').bind(uid).first(); return (s && s.name) || 'Ученик' }
+async function nameMap(env) { const M = {}; try { for (const r of await qAll(env.DB.prepare('SELECT uid, name FROM student WHERE name IS NOT NULL'))) M[r.uid] = r.name } catch (e) {}
+  try { for (const r of await qAll(env.DB.prepare('SELECT uid, name FROM gc_name'))) if (r.name) M[r.uid] = r.name } catch (e) {}
+  try { const D = await loadData(env); for (const r of D.rows || []) if (r.uid != null && r.name) M[+r.uid] = r.name } catch (e) {} return M }
+/* сессия команды (пульт / мини-апп: admin | curator) и проверка «это мой ученик» */
+async function staffSess(env, req, u) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || (u && u.searchParams.get('t')) || ''; if (!/^[0-9a-f]{32}$/.test(t)) return null;
+  const s = await kvGet(env, 'sess:' + t); return s && s.exp > msNow() && (s.role === 'admin' || s.role === 'curator') ? s : null }
+async function staffCan(env, s, uid) { if (!s || !okUid(uid) || isStaffUid(env, uid)) return null; const st = await env.DB.prepare('SELECT uid, curator, tg_chat, name FROM student WHERE uid=?').bind(+uid).first();
+  if (s.role === 'admin') return st || { uid: +uid, curator: null, tg_chat: null }; return st && s.cid && st.curator === s.cid ? st : null }
+const staffWho = s => s.role === 'admin' ? (String(s.name || '').split(' ')[0] || 'Роман') : ((CURATORS.find(c => c.id === s.cid) || {}).name || 'Куратор');
+const staffBy = s => s.role === 'admin' ? 'admin' : s.cid;
+const byName = (by, s0) => by === 'admin' ? 'Роман' : ((CURATORS.find(c => c.id === by) || {}).name || s0 || null);
+/* уведомления ученику: что присылает бот (ответ куратора выключить нельзя) */
+const NOTIF_DEF = { cur: 1, hw: 1, efir: 1, lessons: 1, rating: 0, bank: 1 };
+async function notifGet(env, uid) { const n = Object.assign({}, NOTIF_DEF, { quiet: null }, (await kvGet(env, 'notif:' + uid)) || {}); n.cur = 1; return n }
+async function notifOn(env, uid, k) { return k === 'cur' || !!(await notifGet(env, uid))[k] }
+/* рабочие дни куратора (0 — вс … 6 — сб), по умолчанию будни; часы — curHours */
+async function curDays(env, cid) { const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [1, 2, 3, 4, 5] }
+const daysTxt = d => d.length === 7 ? 'каждый день' : d.join() === '1,2,3,4,5' ? 'по будням' : d.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(x => WD[x]).join(', ');
+const medOf = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null;
+async function curCard(env, cid) { const c = CURATORS.find(x => x.id === cid); if (!c) return null; const now = msk(), from = (msNow() / 1000 | 0) - 30 * 86400;
+  const [h, days, photo, tgu] = [await curHours(env, cid), await curDays(env, cid), await kvGet(env, 'curphoto:' + cid), await curTg(env, cid)];
+  const [rs, st] = await env.DB.batch([env.DB.prepare('SELECT wsec FROM cresp WHERE cid=? AND answered>=?').bind(cid, from), env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate WHERE cid=?').bind(cid)]);
+  const med = medOf((rs.results || []).map(r => r.wsec).filter(x => x > 0)), sr = (st.results || [])[0] || {};
+  return { cid, name: c.full, short: c.name, about: c.about, photo: photo || 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + cid + '.jpg', tg: tgu, hours: { from: h[0], to: h[1], days },
+    online: days.includes(now.getUTCDay()) && now.getUTCHours() >= h[0] && now.getUTCHours() < h[1], avg_reply_min: med == null ? null : Math.max(1, Math.round(med / 60)), stars: sr.n ? Math.round(sr.a * 10) / 10 : null, stars_n: sr.n | 0 } }
+/* «Ответить здесь»: бот помнит, на какие свои сообщения ответ уходит в чат (последние 20 на чат Telegram) */
+async function frAdd(env, chat, j, rec) { const mid = j && j.ok && j.result && j.result.message_id; if (!mid) return; const k = 'fr:' + chat, L = (await kvGet(env, k)) || [];
+  L.unshift(Object.assign({ m: mid }, rec)); await kvPut(env, k, L.slice(0, 20)) }
+/* фото/файл из Telegram → bank_file kind 'chat' (картинка или PDF до 650 КБ) */
+async function tgFileToBank(env, uid, m) { let fid = null, name = 'фото.jpg', mime = 'image/jpeg';
+  if (m.photo && m.photo.length) { const p = m.photo.filter(x => !x.file_size || x.file_size <= 650000).pop(); if (p) fid = p.file_id }
+  else if (m.document && /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/.test(m.document.mime_type || '') && (m.document.file_size || 0) <= 650000) { fid = m.document.file_id; name = m.document.file_name || 'файл'; mime = m.document.mime_type }
+  if (!fid) return null; const f = await tg(env, 'getFile', { file_id: fid }); if (!f.ok) return null;
+  const r = await fetch('https://api.telegram.org/file/bot' + env.TG_TOKEN + '/' + f.result.file_path); if (!r.ok) return null;
+  return bankFile(env, uid, 'chat', 0, { name, data: 'data:' + mime + ';base64,' + b64(await r.arrayBuffer()) }) }
+
+/* ---------- чат ученик ↔ куратор ---------- */
+const CW = uid => 'app' + uid; /* ключ ожидания в cwait/cresp для чата на платформе */
+const chatPub = x => ({ id: x.id, dir: x.dir, text: x.text || '', file: x.file_id ? { id: x.file_id, name: x.fname || 'файл', mime: x.fmime || null } : null, reply_to: x.reply_to || null, via: x.via || 'app', who: x.who || null, at: x.at, read: x.read_at ? 1 : 0, stars: x.stars || null });
+/* новое сообщение: запись, ожидание ответа (cwait → cresp), уведомление второй стороне в бот */
+async function chatSend(env, o) { const at = msNow(), sec = at / 1000 | 0;
+  const r = await env.DB.prepare('INSERT INTO chat_msg (uid, cid, dir, text, file_id, reply_to, via, who, at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id').bind(o.uid, o.cid || null, o.dir, o.text || '', o.file || null, o.reply_to || null, o.via || 'app', o.who || null, at).first();
+  if (o.file) await env.DB.prepare('UPDATE bank_file SET ref=? WHERE id=?').bind(r.id, o.file).run();
+  const w = o.cid && o.dir !== 'sys' && !o.noWait ? await env.DB.prepare('SELECT since FROM cwait WHERE cid=? AND chat=?').bind(o.cid, CW(o.uid)).first() : null;
+  if (o.dir === 'in' && o.cid && !w && !isAck({ text: o.text, photo: o.file ? [1] : null })) await env.DB.prepare('INSERT OR IGNORE INTO cwait (cid, chat, uid, since) VALUES (?,?,?,?)').bind(o.cid, CW(o.uid), o.uid, sec).run();
+  if (o.dir === 'out' && w) { const q = [env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(o.cid, CW(o.uid))];
+    if (o.byCur) q.push(env.DB.prepare('INSERT INTO cresp (cid, chat, uid, asked, answered, sec, wsec, day) VALUES (?,?,?,?,?,?,?,?)').bind(o.cid, CW(o.uid), o.uid, w.since, sec, sec - w.since, workSec(w.since, sec, await curHours(env, o.cid)), dayStr()));
+    else q.push(env.DB.prepare('INSERT INTO cack (cid, chat, uid, kind, since, at) VALUES (?,?,?,?,?,?)').bind(o.cid, CW(o.uid), o.uid, 'admin', w.since, sec));
+    await env.DB.batch(q) }
+  const msg = { id: r.id, dir: o.dir, text: o.text || '', file: o.file ? { id: o.file, name: o.fname || 'файл', mime: o.fmime || null } : null, reply_to: o.reply_to || null, via: o.via || 'app', who: o.who || null, at, read: 0, stars: null };
+  if (o.notify !== false) { try { await chatNotify(env, o, msg) } catch (e) { await logIt(env, 'chat-tg-err', o.uid, String(e && e.message || e)) } }
+  await logIt(env, 'chat-' + o.dir, o.uid, (o.cid || '-') + ' ' + (o.via || 'app') + (o.file ? ' file' : ''));
+  return msg }
+async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.slice(0, 1500)) : '📎 ' + (msg.file && /pdf/.test(msg.file.mime || '') ? 'файл' : 'фото');
+  if (o.dir === 'in') { if (!o.cid) return; const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(o.cid).first(); if (!ct || !ct.tg_id) return;
+    const nm = await stuName(env, o.uid), via = o.via === 'bot' ? ' в боте' : '';
+    const j = await tgSend(env, ct.tg_id, '💬 <b>' + th(nm) + ' написал' + fem(nm) + via + '</b>\n' + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat_' + o.uid) }], [{ text: 'Ответить здесь', callback_data: 'chr:' + o.uid }]]);
+    return frAdd(env, ct.tg_id, j, { uid: o.uid, as: 'out' }) }
+  if (o.dir === 'out') { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(o.uid).first(); if (!st || !st.tg_chat) return;
+    let quote = ''; if (!o.mass) { const qm = o.reply_to ? await env.DB.prepare("SELECT text FROM chat_msg WHERE id=? AND uid=?").bind(o.reply_to, o.uid).first() : await env.DB.prepare("SELECT text FROM chat_msg WHERE uid=? AND dir='in' AND id<? AND del=0 ORDER BY id DESC LIMIT 1").bind(o.uid, msg.id).first(); if (qm && qm.text) quote = '<blockquote>' + th(qm.text.slice(0, 200)) + '</blockquote>\n' }
+    const who = o.who || 'Куратор', j = await tgSend(env, st.tg_chat, '💬 <b>' + th(who) + (o.mass ? ' написал' : ' ответил') + fem(who) + '</b>\n' + quote + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat') }], [{ text: 'Ответить здесь', callback_data: 'chs:' + o.uid }]]);
+    return frAdd(env, st.tg_chat, j, { uid: o.uid, as: 'in' }) } }
+/* кто открыл чат: ученик (свой), куратор (свой ученик ?u=), админ (любой ?u=); токен просмотра «смотреть как» — только чтение */
+async function chatWho(env, req, u, o) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || (o && o.t) || '';
+  if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) { const uid = await authUid(env, t, 'a'); return uid ? { me: 'student', uid } : null }
+  if (/\.w\./.test(t)) { const w = await viewTok(env, t); return w ? { me: 'student', uid: w.uid, ro: true } : null }
+  if (!/^[0-9a-f]{32}$/.test(t)) return null; const s = await kvGet(env, 'sess:' + t); if (!s || !(s.exp > msNow())) return null;
+  if (s.role === 'student') return s.uid ? { me: 'student', uid: +s.uid } : null; if (s.role !== 'admin' && s.role !== 'curator') return null;
+  const target = +((o && o.u) || u.searchParams.get('u') || 0); if (!target) return { me: s.role, s, uid: 0 };
+  const st = await staffCan(env, s, target); return st ? { me: s.role, s, uid: target, st } : { me: s.role, s, uid: 0, forbidden: true } }
+async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt(env);
+  const o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, W = await chatWho(env, req, u, o); if (!W) return deny(req);
+  if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+  if (path === '/chat/dialogs') { if (!W.s) return json(req, { ok: false, err: 'Только для кураторов' }, 403); const s = W.s, adm = s.role === 'admin', f = u.searchParams.get('f') === 'wait' ? 'wait' : 'all';
+    const [sr, lr, ur, wr] = await env.DB.batch([adm ? env.DB.prepare('SELECT uid, curator, name FROM student WHERE uid IN (SELECT DISTINCT uid FROM chat_msg) OR curator IS NOT NULL') : env.DB.prepare('SELECT uid, curator, name FROM student WHERE curator=?').bind(s.cid),
+      env.DB.prepare('SELECT m.uid, m.text, m.at, m.dir, m.file_id FROM chat_msg m JOIN (SELECT uid, MAX(id) mid FROM chat_msg WHERE del=0 GROUP BY uid) x ON x.mid=m.id'),
+      env.DB.prepare("SELECT uid, COUNT(*) n FROM chat_msg WHERE dir='in' AND read_at IS NULL AND del=0 GROUP BY uid"),
+      env.DB.prepare("SELECT uid, cid, since FROM cwait WHERE chat LIKE 'app%'")]);
+    const L = {}, U = {}, Wt = {}; for (const x of lr.results || []) L[x.uid] = x; for (const x of ur.results || []) U[x.uid] = x.n; for (const x of wr.results || []) Wt[x.uid] = x.since * 1000;
+    const N = await nameMap(env), out = [];
+    for (const x of sr.results || []) { if (isStaffUid(env, x.uid)) continue; if (adm && !L[x.uid] && f === 'all' && !Wt[x.uid]) continue; if (f === 'wait' && !Wt[x.uid]) continue; const l = L[x.uid];
+      out.push({ uid: x.uid, name: N[x.uid] || x.name || null, cid: x.curator || null, last: l ? { text: l.text || (l.file_id ? '📎 файл' : ''), at: l.at, dir: l.dir } : null, unread: U[x.uid] || 0, wait_since: Wt[x.uid] || null }) }
+    out.sort((a, b) => (!!b.wait_since - !!a.wait_since) || (a.wait_since && b.wait_since ? a.wait_since - b.wait_since : 0) || ((b.last ? b.last.at : 0) - (a.last ? a.last.at : 0)) || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+    return json(req, { ok: true, me: s.role, f, dialogs: out, wait: out.filter(x => x.wait_since).length }, 200, { 'Cache-Control': 'no-store' }) }
+  const uid = W.uid; if (!uid) return json(req, { ok: false, err: 'Укажи ученика' }, 400);
+  if (path === '/chat/list') { const before = +u.searchParams.get('before') || 0, st = await env.DB.prepare('SELECT curator, name FROM student WHERE uid=?').bind(uid).first() || {};
+    const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
+    const un = await env.DB.prepare('SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir=? AND read_at IS NULL AND del=0').bind(uid, W.me === 'student' ? 'out' : 'in').first();
+    return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: await stuName(env, uid) }, curator: st.curator ? await curCard(env, st.curator) : null, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/chat/file') { const f = await env.DB.prepare("SELECT name, mime, data FROM bank_file WHERE id=? AND uid=? AND kind='chat'").bind(+u.searchParams.get('id'), uid).first(); if (!f) return new Response('нет файла', { status: 404, headers: cors(req) });
+    return new Response(Uint8Array.from(atob(f.data), c => c.charCodeAt(0)), { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
+  if (req.method !== 'POST') return json(req, { ok: false, err: 'not found' }, 404);
+  if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
+  if (path === '/chat/read') { const dir = W.me === 'student' ? 'out' : W.me === 'curator' ? 'in' : null; if (!dir) return json(req, { ok: true, marked: 0 });
+    const r = await env.DB.prepare('UPDATE chat_msg SET read_at=? WHERE uid=? AND dir=? AND read_at IS NULL').bind(msNow(), uid, dir).run(); return json(req, { ok: true, marked: (r.meta && r.meta.changes) || 0 }) }
+  if (path === '/chat/rate') { if (W.me !== 'student') return json(req, { ok: false, err: 'Оценку ставит ученик' }, 403); const stars = Math.round(+o.stars);
+    if (!(stars >= 1 && stars <= 5)) return json(req, { ok: false, err: 'Оценка — от 1 до 5' }, 400);
+    const m = await env.DB.prepare("SELECT id, cid FROM chat_msg WHERE id=? AND uid=? AND dir='out' AND del=0").bind(+o.mid, uid).first(); if (!m || !m.cid) return json(req, { ok: false, err: 'Оценить можно только ответ куратора' }, 400);
+    await env.DB.prepare('INSERT INTO chat_rate (mid, uid, cid, stars, at) VALUES (?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, at=excluded.at').bind(m.id, uid, m.cid, stars, msNow()).run();
+    await logIt(env, 'chat-rate', uid, m.cid + ' ' + stars); return json(req, { ok: true, mid: m.id, stars }) }
+  if (path === '/chat/send') { const text = String(o.text || '').trim().slice(0, 4000); if (!text && !o.file) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
+    const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first() || {}, rt = +o.reply_to || 0;
+    if (rt && !(await env.DB.prepare('SELECT id FROM chat_msg WHERE id=? AND uid=?').bind(rt, uid).first())) return json(req, { ok: false, err: 'Нет такого сообщения' }, 400);
+    if (W.me === 'student') { if (!st.curator) return json(req, { ok: false, err: 'Куратора назначат в ближайшие дни — пока спроси Нейро-Одуванова или напиши в Службу заботы' }, 400);
+      const fl = await env.DB.prepare("SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir='in' AND at>?").bind(uid, msNow() - 60e3).first(); if (fl && fl.n >= 10) return json(req, { ok: false, err: 'Слишком быстро — подожди минуту' }, 429) }
+    let file = null; try { file = await bankFile(env, uid, 'chat', 0, o.file) } catch (e) { return json(req, { ok: false, err: e.message }, 400) }
+    const cid = W.me === 'student' ? st.curator : (st.curator || W.s.cid || null);
+    const msg = await chatSend(env, { uid, cid, dir: W.me === 'student' ? 'in' : 'out', text, file, fname: o.file && bStr(o.file.name, 120), fmime: o.file && (String(o.file.data || '').match(/^data:([^;]+)/) || [])[1], reply_to: rt || null, via: ['app', 'site', 'bot'].includes(o.via) ? o.via : 'app',
+      who: W.me === 'student' ? null : staffWho(W.s), byCur: W.me === 'curator' });
+    return json(req, { ok: true, msg }) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
+
+/* ---------- бот: «Ответить здесь», ученик пишет боту, напоминания об оплате, приглашение по карте ---------- */
+async function bksCallback(env, q) { await bankEnsure(env); const d = String(q.data || ''), from = String(q.from && q.from.id), ans = t => tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: t || undefined });
+  const msg = q.message || {}, edit = (text, kb) => tg(env, 'editMessageText', { chat_id: msg.chat && msg.chat.id, message_id: msg.message_id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: kb || [] } });
+  if (/^ch[rs]:\d+$/.test(d)) { const uid = +d.slice(4), st = await env.DB.prepare('SELECT uid, curator, tg_chat FROM student WHERE uid=?').bind(uid).first(); if (!st) return ans('Ученик не найден');
+    if (d[2] === 'r') { const ct = st.curator && await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(st.curator).first(), adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(from).first();
+      if (!adm && !(ct && String(ct.tg_id) === from)) return ans('Это ученик другого куратора');
+      const nm = await stuName(env, uid), j = await tg(env, 'sendMessage', { chat_id: from, text: '✍️ Ответ для ' + nm + ' — напиши его ответом на это сообщение, он уйдёт в чат на платформе.', reply_markup: { force_reply: true, input_field_placeholder: 'Ответ ученику' } });
+      await frAdd(env, from, j, { uid, as: 'out' }); return ans() }
+    if (String(st.tg_chat) !== from) return ans('Это не твой чат');
+    const c = CURATORS.find(x => x.id === st.curator), j = await tg(env, 'sendMessage', { chat_id: from, text: nbt('✍️ Напиши сообщение ' + (c ? datv(c.name) : 'куратору') + ' ответом на это — оно уйдёт в чат с куратором.'), reply_markup: { force_reply: true, input_field_placeholder: 'Сообщение куратору' } });
+    await frAdd(env, from, j, { uid, as: 'in' }); return ans() }
+  const m = d.match(/^bp:(y|n|d\d{1,2}):(\d+)$/); if (!m) return ans();
+  const o = await env.DB.prepare('SELECT o.*, s.tg_chat FROM bank_order o JOIN student s ON s.uid=o.uid WHERE o.id=?').bind(+m[2]).first(); if (!o || String(o.tg_chat) !== from) return ans('Заказ не найден');
+  const cur = o.cur || 'RUB', pd = await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM bank_tx WHERE order_id=? AND uid=? AND del_at IS NULL AND COALESCE(cur,'RUB')=?").bind(o.id, o.uid, cur).first(), left = Math.max(0, (o.price || 0) - (pd ? pd.s : 0));
+  const what = th(String(o.product || o.client || 'заказ'));
+  if (m[1] === 'y') { if (o.status === 'done') { await edit('✅ Уже записано: заказ «' + what + '» в «Готово».'); return ans() }
+    if (left > 0) { const day = dayStr(), rate = cur === 'RUB' ? 1 : await cbrRate(env, day, cur); if (!rate) return ans('Не получилось взять курс ЦБ — попробуй через минуту');
+      await env.DB.prepare('INSERT INTO bank_tx (uid, amount, cur, rub, rate, day, what, src, client, order_id, file_id, at, conf) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)').bind(o.uid, left, cur, Math.round(left * rate), cur === 'RUB' ? null : Math.round(rate * 10000) / 10000, day, bStr(o.product, 200), bStr(o.src, 60), bStr(o.client, 120), o.id, null, new Date().toISOString()).run() }
+    await env.DB.prepare("UPDATE bank_order SET status='done', upd=? WHERE id=?").bind(new Date().toISOString(), o.id).run(); await logIt(env, 'bank-remind-yes', o.uid, left + ' ' + cur);
+    await edit('✅ <b>' + (left > 0 ? 'Записал ' + money(left, cur) + ' в банк' : 'Заказ закрыт') + '</b>\n' + nbt('Заказ «' + what + '» — в «Готово». Баллы за заработок начислятся, когда куратор подтвердит оплату. Скрин оплаты можно добавить в банке — так подтвердят быстрее.'), [[{ text: 'Открыть банк', url: maLink(env, 'bank') }]]); return ans('Записано') }
+  if (m[1] === 'n') { await env.DB.prepare('UPDATE bank_order SET remind_at=?, reminded=? WHERE id=?').bind(addDays(dayStr(), 3), dayStr(), o.id).run();
+    await edit(nbt('Когда напомнить про ' + money(left || o.price || 0, cur) + ' за «' + what + '»?'), [[{ text: 'Завтра', callback_data: 'bp:d1:' + o.id }, { text: 'Через 3 дня', callback_data: 'bp:d3:' + o.id }], [{ text: 'Через неделю', callback_data: 'bp:d7:' + o.id }], [{ text: 'Выбрать дату', url: maLink(env, 'bank') }]]); return ans() }
+  const n = Math.min(30, +m[1].slice(1) || 1), day = addDays(dayStr(), n); await env.DB.prepare('UPDATE bank_order SET remind_at=?, reminded=NULL WHERE id=?').bind(day, o.id).run();
+  await edit(nbt('⏰ Хорошо, напомню ' + human(day) + ' про «' + what + '».')); return ans('Напомню ' + human(day)) }
+/* ответ на сообщение бота «Ответить здесь» (force_reply) или на само уведомление → в чат на платформе */
+async function bksReply(env, m, chat) { if (!m.reply_to_message) return false; await bankEnsure(env); const L = (await kvGet(env, 'fr:' + chat)) || [], x = L.find(y => y.m === m.reply_to_message.message_id); if (!x) return false;
+  const st = await env.DB.prepare('SELECT uid, curator, tg_chat FROM student WHERE uid=?').bind(x.uid).first(); if (!st) return false;
+  const text = String(m.text || m.caption || '').trim().slice(0, 4000), file = await tgFileToBank(env, st.uid, m).catch(() => null);
+  if (!text && !file) { await tgSend(env, chat, 'Пока доходят только текст, фото и PDF до 650 КБ. Голосовое лучше отправить в чате приложения.'); return true }
+  if (x.as === 'out') { const ct = st.curator && await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(st.curator).first(), adm = await env.DB.prepare('SELECT name FROM tg_admin WHERE chat=?').bind(chat).first(), isCur = !!(ct && String(ct.tg_id) === chat);
+    if (!isCur && !adm) return false; const c = CURATORS.find(y => y.id === st.curator);
+    await chatSend(env, { uid: st.uid, cid: st.curator || null, dir: 'out', text, file, via: 'bot', who: isCur ? (c ? c.name : 'Куратор') : (String(adm.name || '').split(' ')[0] || 'Роман'), byCur: isCur });
+    await tgSend(env, chat, '✅ Отправлено ' + th(await stuName(env, st.uid)) + ' — в чат и в бот.'); return true }
+  if (String(st.tg_chat) !== chat) return false; if (!st.curator) { await tgSend(env, chat, nbt('Куратора назначат в ближайшие дни. Пока спроси Нейро-Одуванова или напиши в Службу заботы.'), [[{ text: 'Служба заботы', url: CARE }]]); return true }
+  await chatSend(env, { uid: st.uid, cid: st.curator, dir: 'in', text, file, via: 'bot' }); const c = CURATORS.find(y => y.id === st.curator);
+  await tgSend(env, chat, nbt('✅ Передал ' + (c ? datv(c.name) : 'куратору') + '. Ответ придёт сюда и в чат в приложении.')); return true }
+/* ученик пишет боту обычным сообщением → в чат с куратором (у куратора это тот же диалог, значок Telegram) */
+async function bksStudentMsg(env, m, chat, text) { if (text.startsWith('/') || !(text || (m.photo && m.photo.length) || m.document)) return false; await bankEnsure(env);
+  const st = await env.DB.prepare('SELECT uid, curator FROM student WHERE tg_chat=?').bind(chat).first(); if (!st || !st.curator || isStaffUid(env, st.uid)) return false;
+  if (await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first() || await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first()) return false;
+  const file = await tgFileToBank(env, st.uid, m).catch(() => null); if (!text && !file) return false;
+  const last = await env.DB.prepare("SELECT at FROM chat_msg WHERE uid=? AND dir='in' AND via='bot' ORDER BY id DESC LIMIT 1").bind(st.uid).first();
+  await chatSend(env, { uid: st.uid, cid: st.curator, dir: 'in', text: String(text || m.caption || '').slice(0, 4000), file, via: 'bot' });
+  if (!last || msNow() - last.at > 30 * 60e3) { const c = CURATORS.find(y => y.id === st.curator); await tgSend(env, chat, nbt('✅ Передал ' + (c ? datv(c.name) : 'куратору') + ' в чат. Ответ придёт сюда и в приложение.'), [[{ text: 'Открыть чат', url: maLink(env, 'chat') }]]) }
+  return true }
+/* приглашение по карте: /start c<h> или startapp c<h> → приветствие с картой пригласившего, учёт bank_ref */
+async function shareH(env, uid) { const h = (await hmacHex(env, 'share|' + uid)).slice(0, 10); await env.DB.prepare('INSERT OR IGNORE INTO bank_share (h, uid) VALUES (?,?)').bind(h, uid).run(); return h }
+async function refCard(env, h) { const sh = await env.DB.prepare('SELECT uid FROM bank_share WHERE h=?').bind(h).first(); if (!sh) return null; const T = await bankTotals(env, sh.uid), st = bStatus(T.total);
+  const L = Object.assign({ free: 'https://romanoduvanov.ru/ai', about: 'https://romanoduvanov.ru/ai' }, (await kvGet(env, 'share_links')) || {});
+  return { uid: sh.uid, name: await stuName(env, sh.uid), sum: T.total >= 1000 ? Math.round(T.total / 1000) * 1000 : 0, status: { key: st.key, name: st.name }, links: { free: L.free, about: L.about } } }
+async function refSave(env, h, chat, card) { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(card.uid).first(); if (st && String(st.tg_chat) === String(chat)) return false;
+  const r = await env.DB.prepare('INSERT OR IGNORE INTO bank_ref (h, chat, at) VALUES (?,?,?)').bind(h, String(chat), new Date().toISOString()).run(); if (r.meta && r.meta.changes) await logIt(env, 'bank-ref', card.uid, h); return true }
+const refText = c => { const f = fem(c.name); return '👋 <b>Привет!</b>\n\n' + nbt('Тебя пригласил' + f + ' ' + th(c.name) + ' — ' + (f ? 'она' : 'он') + ' учится в OduvanovSchool на курсе «AI-креатор»' + (c.sum ? ' и уже заработал' + f + ' на дизайне около ' + money(c.sum, 'RUB') : '') + '. Карта дизайнера — <b>' + c.status.name + '</b>.') + '\n\n' + nbt('Хочешь так же? Начни с бесплатного урока или посмотри, что за школа.') };
+async function refStart(env, chat, h, from) { await bankEnsure(env); const c = await refCard(env, h); if (from) await saveTgUser(env, from);
+  if (!c) return tgSend(env, chat, '<b>OduvanovSchool</b> — онлайн-школа дизайна Романа Одуванова.', [[{ text: 'Что за школа', url: 'https://romanoduvanov.ru/ai' }]]);
+  if (!(await refSave(env, h, chat, c))) return tgSend(env, chat, nbt('Это твоя ссылка-приглашение. Отправь картинку с картой друзьям — по QR они попадут сюда и увидят твою карту.'));
+  return tgSend(env, chat, refText(c), [[{ text: 'Бесплатный урок', url: c.links.free }], [{ text: 'Что за школа', url: c.links.about }]]) }
+/* cron 45: напоминания об ожидаемой оплате (с 10 до 21 МСК), «ждут больше 24 ч» кураторам (в 10 часов по их рабочим дням), чистка удалённых оплат */
+async function bankJob(env, B) { await bankEnsure(env); await bankPurge(env); const out = { remind: 0, wait24: 0 }, now = msk(), hr = now.getUTCHours(), today = dayStr();
+  /* D1 на бесплатном тарифе — ~50 запросов за вызов: остаток к оплате и настройки уведомлений берём тем же запросом, отметки — одной пачкой, не больше 8 напоминаний за запуск */
+  if (hr >= 10 && hr < 21) { const rs = await qAll(env.DB.prepare("SELECT o.id, o.uid, o.product, o.client, o.price, o.cur, o.pay_at, o.remind_at, s.tg_chat, (SELECT COALESCE(SUM(t.amount),0) FROM bank_tx t WHERE t.order_id=o.id AND t.uid=o.uid AND t.del_at IS NULL AND COALESCE(t.cur,'RUB')=COALESCE(o.cur,'RUB')) paid, (SELECT v FROM kv WHERE k='notif:'||o.uid) nf FROM bank_order o JOIN student s ON s.uid=o.uid WHERE o.status NOT IN ('done','cancel') AND o.pay_at IS NOT NULL AND s.tg_chat IS NOT NULL AND COALESCE(o.remind_at, o.pay_at)<=? AND COALESCE(o.remind_at, o.pay_at)>=? AND (o.reminded IS NULL OR o.reminded<COALESCE(o.remind_at, o.pay_at)) ORDER BY o.pay_at LIMIT 8").bind(today, addDays(today, -7)));
+    const marks = [];
+    for (const o of rs) { if (!B.ok(1)) break; marks.push(env.DB.prepare('UPDATE bank_order SET reminded=? WHERE id=?').bind(today, o.id));
+      const cur = o.cur || 'RUB', left = Math.max(0, (o.price || 0) - (o.paid || 0)); let nf = NOTIF_DEF; try { nf = Object.assign({}, NOTIF_DEF, JSON.parse(o.nf || '{}')) } catch (e) {}
+      if (!left || !nf.bank) continue;
+      const p = String(o.product || o.client || 'заказ'), pr = /^[А-ЯЁA-Z][а-яёa-z]/.test(p) ? p[0].toLowerCase() + p.slice(1) : p, eff = o.remind_at || o.pay_at;
+      B.use(1); await tgSend(env, o.tg_chat, '💸 <b>' + nbt('Ты ждёшь ' + money(left, cur) + ' за ' + th(pr)) + '</b>\n' + nbt(eff === o.pay_at ? (o.pay_at === today ? 'Клиент обещал оплатить сегодня.' : 'Клиент обещал оплатить ' + human(o.pay_at) + '.') : 'Напоминаю, как договорились.') + ' Пришли деньги?',
+        [[{ text: 'Да, записать', callback_data: 'bp:y:' + o.id }, { text: 'Ещё нет', callback_data: 'bp:n:' + o.id }]]); out.remind++ }
+    if (marks.length) await env.DB.batch(marks) }
+  if (hr === 10) for (const c of CURATORS) { if (!B.ok(1)) break; if (!(await curDays(env, c.id)).includes(now.getUTCDay()) || (await kvGet(env, 'c24:' + c.id)) === today) continue; await kvPut(env, 'c24:' + c.id, today);
+    const n = await env.DB.prepare('SELECT COUNT(DISTINCT uid) n FROM cwait WHERE cid=? AND since<?').bind(c.id, (msNow() / 1000 | 0) - 86400).first(), ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(c.id).first();
+    if (n && n.n && ct && ct.tg_id) { B.use(1); await tgSend(env, ct.tg_id, '⏳ <b>Ждут больше 24' + NB + 'ч: ' + n.n + ' ' + pl(n.n, ['ученик', 'ученика', 'учеников']) + '</b>\n' + nbt('Начни с тех, кто ждёт дольше всех.'), [[{ text: 'Открыть чаты', url: maLink(env, 'chats') }]]); out.wait24 += n.n } }
+  return out }
+
+/* ---------- банк: команда (подтверждение оплат, ожидают подтверждения, скрин, выгрузка) ---------- */
+async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, req, u); if (!s) return deny(req);
+  if (path === '/bank/tx/conf' && req.method === 'POST') { const o = await req.json().catch(() => ({})), st = await staffCan(env, s, +o.u); if (!st) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+    const x = await env.DB.prepare('SELECT id, amount, cur, conf FROM bank_tx WHERE id=? AND uid=? AND del_at IS NULL').bind(+o.id, st.uid).first(); if (!x) return json(req, { ok: false, err: 'Оплата не найдена — возможно, ученик её удалил' }, 404);
+    const ok = o.ok === 0 || o.ok === '0' || o.ok === false ? 0 : 1, before = await bankTotals(env, st.uid);
+    await env.DB.prepare('UPDATE bank_tx SET conf=?, conf_by=?, conf_at=? WHERE id=? AND uid=?').bind(ok, staffBy(s), new Date().toISOString(), x.id, st.uid).run();
+    const after = await bankTotals(env, st.uid), add = bPts(after.conf) - bPts(before.conf); await logIt(env, ok ? 'bank-conf' : 'bank-unconf', st.uid, x.id + ' ' + staffBy(s));
+    if (ok && !x.conf && st.tg_chat && await notifOn(env, st.uid, 'bank')) { const w = staffWho(s), P = bPoints(after.conf, after.total);
+      await tgSend(env, st.tg_chat, '✅ ' + nbt(th(w) + ' подтвердил' + fem(w) + ' оплату ' + money(x.amount, x.cur || 'RUB') + (add > 0 ? ' — +' + add + ' ' + pl(add, ['балл', 'балла', 'баллов']) + ' за заработок. В рейтинге они появятся после ближайшего обновления.' : '. До следующих +100 баллов — ' + money(1e4 - (after.conf % 1e4), 'RUB') + ' подтверждённых оплат.')) + (P.conf ? '\nВсего за заработок: ' + num3(P.conf) + ' баллов.' : ''), [[{ text: 'Открыть банк', url: maLink(env, 'bank') }]]) }
+    return json(req, { ok: true, id: x.id, conf: ok, points: bPoints(after.conf, after.total), status: bStatus(after.total) }) }
+  if (path === '/bank/staff/pending') { const q = 'SELECT t.uid, t.id, t.amount, t.cur, t.rub, t.day, t.what, t.src, t.file_id, s.curator FROM bank_tx t LEFT JOIN student s ON s.uid=t.uid WHERE COALESCE(t.conf,0)=0 AND t.del_at IS NULL';
+    const rs = await qAll(s.role === 'admin' ? env.DB.prepare(q + ' ORDER BY t.day DESC, t.id DESC LIMIT 500') : env.DB.prepare(q + ' AND s.curator=? ORDER BY t.day DESC, t.id DESC LIMIT 500').bind(s.cid)), N = await nameMap(env);
+    return json(req, { ok: true, role: s.role, pending: rs.filter(x => !isStaffUid(env, x.uid)).map(x => ({ uid: x.uid, name: N[x.uid] || null, cid: x.curator || null, id: x.id, amount: x.amount, cur: x.cur || 'RUB', rub: x.rub != null ? x.rub : x.amount, day: x.day, what: x.what || '', src: x.src || '', file: x.file_id ? 1 : 0 })) }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/bank/staff/file') { const st = await staffCan(env, s, +u.searchParams.get('u')); if (!st) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+    const x = await env.DB.prepare('SELECT file_id FROM bank_tx WHERE id=? AND uid=? AND del_at IS NULL').bind(+u.searchParams.get('id'), st.uid).first(); /* только скрин оплаты — не файлы заказа (ТЗ) */
+    const f = x && x.file_id && await env.DB.prepare("SELECT name, mime, data FROM bank_file WHERE id=? AND uid=? AND kind='tx'").bind(x.file_id, st.uid).first(); if (!f) return new Response('нет файла', { status: 404, headers: cors(req) });
+    await logIt(env, 'bank-file-staff', st.uid, staffBy(s));
+    return new Response(Uint8Array.from(atob(f.data), c => c.charCodeAt(0)), { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline', 'Cache-Control': 'private, max-age=600' }, cors(req)) }) }
+  if (path === '/bank/staff/export') { if (s.role !== 'admin') return json(req, { ok: false, err: 'Выгрузка — только для Романа' }, 403);
+    const what = u.searchParams.get('what') === 'students' ? 'students' : 'tx', cf = u.searchParams.get('cid') || '', okC = x => !cf || cf === 'all' || (cf === 'none' ? !x : x === cf), CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
+    const cell = v => { let t = v == null ? '' : String(v); if (/^[=+\-@]/.test(t)) t = "'" + t; return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }, line = a => a.map(cell).join(';');
+    let L = [];
+    if (what === 'tx') { const N = await nameMap(env); L.push(line(['id ученика', 'Ученик', 'Куратор', 'Дата', 'Сумма', 'Валюта', 'В рублях', 'Откуда', 'Подтверждено', 'Кто подтвердил', 'Когда']));
+      for (const x of await qAll(env.DB.prepare('SELECT t.uid, t.day, t.amount, t.cur, t.rub, t.src, t.conf, t.conf_by, t.conf_at, s.curator FROM bank_tx t LEFT JOIN student s ON s.uid=t.uid WHERE t.del_at IS NULL ORDER BY t.day DESC, t.id DESC LIMIT 20000')))
+        if (!isStaffUid(env, x.uid) && okC(x.curator)) L.push(line([x.uid, N[x.uid] || '', CN[x.curator] || '', x.day, x.amount, x.cur || 'RUB', x.rub != null ? x.rub : x.amount, x.src || '', x.conf ? 'да' : 'нет', x.conf ? byName(x.conf_by) : '', x.conf ? String(x.conf_at || '').slice(0, 10) : ''])) }
+    else { const R = await bankStaffList(env, s); L.push(line(['id ученика', 'Ученик', 'Тариф', 'Куратор', 'Заработал, ₽', 'Подтверждено, ₽', 'Ждут подтверждения', 'Баллы за заработок', 'Статус карты', 'Оплат', 'Последняя', 'Заказов', 'В работе', 'Цель, ₽', 'Срок цели']));
+      for (const x of R.students) if (okC(x.cur)) L.push(line([x.uid, x.name || '', x.tar || '', x.curName || '', x.total, x.conf, x.pending, x.pts, x.status_name, x.n, x.last || '', x.orders, x.active, x.goal ? x.goal.sum : '', x.goal ? x.goal.until : ''])) }
+    await logIt(env, 'bank-export', 0, what + ' ' + (cf || 'all') + ' ' + (L.length - 1));
+    return new Response('﻿' + L.join('\r\n') + '\r\n', { headers: Object.assign({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="bank-' + what + '-' + dayStr() + '.csv"', 'Cache-Control': 'no-store' }, cors(req)) }) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
+
+/* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
+const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin'];
+async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(env); const s = await staffSess(env, req, u); if (!s) return deny(req);
+  const adm = s.role === 'admin', o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, okCid = v => CURATORS.some(c => c.id === v), now = msNow();
+  if (path === '/cur/me') { const cid = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : null) : s.cid; if (!cid) return json(req, { ok: false, err: 'Выбери куратора: ?cid=' }, 400);
+    const [ns, nw, nh] = await env.DB.batch([env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cid), env.DB.prepare('SELECT COUNT(DISTINCT uid) n FROM cwait WHERE cid=?').bind(cid), env.DB.prepare('SELECT COUNT(*) n FROM cur_hw WHERE cid=? AND at>=?').bind(cid, now - 30 * 864e5)]);
+    const card = await curCard(env, cid);
+    return json(req, { ok: true, cid, name: card.name, role: s.role, students: (ns.results || []).filter(x => !isStaffUid(env, x.uid)).length, wait: ((nw.results || [])[0] || {}).n || 0, hw: ((nh.results || [])[0] || {}).n || 0, hw_days: 30,
+      avg_reply_min: card.avg_reply_min, stars: card.stars, stars_n: card.stars_n, hours: card.hours, online: card.online }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/cur/hwlog' && req.method === 'POST') { const st = await staffCan(env, s, +o.uid); if (!st) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+    const status = o.status === 'rework' ? 'rework' : o.status === 'accept' ? 'accept' : null; if (!status) return json(req, { ok: false, err: 'status: accept или rework' }, 400);
+    const cid = adm ? (st.curator || null) : s.cid, pts = Math.max(0, Math.min(1000, Math.round(+o.pts || 0))), lesson = bStr(o.lesson, 200), comment = bStr(o.comment, 2000), lid = okUid(o.lesson_id) ? +o.lesson_id : null, aid = okUid(o.answer_id) ? +o.answer_id : null;
+    const sent = typeof o.sent_at === 'number' ? o.sent_at : o.sent_at ? Date.parse(o.sent_at) : NaN;
+    const dup = aid && await env.DB.prepare('SELECT id FROM cur_hw WHERE answer_id=? AND status=? AND at>?').bind(aid, status, now - 10 * 60e3).first();
+    const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now).first();
+    await logIt(env, 'cur-hw', st.uid, (cid || 'admin') + ' ' + status + ' ' + pts);
+    let notified = false; if (!dup && st.tg_chat && await notifOn(env, st.uid, 'hw')) { const who = staffWho(s), L = lesson ? '«' + th(lesson) + '»' : '', btn = lid ? [[{ text: status === 'accept' ? 'Посмотреть работу' : 'Открыть замечания', url: maLink(env, 'l' + lid) }]] : null;
+      if (status === 'accept') { let place = null; try { const D = await loadData(env), rr = await rowFor(D, st.uid); place = rr && rr.place || null } catch (e) {}
+        await tgSend(env, st.tg_chat, '✅ <b>ДЗ ' + L + ' принято</b>\n' + nbt((pts ? '+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) : 'Проверил' + fem(who) + ' ' + th(who)) + (place ? ' · ты на ' + place + ' месте' : '')) + (comment ? '\n\n«' + th(comment) + '» — ' + th(who) : ''), btn) }
+      else { const notes = (Array.isArray(o.notes) && o.notes.length ? o.notes : comment.split(/\n+/)).map(x => bStr(x, 300)).filter(Boolean).slice(0, 10), due = /^\d{4}-\d{2}-\d{2}$/.test(o.due || '') ? o.due : null;
+        await tgSend(env, st.tg_chat, '✏️ <b>ДЗ ' + L + NB + '— нужно доработать</b>\n' + (notes.length ? notes.map((x, i) => (i + 1) + '. ' + th(x)).join('\n') : nbt('Посмотри замечания ' + th(who) + ' на странице урока.')) + (due ? '\n\n' + nbt('Пересдай до ' + human(due) + ', чтобы не потерять ×2') : ''), btn) }
+      notified = true }
+    return json(req, { ok: true, id: r.id, notified, dup: !!dup }) }
+  if (path === '/cur/hwstat') { const days = Math.max(1, Math.min(90, +u.searchParams.get('days') || 30)), cq = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : 'all') : s.cid;
+    const rs = await qAll(cq === 'all' ? env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE at>=?').bind(now - days * 864e5) : env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE cid=? AND at>=?').bind(cq, now - days * 864e5));
+    const agg = L => { const t = L.filter(x => x.sent_at && x.at > x.sent_at).map(x => (x.at - x.sent_at) / 60e3), m = medOf(t); return { checked: L.length, accept: L.filter(x => x.status === 'accept').length, rework: L.filter(x => x.status === 'rework').length, median_min: m == null ? null : Math.round(m), timed: t.length } };
+    const by = {}; for (const x of rs) (by[x.cid || 'admin'] = by[x.cid || 'admin'] || []).push(x);
+    return json(req, Object.assign({ ok: true, cid: cq, days }, agg(rs), { by_cid: cq === 'all' ? Object.keys(by).map(k => Object.assign({ cid: k }, agg(by[k]))) : undefined }), 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/cur/assign' && req.method === 'POST') { if (!adm) return json(req, { ok: false, err: 'Назначает куратора только Роман' }, 403);
+    const cid = o.cid ? String(o.cid) : null; if (cid && !okCid(cid)) return json(req, { ok: false, err: 'Нет такого куратора' }, 400);
+    const uids = [...new Set((Array.isArray(o.uids) ? o.uids : []).map(Number).filter(x => okUid(x) && !isStaffUid(env, x)))].slice(0, 200); if (!uids.length) return json(req, { ok: false, err: 'Выбери учеников' }, 400);
+    const prev = {}; for (let i = 0; i < uids.length; i += 90) for (const x of await qAll(env.DB.prepare('SELECT uid, curator, tg_chat FROM student WHERE uid IN (' + uids.slice(i, i + 90).map(() => '?').join() + ')').bind(...uids.slice(i, i + 90)))) prev[x.uid] = x;
+    const iso = new Date().toISOString(), c = cid && CURATORS.find(x => x.id === cid), q = [];
+    for (const id of uids) { q.push(env.DB.prepare('INSERT INTO student (uid, tg_token, curator, cur_at) VALUES (?,?,?,?) ON CONFLICT(uid) DO UPDATE SET curator=excluded.curator, cur_at=excluded.cur_at').bind(id, rnd(), cid, iso));
+      if (c && (prev[id] || {}).curator !== cid) q.push(env.DB.prepare("INSERT INTO chat_msg (uid, cid, dir, text, via, at) VALUES (?,?,'sys',?,'app',?)").bind(id, cid, 'Твой куратор — ' + c.full, now)) }
+    for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80)); for (const k in APPC) delete APPC[k];
+    let sent = 0, left = 0; if (c) { const card = await curCard(env, cid), cap = '👋 ' + nbt('<b>Твой куратор — ' + th(c.full) + '</b>\n' + th(c.about || '') + '\nНа связи ' + daysTxt(card.hours.days) + ' с ' + card.hours.from + ':00 до ' + card.hours.to + ':00 МСК. Пиши в чат на платформе — ответ придёт сюда же.'), kb = [[{ text: 'Написать ' + datv(c.name), url: maLink(env, 'chat') }]], ph = await kvGet(env, 'curphoto:' + cid);
+      for (const id of uids) { const p = prev[id]; if (!p || !p.tg_chat || p.curator === cid) continue; if (sent >= 30) { left++; continue }
+        const j = ph ? await tg(env, 'sendPhoto', { chat_id: p.tg_chat, photo: ph, caption: cap, parse_mode: 'HTML', reply_markup: { inline_keyboard: kb } }) : await tgSend(env, p.tg_chat, cap, kb); if (j && j.ok) sent++ } }
+    await logIt(env, 'cur-assign', 0, (cid || 'none') + ' ' + uids.length + ' tg ' + sent); return json(req, { ok: true, cid, assigned: uids.length, sent, left }) }
+  if (path === '/cur/mass' && req.method === 'POST') { const text0 = String(o.text || '').trim().slice(0, 3000); if (!text0) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
+    const uids = [...new Set((Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid))]; if (!uids.length) return json(req, { ok: false, err: 'Выбери учеников' }, 400); if (uids.length > 35) return json(req, { ok: false, err: 'batch' }, 400); /* ~50 запросов за вызов: страница шлёт пачками по 35 */
+    const sts = await qAll(env.DB.prepare('SELECT uid, curator, tg_chat, name FROM student WHERE uid IN (' + uids.map(() => '?').join() + ')').bind(...uids)), via = o.via === 'tg' ? 'tg' : 'chat', who = staffWho(s);
+    let D = null, N = null; if (/\{(имя|урок)\}/.test(text0)) { try { D = await loadData(env) } catch (e) {} N = await nameMap(env) }
+    const res = { ok: true, chat: 0, tg: 0, fail: 0, skip: 0 }, ins = [], tgq = [], now2 = msNow();
+    for (const st of sts) { if (isStaffUid(env, st.uid) || (!adm && st.curator !== s.cid)) { res.skip++; continue }
+      let text = text0; if (N) { const r = D && (D.rows || []).find(x => +x.uid === st.uid); text = text.replace(/\{имя\}/g, String(N[st.uid] || st.name || '').split(' ')[0] || 'привет');
+        if (/\{урок\}/.test(text)) { let t = 'следующий урок'; try { const L = learnOf(D, r || {}, now, []); if (L.cur) for (const m of L.course.modules) for (const p of m.parts) for (const l of p.lessons) if (l.id === L.cur.lesson) t = '«' + l.t + '»' } catch (e) {} text = text.replace(/\{урок\}/g, t) } }
+      /* chat — в чат на платформе + уведомление в бот; tg — только бот (у кого нет Telegram — в чат) */
+      if (via === 'chat' || !st.tg_chat) { ins.push(env.DB.prepare("INSERT INTO chat_msg (uid, cid, dir, text, via, who, at) VALUES (?,?,'out',?,'app',?,?)").bind(st.uid, st.curator || s.cid || null, text, who, now2)); res.chat++ }
+      if (st.tg_chat) tgq.push([st.tg_chat, st.uid, via === 'chat' ? '💬 <b>' + th(who) + ' написал' + fem(who) + '</b>\n' + th(text) : '<b>' + th(who) + '</b>\n' + th(text), via === 'chat'])
+    }
+    for (let i = 0; i < ins.length; i += 50) await env.DB.batch(ins.slice(i, i + 50));
+    for (const [chat, id, t, ch] of tgq) { const j = await tgSend(env, chat, t, ch ? [[{ text: 'Открыть чат', url: maLink(env, 'chat') }], [{ text: 'Ответить здесь', callback_data: 'chs:' + id }]] : null); if (j && j.ok) res.tg++; else res.fail++ }
+    res.skip += uids.length - sts.length; await logIt(env, 'cur-mass', 0, staffBy(s) + ' ' + via + ' chat ' + res.chat + ' tg ' + res.tg); return json(req, res) }
+  if (path === '/cur/admin') { if (!adm) return json(req, { ok: false, err: 'Раздел только для Романа' }, 403);
+    const st = await curStats(env, 30), from = now - 30 * 864e5;
+    const [sc, hw, rt, er] = await env.DB.batch([env.DB.prepare('SELECT uid, curator FROM student'), env.DB.prepare('SELECT cid, COUNT(*) n FROM cur_hw WHERE at>=? GROUP BY cid').bind(from), env.DB.prepare('SELECT cid, AVG(stars) a, COUNT(*) n FROM chat_rate GROUP BY cid'),
+      env.DB.prepare('SELECT s.curator cid, COALESCE(SUM(COALESCE(t.rub, t.amount)),0) total, COALESCE(SUM(CASE WHEN t.conf=1 THEN COALESCE(t.rub, t.amount) ELSE 0 END),0) conf FROM bank_tx t JOIN student s ON s.uid=t.uid WHERE t.del_at IS NULL GROUP BY s.curator')]);
+    const n = {}, cur = {}; for (const x of sc.results || []) { cur[x.uid] = x.curator; if (x.curator && !isStaffUid(env, x.uid)) n[x.curator] = (n[x.curator] || 0) + 1 }
+    const H = {}, R = {}, E = {}; for (const x of hw.results || []) H[x.cid] = x.n; for (const x of rt.results || []) R[x.cid] = x; for (const x of er.results || []) E[x.cid || ''] = x;
+    const curators = CURATORS.map(c => { const k = st.curators.find(x => x.id === c.id) || {}; return { cid: c.id, name: c.full, students: n[c.id] || 0, wait: (k.waiting || []).length, median_min: k.median == null ? null : Math.max(1, Math.round(k.median / 60)), in2h: k.in2h == null ? null : k.in2h, answered: k.answered || 0, tg: k.tg || null, connected: !!k.connected, hours: k.hours || null,
+      stars: R[c.id] ? Math.round(R[c.id].a * 10) / 10 : null, stars_n: R[c.id] ? R[c.id].n : 0, hw_checked: H[c.id] || 0, earned: Math.round((E[c.id] || {}).total || 0), earned_conf: Math.round((E[c.id] || {}).conf || 0) } });
+    let none = []; try { const D = await loadData(env); none = (D.rows || []).filter(r => r.uid != null && !cur[+r.uid] && !isStaffUid(env, r.uid)).map(r => ({ uid: +r.uid, name: r.name, tar: r.tar || null, place: r.place || null })) } catch (e) {}
+    return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length }, 200, { 'Cache-Control': 'no-store' }) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- Служба заботы: контроль качества ответов (Telegram Business) ----------
    Аккаунт службы заботы (CARE_USERNAME, по умолчанию zabota_oduvanov) подключает бота школы: Настройки → Telegram для бизнеса → Чат-боты.
