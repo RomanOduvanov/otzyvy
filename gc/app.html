@@ -296,6 +296,7 @@ html.pvw::after{content:"";position:fixed;left:0;right:0;top:0;bottom:0;z-index:
 .k-lnk{color:#d6c2ff;text-decoration:underline;text-underline-offset:2px;font:inherit;padding:6px 0;margin:-6px 0;display:inline-block;min-height:32px}
 /* чат */
 html.chopen #tabs{display:none}
+.efx{--ef-sb:var(--sb)} /* 30.10 эфиры: нижний отступ под полосу телефона */
 .k-chw{position:fixed;left:0;right:0;bottom:0;top:var(--st);z-index:6;display:flex;flex-direction:column;max-width:560px;margin:0 auto;background:var(--bg)}
 .k-chs{display:flex;align-items:center;gap:8px;padding:0 16px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12.5px;color:var(--ink2);min-height:34px;flex-wrap:wrap}
 .k-chs .k-cst{flex:1;min-width:0;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.k-chs .k-cst.on{color:#4ade80}
@@ -365,6 +366,7 @@ html.fs .k-chs.k-so{display:none}html.fs .k-chs .k-cst{display:none}html.fs .k-c
 <button data-t="bank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></svg><em>Банк</em></button>
 <button data-t="more"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><em>Ещё</em></button>
 </nav>
+<script src="efir.js?v=1"></script>
 <script src="bank.js?v=12"></script>
 <script>
 (function(){
@@ -543,7 +545,7 @@ function rLearn(){var v=$('v-learn');lBand('OduvanovSchool','мини-прило
     var xm=c.modules.filter(function(m){return mAcc(m)&&mX2(m)})[0];if(xm&&L.acc!=='dead')h+=lX2(xm);
     h+='<div class="h2">'+esc(cShort(c))+' <button data-l="all">Все курсы&nbsp;›</button></div><div class="lmods">'+lStrip(c)+'</div>'}
   else h+='<div class="h2">Мои курсы <button data-l="all">Все курсы&nbsp;›</button></div>'+lOther(L.other||[]);
-  v.className='v L';v.innerHTML=h;lStaffHs(v)}
+  v.className='v L';v.innerHTML=h;lStaffHs(v);efLive(v)}
 /* ---- L2: «Все курсы» ---- */
 function oKind(x){return x.kind==='rec'||x.kind==='live'?'rec':'bonus'}
 /* 28.10 (P0 → P1a): тренинг с истёкшим доступом — подпись «доступ закончился» и «Продлить» вместо прогресса; тап открывает продление */
@@ -831,13 +833,13 @@ function rMore(){var m=HOME.me,c=HOME.cur,h='',acc=m.acc?new Date(m.acc):null;
   h+='<button class="prof" id="mP" style="width:100%;text-align:left"><span class="av">'+esc((m.name||'?').charAt(0))+'</span><span style="flex:1;min-width:0"><b>'+esc(m.name)+'</b><small>'+(m.tar?esc(m.tar):'')+(acc?' · доступ до '+acc.getDate()+' '+MON[acc.getMonth()]+' '+acc.getFullYear():'')+'</small></span><span style="color:rgba(255,255,255,.6)">›</span></button>';
   if(c)h+='<button class="card" id="mC" style="flex-direction:row;align-items:center;gap:12px;text-align:left;color:#fff"><img class="face" src="ma/'+esc(c.id)+'.jpg" width="52" height="52" alt=""><span style="flex:1;min-width:0"><b style="display:block;font-weight:500">'+esc(c.full)+'</b><span class="mut3"><span style="color:'+(c.online?'#4ade80':'#777')+'">●</span> '+(c.online?'На связи':'Не на связи')+(c.hours?' · с '+c.hours[0]+':00 до '+c.hours[1]+':00':'')+'</span></span><span class="ch" style="color:rgba(255,255,255,.3)">›</span></button>';
   else h+='<button class="card" id="mC" style="text-align:left;color:#fff"><b style="font-weight:500">Выбери куратора</b><span class="mut">Он проверит домашки и&nbsp;ответит на&nbsp;вопросы</span></button>';
-  h+='<div class="list">'+(T&&T.staff&&!VW?'<button data-p="cab"><b>Кабинет куратора<small>Чаты, проверка ДЗ, оплаты, статистика</small></b><span class="ch">›</span></button><button data-p="pult"><b>Пульт куратора<small>Ученики, ответы и&nbsp;рассылки</small></b><span class="ch">›</span></button><button data-p="va"><b>Смотреть как ученик…<small>Все вкладки глазами ученика, только просмотр</small></b><span class="ch">›</span></button>':'')+'<button data-p="cur"><b>Мой куратор</b><span class="ch">›</span></button><button data-p="buy"><b>Мои покупки</b><span class="ch">›</span></button><button data-p="prof"><b>Профиль</b><span class="ch">›</span></button><button data-p="notif"><b>Уведомления<small>Что присылает бот школы</small></b><span class="ch">›</span></button><button data-p="train"><b>Все тренинги</b><span class="ch">›</span></button></div>';
+  h+='<div class="list">'+(T&&T.staff&&!VW?'<button data-p="cab"><b>Кабинет куратора<small>Чаты, проверка ДЗ, оплаты, статистика</small></b><span class="ch">›</span></button><button data-p="pult"><b>Пульт куратора<small>Ученики, ответы и&nbsp;рассылки</small></b><span class="ch">›</span></button><button data-p="va"><b>Смотреть как ученик…<small>Все вкладки глазами ученика, только просмотр</small></b><span class="ch">›</span></button>':'')+'<button data-p="efir"><b>Эфиры<small>Идёт сейчас, ближайшие и&nbsp;записи</small></b><span class="ch">›</span></button><button data-p="cur"><b>Мой куратор</b><span class="ch">›</span></button><button data-p="buy"><b>Мои покупки</b><span class="ch">›</span></button><button data-p="prof"><b>Профиль</b><span class="ch">›</span></button><button data-p="notif"><b>Уведомления<small>Что присылает бот школы</small></b><span class="ch">›</span></button><button data-p="train"><b>Все тренинги</b><span class="ch">›</span></button></div>';
   h+='<div class="list"><button data-x="https://t.me/zabota_oduvanov"><b>Служба заботы<small>Telegram</small></b><span class="ext">↗</span></button><button data-x="https://www.youtube.com/@romanoduvanov"><b>YouTube Романа</b><span class="ext">↗</span></button><button data-x="https://t.me/roduvanov"><b>Telegram-канал Романа</b><span class="ext">↗</span></button></div>';
   if(canFS())h+='<div class="list"><button id="mFS"><b>Полноэкранный режим<small>Кнопки Telegram на&nbsp;тёмной полосе сверху</small></b><span class="sw'+(fsPref()?' on':'')+'"></span></button></div>';
   h+='<button class="btn2" id="home">Добавить иконку на&nbsp;экран телефона</button><span class="mut3" style="text-align:center">'+(HOME.updated?'Данные рейтинга: '+esc(HOME.updated):'')+'</span>';
   $('v-more').innerHTML=h;
   $('mP').onclick=pProfile;$('mC').onclick=pCurator;
-  $('v-more').querySelectorAll('[data-p]').forEach(function(b){b.onclick=function(){var p=b.getAttribute('data-p');if(p==='pult'){pPult()}else({cur:pCurator,buy:pBuy,prof:pProfile,train:function(){lGet().then(function(){if(LST==='ok')lAll('main');else pTrain()})},va:pViewAs,cab:pCab,notif:pNotif})[p]()}});
+  $('v-more').querySelectorAll('[data-p]').forEach(function(b){b.onclick=function(){var p=b.getAttribute('data-p');if(p==='pult'){pPult()}else({efir:pEfirs,cur:pCurator,buy:pBuy,prof:pProfile,train:function(){lGet().then(function(){if(LST==='ok')lAll('main');else pTrain()})},va:pViewAs,cab:pCab,notif:pNotif})[p]()}});
   $('v-more').querySelectorAll('[data-x]').forEach(function(b){b.onclick=function(){ext(b.getAttribute('data-x'))}});
   var fs=$('mFS');if(fs)fs.onclick=function(){var on=!fsPref();try{localStorage.setItem('maFS',on?'1':'0')}catch(e){}fs.querySelector('.sw').classList.toggle('on',on);applyFS()};
   var b=$('home');var hb=function(){if(VW||HSS==='unsupported'||!TGW||!TGW.addToHomeScreen){b.classList.add('hid');return}if(HSS==='added'||(HSF&&HSF.v==='done')){b.textContent='✓ Иконка уже на экране';b.disabled=true}else b.onclick=function(){hsSave('done');addHome()}};if(HSS)hb();else hsCheck(hb)}
@@ -968,7 +970,7 @@ function kStaffCur(){return '<div class="card k-emp"><span class="k-ic">'+ic('us
 function kBind(v){v.onclick=function(e){var b=e.target.closest('[data-k]');if(!b||!v.contains(b))return;var k=b.getAttribute('data-k'),c=cInfo(CHJ);hap();
   if(k==='ai')tab('ai');else if(k==='care')ext(CARE);else if(k==='chat')pChat();else if(k==='tg'&&c&&c.tg)ext('https://t.me/'+c.tg);else if(k==='works')pWorks('all');else if(k==='cab')pCab();
   else if(k==='les'){var x=xFind(b.getAttribute('data-id'));if(x&&xLock(x)){lToast(xLock(x)==='date'?'Урок откроется '+dm(x.at):'Сначала пройди стоп-урок модуля');return}b.classList.add('busy');openGC('/pl/teach/control/lesson/view?id='+(+b.getAttribute('data-id')))}
-  else if(k==='retry'){LQ=null;kWorks()}else if(k==='rem')lToast('Бот напомнит за час до эфира')}}
+  else if(k==='retry'){LQ=null;kWorks()}else if(k==='rem'){var ke=HOME&&HOME.efir;if(ke&&ke.id)pEfir(ke.id);else pEfirs()}}}
 function pCurator(){if(T&&T.staff&&!VW){page('Мой куратор','<div class="v" id="kCur">'+kStaffCur()+'</div>',function(){kBind($('kCur'))},{ln:1,hash:'cur'});return}
   page('Мой куратор','<div class="v" id="kCur" style="gap:12px">'+kCurHtml(cInfo(CHJ))+'</div>',function(){kBind($('kCur'));kWorks();
     capi('/chat/list').then(function(j){if(!j||!j.ok||!$('kCur'))return;CHJ=j;$('kCur').innerHTML=kCurHtml(cInfo(j));kWorks()}).catch(function(){})},{ln:1,hash:'cur'})}
@@ -977,7 +979,7 @@ function kEfir(){var e=(HOME&&HOME.efir)||(LRN&&LRN.efir)||null,at=e&&kT(e.at);
   if(at&&at>Date.now()){var s=Math.floor((at-Date.now())/1000),hh=Math.floor(s/3600),mm=Math.floor(s%3600/60);
     return '<div class="card"><span class="k-pill v" style="align-self:flex-start">Эфир · '+dmt(new Date(at).toISOString())+'</span><b style="font-size:18px;font-weight:600;line-height:1.25">'+nbt(e.title||'Эфир')+'</b>'+(e.who||e.note?'<span class="mut" style="font-size:13px">'+nbt([e.who?'Ведёт '+e.who:'',e.note||''].filter(Boolean).join(' · '))+'</span>':'')
       +'<div class="row" style="gap:10px"><div class="tm" style="flex:1;display:flex;gap:6px"><span class="k-pill n" style="height:40px;padding:0 12px;font-size:16px;font-weight:600">'+hh+'&nbsp;<small style="font-size:11px;font-weight:500">'+plr(hh,'час','часа','часов')+'</small></span><span class="k-pill n" style="height:40px;padding:0 12px;font-size:16px;font-weight:600">'+mm+'&nbsp;<small style="font-size:11px;font-weight:500">мин</small></span></div><button class="btn2" data-k="rem" style="width:auto;padding:0 16px;height:44px">'+ic('bell',16)+'Напомнить</button></div></div>'}
-  return '<div class="card k-ef"><span class="k-ic">'+ic('live',20)+'</span><span class="t"><b>Эфиры с&nbsp;куратором</b><small>Ближайший появится здесь&nbsp;— бот напомнит за&nbsp;час</small></span></div>'}
+  return '<button class="card k-ef" data-k="rem" style="text-align:left;color:#fff"><span class="k-ic">'+ic('live',20)+'</span><span class="t"><b>Эфиры с&nbsp;куратором</b><small>Ближайший появится здесь&nbsp;— бот напомнит за&nbsp;час</small></span></button>'}
 /* ---- 12.3 «Мои работы»: домашки из /ma/learn (hw.st: rv на проверке, ok принято, wn доработать, dr черновик) ---- */
 function kHw(){var c=LRN&&LRN.course,L=[];if(!c)return L;c.modules.forEach(function(m){if(!mAcc(m))return;m.ls.forEach(function(x){if(x.kind==='hw')L.push(x)})});return L}
 function kHwSt(x){var w=x.hw,st=w&&w.st;
@@ -1134,7 +1136,7 @@ function kStaffBind(){var sb=$('stBank');if(sb)sb.onclick=function(){tab('bank')
     t.innerHTML='<button data-s="hw"><small>ДЗ ждут</small><b>'+(me&&kNum(me.hw)?me.hw:'—')+'</b><em>на&nbsp;сайте&nbsp;↗</em></button><button data-s="ch"><small>Сообщения</small><b>'+(D?W.length:'—')+'</b><em'+(old?' class="'+(Date.now()-old>72e5?'r':'a')+'"':'')+'>'+(old?'старшее '+kAgo(old):'никто не&nbsp;ждёт')+'</em></button>';t.classList.remove('hid');
     t.onclick=function(e){var b=e.target.closest('[data-s]');if(!b)return;hap();if(b.getAttribute('data-s')==='hw')kHwGo(b);else pChats('wait')}})}
 /* ---- 10 «Уведомления»: что бот присылает ученику (/ma/notif). Ответ куратора выключить нельзя ---- */
-var NTF=[['cur','chat','','Куратор ответил','сразу · выключить нельзя'],['hw','ok','g','ДЗ проверено','принято или доработать'],['efir','live','r','Эфиры','за&nbsp;1&nbsp;час и&nbsp;когда начался'],['lessons','cap','b','Новые уроки','когда открывается модуль'],['rating','cup','a','Рейтинг','раз в&nbsp;неделю, место и&nbsp;×2'],['bank','card','o','Банк','ожидаемые оплаты, новый статус']];
+var NTF=[['cur','chat','','Куратор ответил','сразу · выключить нельзя'],['hw','ok','g','ДЗ проверено','принято или доработать'],['efir','live','r','Эфиры','за&nbsp;сутки, за&nbsp;час и&nbsp;при старте'],['lessons','cap','b','Новые уроки','когда открывается модуль'],['rating','cup','a','Рейтинг','раз в&nbsp;неделю, место и&nbsp;×2'],['bank','card','o','Банк','ожидаемые оплаты, новый статус']];
 function pNotif(){var N={cur:1,hw:1,efir:1,lessons:1,rating:0,bank:1,quiet:0,qfrom:23,qto:9},st='load',tmo=0,prev=null;
   var draw=function(){var B=$('kNt');if(!B)return;var dis=VW||st!=='ok',h='';
     if(st==='nf')h+='<div class="info">'+ic('bell',18)+'Настройки уведомлений заработают в&nbsp;ближайшем обновлении. Сейчас бот присылает всё важное.</div>';
@@ -1148,8 +1150,25 @@ function pNotif(){var N={cur:1,hw:1,efir:1,lessons:1,rating:0,bank:1,quiet:0,qfr
   var save=function(){clearTimeout(tmo);tmo=setTimeout(function(){var snap=JSON.parse(JSON.stringify(prev));capi('/ma/notif',{method:'POST',body:JSON.stringify(N)}).then(function(j){if(j&&j.ok){prev=JSON.parse(JSON.stringify(N));return}N=snap;draw();lToast(j&&j.nf?'Настройки заработают после обновления':'Не сохранилось — попробуй ещё раз')}).catch(function(){N=snap;draw();lToast('Нет связи — не сохранилось')})},400)};
   var load=function(){st='load';capi('/ma/notif').then(function(j){if(j&&j.nf)st='nf';else if(j&&j.ok!==false){var s=j.notif||j.n||j;Object.keys(N).forEach(function(k){if(s[k]!=null)N[k]=+s[k]});st='ok'}else st='err';prev=JSON.parse(JSON.stringify(N));draw()}).catch(function(){st='err';draw()})};
   page('Уведомления','<div class="v" id="kNt" style="gap:12px"><span class="sk" style="height:380px"></span><span class="sk" style="height:110px"></span></div>',function(){var v=$('kNt');v.onclick=function(e){var b=e.target.closest('[data-n]');if(!b||b.disabled)return;var k=b.getAttribute('data-n');hap();if(k==='re'){load();return}if(k==='cur')return;N[k]=+N[k]?0:1;draw();save()};load()},{ln:1,hash:'notif'})}
+/* ========== 30.10 «Эфиры» (макет 9.2, 9.14, 12.4): список, комната эфира/автовебинара (как LIVE), запись с главами. Модуль app/efir.js, сервер /efir/*.
+   Адреса: #efir, #efir/<id>. start_param: efir, e<id> (кнопки бота «Открыть эфир»). На «Учёбе» идущий эфир — постером первым (EFL — кеш списка на 60 с) ========== */
+var EFL=null,EFT=0;
+function eO(){return {api:function(p,o){return capi(p,o||{})},open:openExt,hap:hap,toast:lToast,uid:T&&T.u,
+  top:function(){var hd=document.querySelector('#v-page>.pgh');if(hd&&getComputedStyle(hd).display!=='none')return hd.getBoundingClientRect().bottom;var t=$('tgtop');return t?t.getBoundingClientRect().bottom:0},
+  go:function(k,id){if(k==='room'){pEfir(id);return}var p=PG[PG.length-2];if(p&&p.o&&p.o.hash==='efir'){pageBack();return}pEfirs()},
+  title:function(t,sub){var p=PG[PG.length-1];if(p&&p.o&&/^efir\//.test(p.o.hash||'')){p.o.sub=sub;lBand(p.t,sub)}}}}
+function efGet(){if(EFL&&Date.now()-EFT<60e3)return Promise.resolve(EFL);return capi('/efir/list').then(function(j){if(j&&j.ok){EFL=j;EFT=Date.now();var s=(j.soon||[]).filter(function(x){return !x.locked})[0];if(HOME)HOME.efir=s?{id:s.id,title:s.title,at:s.start,who:(s.host||{}).name}:null}return j}).catch(function(){return null})}
+function efLive(v){efGet().then(function(j){var L=j&&j.live||[];if(!L.length||CUR!=='learn'||PG.length||!v.isConnected||v.querySelector('#efLv'))return;var e=L[0],hi=v.querySelector('.hi');if(!hi)return;
+  hi.insertAdjacentHTML('afterend','<div id="efLv" style="display:flex;flex-direction:column;gap:10px"><button class="card" data-e="'+e.id+'" style="padding:0;overflow:hidden;position:relative;border-color:rgba(239,68,68,.35);color:#fff;text-align:left;gap:0"><span style="display:block;aspect-ratio:16/10;background:linear-gradient(135deg,#3a1470,#120a24 60%,#2a0d10)">'+(e.cover?'<img src="'+esc(e.cover)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block">':'')+'</span><span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.2),transparent 30%,rgba(5,5,9,.95))"></span><span style="position:absolute;left:14px;top:14px;display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:8px;background:#ef4444;font-weight:700;font-size:12px;letter-spacing:.06em">● LIVE</span><span style="position:absolute;left:16px;right:16px;bottom:14px;display:flex;flex-direction:column;gap:4px"><b style="font-size:19px;font-weight:600;line-height:1.2">'+nbt(e.title)+'</b><span class="mut">'+(e.viewers?e.viewers+'&nbsp;'+plr(e.viewers,'смотрит','смотрят','смотрят')+' · ':'')+esc((e.host||{}).short||'')+'</span></span></button><button class="btn" data-e="'+e.id+'">Войти в&nbsp;эфир</button></div>');
+  v.querySelector('#efLv').onclick=function(ev){var b=ev.target.closest('[data-e]');if(b){hap();pEfir(+b.getAttribute('data-e'))}}})}
+function pEfirs(){page('Эфиры','<div id="efL"></div>',function(){ECOEFIR.list($('efL'),eO())},{ln:1,hash:'efir'})}
+function pEfir(id){page('Эфир','<div id="efR"></div>',function(){ECOEFIR.room($('efR'),+id,eO())},{ln:1,hash:'efir/'+id})}
+function efRoute(h,sp){var m=(h||'').match(/^efir(?:\/(\d+))?$/),id=0;if(m)id=+(m[1]||0);
+  else{var x=String(sp||'').match(/^(?:efir|e(\d+))$/),seen='';if(!x)return false;try{seen=sessionStorage.getItem('maSP')||''}catch(e){}if(seen===sp)return false;try{sessionStorage.setItem('maSP',sp)}catch(e){}id=+(x[1]||0)}
+  tab('learn',true);pEfirs();if(id)pEfir(id);return true}
 /* ---- адреса экранов и start_param ---- */
 function kRoute(h,sp){var st=!!(T&&T.staff&&!VW),R=/^(cur|chat|works|notif|cab|chats)$/,r='',u=0,x,seen='';h=h||'';sp=String(sp||'');
+  if(efRoute(h,sp))return true;
   if(R.test(h))r=h;else if((x=h.match(/^chat\/(\d+)$/)))u=+x[1];
   else{try{seen=sessionStorage.getItem('maSP')||''}catch(e){}if(seen!==sp&&(R.test(sp)||/^chat_\d+$/.test(sp))){try{sessionStorage.setItem('maSP',sp)}catch(e){}if(R.test(sp))r=sp;else u=+sp.slice(5)}}
   if(u){if(!st)return false;tab('more',true);pChats('wait');pChatS(u,'');return true}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Эфиры · OduvanovSchool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#000106;color:#fff;font:400 15px/1.45 "Inter Tight",Inter,system-ui,sans-serif;font-feature-settings:"tnum"}
+body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.3),transparent 70%) fixed,#000106}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 20px 80px;display:flex;flex-direction:column;gap:16px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.bar a,.bar button{font:500 14px "Inter Tight",sans-serif;color:#d77fff;background:none;border:0;cursor:pointer;min-height:40px;padding:0 4px;text-decoration:none}
+.login{display:grid;place-items:center;padding:40px 0}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center;padding:36px 28px;border-radius:32px;background:#161616;border:1px solid rgba(255,255,255,.08)}
+.lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}.btn:disabled{opacity:.5}
+.btn2{height:46px;width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#1c1c1c;color:#fff;font:500 15px "Inter Tight",sans-serif;cursor:pointer}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
+html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}html.emb .wrap{padding:20px 24px 48px}
+@media (max-width:767px){.wrap{padding:12px 12px 60px}html.emb .wrap{padding:8px 12px 40px}}
+</style></head><body>
+<div class="wrap">
+<div class="bar hid" id="bar"><button id="bBack" class="hid">← Все эфиры</button><span></span><button id="bHost" class="hid">Пульт эфиров</button></div>
+<div id="login" class="login hid"><div class="lg"><h2>Эфиры школы</h2><p id="lgP">Войди через Telegram&nbsp;— эфиры общие с&nbsp;мини-приложением.</p>
+<button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
+<div id="ef"></div>
+</div>
+<script src="efir.js?v=1"></script>
+<script>
+(function(){
+/* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
+   Вход: кабинет отдаёт токен своего пользователя (eco.js → FS_AUTH) → сессия сервера (ученик или команда, роль решает сервер); вне кабинета — через бота. */
+var EMB=/[?&]embed=1/.test(location.search);if(EMB)document.documentElement.classList.add('emb');
+var API='https://oduvanov-api.romanoduvanov52.workers.dev',TK=null,ROLE='';try{TK=localStorage.getItem('efTok');ROLE=localStorage.getItem('efRole')||''}catch(e){}
+function $(i){return document.getElementById(i)}
+function qs(k){var m=location.search.match(new RegExp('[?&]'+k+'=([^&#]+)'));return m?decodeURIComponent(m[1]):''}
+var GID=+qs('id')||0,GR=qs('r');if(!/^g-?\d{3,20}\.[0-9a-f]{20}$/.test(GR))GR='';
+function apiF(p,o){o=o||{};var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
+  return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
+function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
+var O={api:apiF,open:open,role:GR?'guest':'',fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
+  onHost:function(){nav('#host')},top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4}};
+function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
+$('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
+  fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').textContent='Нажми «Старт» в боте. Жду подтверждения…';var n=0;
+    var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}
+      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';save(c.token,'');$('login').classList.add('hid');route()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})};
+function save(t,role){TK=t;ROLE=role||'';try{localStorage.setItem('efTok',t);localStorage.setItem('efRole',ROLE)}catch(e){}}
+function bridge(force){return new Promise(function(res){if(!EMB||window.parent===window)return res(null);var done=0,h=function(e){if(e.source!==window.parent||!e.data||!('ecoAuth' in e.data))return;removeEventListener('message',h);done=1;res(e.data.ecoAuth)};addEventListener('message',h);try{parent.postMessage({ecoNeedAuth:1,force:!!force},'*')}catch(x){}setTimeout(function(){if(!done){removeEventListener('message',h);res(null)}},5000)})}
+function viaSite(force){return bridge(force).then(function(a){if(!a||!a.t)return false;return fetch(API+'/app/api/login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok)return false;save(j.token,j.role);return true})}).catch(function(){return false})}
+function nav(h){if(location.hash!==h)location.hash=h;else route()}
+var CUR=null;
+function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff=ROLE==='admin'||ROLE==='curator';$('login').classList.add('hid');
+  el.className='';el.innerHTML='';if(CUR&&CUR.stop)CUR.stop();CUR=null;
+  $('bar').classList.toggle('hid',!!GR&&!m);$('bBack').classList.toggle('hid',!(m||h==='#host')||!!GR);$('bHost').classList.toggle('hid',!staff||h==='#host');
+  if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';CUR=ECOEFIR.host(el,O);return}
+  if(m){O.back=false;CUR=ECOEFIR.room(el,+m[1],O);return}
+  document.title='Эфиры · OduvanovSchool';CUR=ECOEFIR.list(el,O)}
+$('bBack').onclick=function(){nav('#')};$('bHost').onclick=function(){nav('#host')};
+addEventListener('hashchange',route);
+/* гость открытого эфира (ссылка из бота): сразу комната; без метки и без входа — лендинг с «Напомнить в Telegram» */
+if(GR){if(!location.hash)location.replace('#e'+GID);route()}
+else viaSite().then(function(ok){if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()});
+})();
+</script></body></html>

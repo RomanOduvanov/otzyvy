@@ -101,7 +101,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <header class="hd"><div><h1 id="hTitle">Пульт куратора</h1><p id="hSub">Ученики, ответы и&nbsp;рассылки</p></div>
 <div class="row"><div class="seg hid" id="curSeg"></div><button class="sb" id="bOut">Выйти</button></div></header>
 <div class="kpis" id="kpis"></div>
-<div class="ctl"><div class="tabs" id="tabs"><button data-t="st" class="on">Ученики</button><button data-t="cu" class="hid" id="tabCu">Кураторы</button><button data-t="ch">Чаты</button><button data-t="bc">Рассылки</button><button data-t="hr">Время работы</button><button data-t="ms" id="tabMs">Моя статистика</button><button data-t="bk">Банк учеников</button><button data-t="cz" class="hid" id="tabCz">Служба заботы</button><button data-t="nr" class="hid" id="tabNr">Нейро</button><button data-t="an" class="hid" id="tabAn">Аналитика</button></div><span class="muted" id="upd" style="font-size:13px"></span></div>
+<div class="ctl"><div class="tabs" id="tabs"><button data-t="st" class="on">Ученики</button><button data-t="cu" class="hid" id="tabCu">Кураторы</button><button data-t="ch">Чаты</button><button data-t="bc">Рассылки</button><button data-t="hr">Время работы</button><button data-t="ms" id="tabMs">Моя статистика</button><button data-t="bk">Банк учеников</button><button data-t="ef">Эфиры</button><button data-t="cz" class="hid" id="tabCz">Служба заботы</button><button data-t="nr" class="hid" id="tabNr">Нейро</button><button data-t="an" class="hid" id="tabAn">Аналитика</button></div><span class="muted" id="upd" style="font-size:13px"></span></div>
 
 <section id="t-st" class="tab">
 <div class="ctl" style="margin-bottom:12px"><div class="seg sx" id="flt"><button data-f="all" class="on">Все</button><button data-f="wait">Ждут ответа</button><button data-f="idle">Не заходили больше 5 дней</button><button data-f="notg">Без Telegram</button></div>
@@ -125,6 +125,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <section id="t-cu" class="tab hid"><div id="cuBox" style="display:flex;flex-direction:column;gap:16px"></div></section>
 <section id="t-ms" class="tab hid"><div id="msBox" style="display:flex;flex-direction:column;gap:16px"></div></section>
 <section id="t-bk" class="tab hid"><div id="bkPend" style="max-width:1180px"></div><div id="bkBox" style="max-width:1180px"></div></section>
+<section id="t-ef" class="tab hid"><div id="efBox"></div></section>
 <section id="t-an" class="tab hid"><div id="anBox" style="display:flex;flex-direction:column;gap:16px"></div></section>
 <section id="t-nr" class="tab hid"><div id="nrBox" style="display:flex;flex-direction:column;gap:16px"></div></section>
 <section id="t-cz" class="tab hid"><div id="czBox" style="display:flex;flex-direction:column;gap:16px"></div></section>
@@ -135,6 +136,7 @@ html.emb body{background:transparent;min-height:0}html.emb .wrap{padding:8px 40p
 <div id="selB" class="hid"><b id="selT"></b><span class="muted" id="selS" style="font-size:13px"></span><div class="row"><button class="sb pri" id="sbChat">Написать в&nbsp;чат</button><button class="sb" id="sbTg">В&nbsp;Telegram</button><button class="sb hid" id="sbAs">Назначить куратора</button><button class="sb" id="sbX">Снять выбор</button></div></div>
 <div class="toast" id="toast"></div>
 <script src="bank.js?v=12"></script>
+<script src="efir.js?v=1"></script>
 <script>
 (function(){
 var MA=/[?&]ma=1\b/.test(location.search),EMB=MA||/[?&]embed=1/.test(location.search);if(MA)document.documentElement.classList.add('ma');if(EMB&&!MA){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
@@ -180,7 +182,7 @@ $('q').oninput=renderT;
 document.querySelectorAll('#flt button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#flt button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');F=b.getAttribute('data-f');renderT()}});
 document.querySelectorAll('th[data-s]').forEach(function(th){th.onclick=function(){var k=th.getAttribute('data-s');SORT={k:k,d:SORT.k===k?-SORT.d:(k==='name'?1:-1)};renderT()}});
 document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#tabs button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');
-  document.querySelectorAll('.tab').forEach(function(x){x.classList.add('hid')});$('t-'+b.getAttribute('data-t')).classList.remove('hid');if(b.getAttribute('data-t')==='bc'){upPrev();loadLog()}if(b.getAttribute('data-t')==='cz')czLoad();var kt=b.getAttribute('data-t');if(kt==='ch')chStart();else clearInterval(CHS.tm);if(kt==='cu')cuLoad();if(kt==='ms')msLoad();if(kt==='bk')bkPend();selBar();if(b.getAttribute('data-t')==='nr')nrLoad();if(b.getAttribute('data-t')==='an')anLoad();if(b.getAttribute('data-t')==='bk'&&!window.__bk){window.__bk=1;var BA=API.replace(/\/app\/api\/$/,'');ECOBANK.staff($('bkBox'),{api:function(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+T;return fetch(BA+p,o).then(function(r){if(r.status===401){logout(true);throw new Error('auth')}return r.json()})},file:function(id){return BA+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}}});
+  document.querySelectorAll('.tab').forEach(function(x){x.classList.add('hid')});$('t-'+b.getAttribute('data-t')).classList.remove('hid');if(b.getAttribute('data-t')==='bc'){upPrev();loadLog()}if(b.getAttribute('data-t')==='cz')czLoad();var kt=b.getAttribute('data-t');if(kt==='ch')chStart();else clearInterval(CHS.tm);if(kt==='cu')cuLoad();if(kt==='ms')msLoad();if(kt==='bk')bkPend();if(kt==='ef')efMount();selBar();if(b.getAttribute('data-t')==='nr')nrLoad();if(b.getAttribute('data-t')==='an')anLoad();if(b.getAttribute('data-t')==='bk'&&!window.__bk){window.__bk=1;var BA=API.replace(/\/app\/api\/$/,'');ECOBANK.staff($('bkBox'),{api:function(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+T;return fetch(BA+p,o).then(function(r){if(r.status===401){logout(true);throw new Error('auth')}return r.json()})},file:function(id){return BA+'/bank/file?id='+id+'&t='+T},open:function(u){window.open(u,'_blank')}})}}});
 $('bSelMsg').onclick=function(){setR('sel');document.querySelector('#tabs [data-t=bc]').click()};
 function setR(r){RCPT=r;document.querySelectorAll('#bcTo button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-r')===r)});upPrev()}
 document.querySelectorAll('#bcTo button').forEach(function(b){b.onclick=function(){setR(b.getAttribute('data-r'))}});
@@ -391,6 +393,10 @@ function cuDraw(nf){var B=$('cuBox'),a=XK.adm||{},st=(STALL&&STALL.curators)||[]
   B.innerHTML=h;var n=$('cuNone');if(n)n.onclick=function(){curPick('none');tabGo('st')};
   B.querySelectorAll('[data-cu]').forEach(function(b){b.onclick=function(){curPick(b.getAttribute('data-cu'));tabGo('ms')}})}
 function curPick(c){var sg=$('curSeg');CUR=c;SEL={};sg.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-c')===c)});view()}
+/* 30.10 «Эфиры» (макет 9.7–9.16): создать эфир, пульт ведущего, модерация, автовебинары, статистика, заявки. Модуль efir.js, сервер /efir/* (роль проверяет сервер: куратор — свои эфиры, без продаж) */
+var EFH=null;function efMount(){if(EFH&&$('efBox').firstChild)return;var EA=API.replace(/\/app\/api\/$/,'');
+  EFH=ECOEFIR.host($('efBox'),{api:function(p,o){o=o||{};return fetch(EA+p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body}).then(function(r){if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})},
+    toast:toast,open:function(u){window.open(u,'_blank','noopener')},fileUrl:function(eid,mid){return EA+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+T}})}
 function tabGo(t){var b=document.querySelector('#tabs [data-t="'+t+'"]');if(b)b.click()}
 /* ---- «Моя статистика» (7.2): куратор — свои цифры; админ — выбранного вверху куратора ---- */
 var MSD=30;
