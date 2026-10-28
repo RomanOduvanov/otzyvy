@@ -189,8 +189,17 @@ window.__gm = {done: false, step: 'start', err: []};
       if (!added) break;
     }
   }
+  // 5) 29.10: какой опрос стоит в каждом уроке-анкете (GetCourse засчитывает анкету по ответу на опрос, в «пройдено» её нет) — урок → surveyId
+  G.step = 'anketa-survey';
+  const anketaSurvey = {};
+  for (const sb of subs) for (const l of sb.lessons) if (l.kind === 'anketa' && !anketaSurvey[l.id]) {
+    try { const h = await get('/pl/teach/control/lesson/view?id=' + l.id); const bid = (h.match(/o-lt-form-survey"\s+data-block-id="(\d+)"/) || [])[1]; if (!bid) continue;
+      const t = await (await fetch('/pl/lite/block/settings?id=' + bid, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded'}, body: ''})).text();
+      const i = t.indexOf('[survey_id]'), m = i < 0 ? null : t.slice(i, i + 30000).match(/value=\\*"(\d+)\\*" selected/); if (m) anketaSurvey[l.id] = m[1] } catch (e) {}
+  }
+  console.log('анкеты → опросы:', Object.keys(anketaSurvey).length);
   G.step = 'ship';
-  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, access, tariff, amz, passed, stops: [...stops], other});
+  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, anketaSurvey, access, tariff, amz, passed, stops: [...stops], other});
   const s = {uploadScript: 'x'}; getUploadifySecretLink([], s);
   const fd = new FormData(); fd.append('fullAnswer', 'true'); fd.append('Filedata', new File([out], 'gm.txt', {type: 'text/plain'}));
   G.url = await new Promise(res => { const x = new XMLHttpRequest(); x.open('POST', s.uploadScript); x.onload = () => { try { res(JSON.parse(x.responseText).download_url); } catch (e) { res('ERR'); } }; x.onerror = () => res('xhrerr'); x.send(fd); });
