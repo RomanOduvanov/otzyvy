@@ -20,7 +20,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <button class="btn" id="bLogin">Войти через Telegram</button><button class="btn2" id="bStaff">Я из команды школы</button><span class="muted" id="lgSt"></span></div></div>
 <div id="bank"></div>
 </div>
-<script src="bank.js?v=12"></script>
+<script src="bank.js?v=13"></script>
 <script>
 (function(){
 /* 27.10: во фрейме кабинета страница на весь экран со своей прокруткой (фрейм fs-full растягивает тема) — одна полоса прокрутки, высоту наружу не шлём */
@@ -32,7 +32,7 @@ function qp(k){var m=location.search.match(new RegExp('[?&]'+k+'=(\\d+)'));retur
 var TU=qp('u'),GC=qp('gc'),VIEW=/[?&]view=orders/.test(location.search)?'orders':'bank',EB=null,ST=null;try{EB=localStorage.getItem('ebTok');ST=localStorage.getItem('oaTok')}catch(e){}
 function $(i){return document.getElementById(i)}
 function req(tok,p,o,onAuth){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});o.headers.Authorization='Bearer '+tok;
-  return fetch(API+p,o).then(function(r){if(r.status===401){onAuth();throw new Error('auth')}if(r.status===403&&/^\/bank\/summary/.test(p)){$('bank').innerHTML='<div class="lg" style="margin:20px auto"><h2>Нет доступа</h2><p>Это не&nbsp;твой ученик&nbsp;— куратор видит банк только своих учеников.</p></div>';throw new Error('403')}return r.json()})}
+  return fetch(API+p,o).then(function(r){if(r.status===401){onAuth();throw new Error('auth')}if(r.status===403&&/^\/bank\/summary/.test(p)&&(TU||!/[?&]u=/.test(p))){$('bank').innerHTML='<div class="lg" style="margin:20px auto"><h2>Нет доступа</h2><p>Это не&nbsp;твой ученик&nbsp;— куратор видит банк только своих учеников.</p></div>';throw new Error('403')}return r.json()})}
 function login(kind){$('bank').innerHTML='';$('login').classList.remove('hid');var staffOnly=kind==='staff';
   $('lgH').textContent=staffOnly?'Вход для команды школы':'Вход через Telegram';$('lgP').innerHTML=staffOnly?'Банк ученика видят админы и&nbsp;кураторы (свои ученики). Подтверди вход в&nbsp;боте школы&nbsp;— один раз на&nbsp;30&nbsp;дней, общий с&nbsp;пультом.':'Нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда. Банк общий с&nbsp;мини-приложением.';
   $('bLogin').textContent=staffOnly?'Войти через Telegram':'Войти через Telegram';$('bLogin').onclick=function(){go(staffOnly?'staff':'student',this)};$('bStaff').classList.toggle('hid',staffOnly);$('bStaff').onclick=function(){go('staff',this)}}
@@ -47,7 +47,7 @@ var SUB={bank:'Деньги, которые ты&nbsp;заработал на&nb
 /* v12: uid ученика из токена (uid.exp.a.hmac) — для ссылки «Поделиться картой», если сервер не прислал свою метку */
 function tokUid(t){var m=String(t||'').match(/^(\d+)\./);return m?+m[1]:0}
 function own(){$('login').classList.add('hid');head(VIEW==='orders'?'Мои заказы':'Мой банк',SUB[VIEW]);ECOBANK.mount($('bank'),{view:VIEW,title:false,uid:tokUid(EB),onView:function(v,ro){if(!ro)head(v==='orders'?'Мои заказы':'Мой банк',SUB[v])},api:function(p,o){return req(EB,p,o,function(){EB=null;try{localStorage.removeItem('ebTok')}catch(e){}viaSite(true).then(function(r){if(r==='student')own();else if(r)team();else if(ST&&GC&&!TU)team();else login('student')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+EB},open:function(u){window.open(u,'_blank')}})}
-function team(){$('login').classList.add('hid');var target=TU||(GC&&!STAFF[GC]?GC:0);head(target?'Банк ученика':VIEW==='orders'?'Заказы учеников':'Банк учеников',target?'Только просмотр: доход, оплаты и&nbsp;заказы ученика':'Сколько ученики заработали на&nbsp;дизайне');
+function team(){$('login').classList.add('hid');var target=TU||(GC&&!STAFF[GC]?GC:0);head(target?'Банк ученика':VIEW==='orders'?'Заказы учеников':'Банк учеников',target?'Только просмотр: доход, оплаты и&nbsp;заказы ученика':VIEW==='orders'?'Что ученики делают для&nbsp;клиентов: шаги, сроки и&nbsp;оплаты. Клиенты и&nbsp;ТЗ скрыты':'Сколько ученики заработали на&nbsp;дизайне');
   ECOBANK.staff($('bank'),{uid:target,view:VIEW,title:false,api:function(p,o){return req(ST,p,o,function(){ST=null;try{localStorage.removeItem('oaTok')}catch(e){}viaSite(true).then(function(r){if(r&&r!=='student')team();else login('staff')})})},file:function(id){return API+'/bank/file?id='+id+'&t='+ST},open:function(u){window.open(u,'_blank')}})}
 /* вход из кабинета без Telegram: кабинет отдаёт токен своего пользователя (eco.js → FS_AUTH), сервер проверяет его и роль */
 function bridge(force){return new Promise(function(res){if(!EMB||window.parent===window)return res(null);var done=0,h=function(e){if(e.source!==window.parent||!e.data||!('ecoAuth' in e.data))return;removeEventListener('message',h);done=1;res(e.data.ecoAuth)};addEventListener('message',h);try{parent.postMessage({ecoNeedAuth:1,force:!!force},'*')}catch(x){}setTimeout(function(){if(!done){removeEventListener('message',h);res(null)}},5000)})}

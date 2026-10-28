@@ -6,7 +6,7 @@
 *{box-sizing:border-box}html,body{margin:0;background:#000106;color:#fff;font:400 15px/1.45 "Inter Tight",Inter,system-ui,sans-serif;font-feature-settings:"tnum"}
 body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87,232,.3),transparent 70%) fixed,#000106}
 .wrap{max-width:1240px;margin:0 auto;padding:24px 20px 80px;display:flex;flex-direction:column;gap:16px}
-.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.bar a,.bar button{font:500 14px "Inter Tight",sans-serif;color:#d77fff;background:none;border:0;cursor:pointer;min-height:40px;padding:0 4px;text-decoration:none}
+.bar{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.bar a,.bar button{font:500 14px "Inter Tight",sans-serif;color:#d77fff;background:none;border:0;cursor:pointer;min-height:40px;padding:0 4px;text-decoration:none}
 .login{display:grid;place-items:center;padding:40px 0}.lg{width:min(440px,100%);display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center;padding:36px 28px;border-radius:32px;background:#161616;border:1px solid rgba(255,255,255,.08)}
 .lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}.btn:disabled{opacity:.5}
@@ -34,7 +34,7 @@ function apiF(p,o){o=o||{};var h={'Content-Type':'application/json'};if(TK&&!GR)
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
 var O={api:apiF,open:open,role:GR?'guest':'',fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
-  onHost:function(){nav('#host')},top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4}};
+  top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4}};
 function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
   fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').textContent='Нажми «Старт» в боте. Жду подтверждения…';var n=0;
@@ -54,6 +54,9 @@ function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff
 $('bBack').onclick=function(){nav('#')};$('bHost').onclick=function(){nav('#host')};
 addEventListener('hashchange',route);
 /* гость открытого эфира (ссылка из бота): сразу комната; без метки и без входа — лендинг с «Напомнить в Telegram» */
+/* 30.10 QA №12: шапка «Эфиры» и полоса с «Пультом эфиров» — сразу, до входа и ответа сервера (раньше появлялись через 1–5 с, страница прыгала).
+   «Пульт эфиров» — одна кнопка справа вверху (в списке её больше нет) */
+if(!GR){$('bar').classList.remove('hid');if(!/^#(e\d+|host)$/.test(location.hash||''))ECOEFIR.skel($('ef'))}
 if(GR){if(!location.hash)location.replace('#e'+GID);route()}
 else viaSite().then(function(ok){if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()});
 })();
