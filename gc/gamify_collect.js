@@ -198,8 +198,20 @@ window.__gm = {done: false, step: 'start', err: []};
       const i = t.indexOf('[survey_id]'), m = i < 0 ? null : t.slice(i, i + 30000).match(/value=\\*"(\d+)\\*" selected/); if (m) anketaSurvey[l.id] = m[1] } catch (e) {}
   }
   console.log('анкеты → опросы:', Object.keys(anketaSurvey).length);
+  // 6) 29.10: кто из сотрудников видит «Статистику» без ключа — право «Может видеть статистику» и нет запрета «НЕ видит списка заказов» (список сотрудников — из поля «ответственный» любого заказа)
+  G.step = 'staff';
+  const statUids = [];
+  try { const dl = await get('/pl/sales/deal/index'); let sel = null;
+    for (const d of [...new Set([...dl.matchAll(/deal\/update\/id\/(\d+)/g)].map(m => m[1]))].slice(0, 10)) {
+      const up = ((await get('/sales/control/deal/update/id/' + d)).match(/userProduct\/update\/id\/(\d+)/) || [])[1]; if (!up) continue;
+      sel = dp(await get('/sales/control/userProduct/update/id/' + up)).querySelector('select[name="UserProduct[response_teacher_id]"]'); if (sel) break }
+    for (const o of sel ? [...sel.options] : []) { const id = +o.value; if (!id) continue;
+      const a = dp(await get('/user/control/user/assignments/id/' + id)), ck = n => { const e = a.querySelector('input[type=checkbox][name="assignments[' + n + ']"]'); return !!(e && e.checked) };
+      if (ck('can:user_statistic') && !ck('deal:disabled_list')) statUids.push(id) }
+  } catch (e) { G.err.push('staff ' + e) }
+  console.log('видят статистику:', statUids.length);
   G.step = 'ship';
-  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, anketaSurvey, access, tariff, amz, passed, stops: [...stops], other});
+  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, anketaSurvey, statUids, access, tariff, amz, passed, stops: [...stops], other});
   const s = {uploadScript: 'x'}; getUploadifySecretLink([], s);
   const fd = new FormData(); fd.append('fullAnswer', 'true'); fd.append('Filedata', new File([out], 'gm.txt', {type: 'text/plain'}));
   G.url = await new Promise(res => { const x = new XMLHttpRequest(); x.open('POST', s.uploadScript); x.onload = () => { try { res(JSON.parse(x.responseText).download_url); } catch (e) { res('ERR'); } }; x.onerror = () => res('xhrerr'); x.send(fd); });
