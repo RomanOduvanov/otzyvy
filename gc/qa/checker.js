@@ -19,7 +19,8 @@
       NOUNS.forEach(function (f) { var idx = [f[1], f[2], f[3]].indexOf(w); if (idx < 0) return; var want = f[plForm(n)]; if (w !== want) out.push(n + ' ' + w + ' → ' + n + ' ' + want) }) }
     return out }
   function vis(e) { if (!e || !e.getBoundingClientRect) return false; var r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false;
-    var cs = getComputedStyle(e); return cs.visibility !== 'hidden' && +cs.opacity > 0.05 && cs.display !== 'none' }
+    var cs = getComputedStyle(e); if (cs.visibility === 'hidden' || +cs.opacity <= 0.05 || cs.display === 'none') return false;
+    for (var q = e.parentElement, i = 0; q && i < 8; q = q.parentElement, i++) if (+getComputedStyle(q).opacity <= 0.05) return false; return true } /* 29.10: спрятанная плашка (прозрачный предок) — не видна */
   function sel(e) { if (!e || e.nodeType !== 1) return String(e); var s = e.tagName.toLowerCase(); if (e.id) s += '#' + e.id;
     var c = (typeof e.className === 'string' ? e.className : '').trim().split(/\s+/).filter(Boolean).slice(0, 2); if (c.length) s += '.' + c.join('.');
     var t = (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 30); return t ? s + ' «' + t + '»' : s }
@@ -48,7 +49,7 @@
       if (e.scrollWidth > e.clientWidth + 2 && e.clientWidth > 0) { if (cs.overflowX === 'visible') add('text-spill', 'warn', e, 'текст шире блока на ' + (e.scrollWidth - e.clientWidth) + ' px');
         else if (cs.textOverflow !== 'ellipsis' && !/auto|scroll/.test(cs.overflowX)) add('text-cut', 'warn', e, 'текст обрезан без «…»') } });
     /* 3. кнопки: перекрыты другим элементом, слишком мелкие, под полосами Telegram */
-    var inter = [].slice.call(document.querySelectorAll(INTER)).filter(function (e) { return vis(e) && !e.closest('[aria-hidden=true]') });
+    var inter = [].slice.call(document.querySelectorAll(INTER)).filter(function (e) { return vis(e) && !e.closest('[aria-hidden=true]') && getComputedStyle(e).pointerEvents !== 'none' });
     function visRect(e) { var r = e.getBoundingClientRect(), L = r.left, T = r.top, R2 = r.right, B = r.bottom;
       for (var q = e.parentElement; q && q !== document.body && q !== document.documentElement; q = q.parentElement) { var cs = getComputedStyle(q); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
         var c = q.getBoundingClientRect(); L = Math.max(L, c.left); T = Math.max(T, c.top); R2 = Math.min(R2, c.right); B = Math.min(B, c.bottom) }
