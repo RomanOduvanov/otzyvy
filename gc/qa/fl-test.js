@@ -157,7 +157,7 @@
       var bad = false, ph = form.querySelector('input[name=phone]'), cb = form.querySelector('.global-confirm-checkbox'), ti = tg.querySelector('input');
       if (ph) { var dg = ph.value.replace(/\D/g, ''); var m = ph.value.trim() && dg.length < 10 ? 'Не' + NB + 'хватает цифр&nbsp;— проверь номер' : ''; err(ph, m); bad = bad || !!m }
       var bi = form.querySelector('input[name=birthday]'); if (bi) { var bv = bi.value.trim(), bm = bv.match(/^(\d{2})\.(\d{2})\.(\d{4})$/), bad2 = '';
-        if (bv) { var yy = bm ? +bm[3] : 0, dt = bm ? new Date(yy, +bm[2] - 1, +bm[1]) : null; if (!bm || dt.getMonth() !== +bm[2] - 1 || yy < 1940 || yy > new Date().getFullYear() - 5) bad2 = 'Проверь дату: дд.мм.гггг, например 14.03.1998' }
+        if (bv) { var yy = bm ? +bm[3] : 0, dt = bm ? new Date(yy, +bm[2] - 1, +bm[1]) : null; if (!bm || dt.getMonth() !== +bm[2] - 1 || yy < 1940 || yy > new Date().getFullYear() - 5) bad2 = 'Проверь дату: дд.мм.гггг, например' + NB + '14.03.1998' }
         err(bi, bad2); bad = bad || !!bad2 }
       var tv = ti.value.trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, ''); var tm = tv && !/^[A-Za-z0-9_]{5,32}$/.test(tv) ? 'Ник латиницей, от' + NB + '5' + NB + 'символов, например' + NB + '@ivan_design' : ''; err(ti, tm); bad = bad || !!tm;
       if (cb && !cb.checked) { err(cb, 'Отметь согласие, чтобы сохранить'); bad = true } else if (cb) err(cb, '');
