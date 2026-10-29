@@ -1738,6 +1738,9 @@ const BKS_SCHEMA = [
   'CREATE INDEX IF NOT EXISTS chat_msg_uid ON chat_msg (uid, id)',
   'CREATE INDEX IF NOT EXISTS chat_msg_cid ON chat_msg (cid, at)',
   'CREATE TABLE IF NOT EXISTS chat_rate (mid INTEGER PRIMARY KEY, uid INTEGER, cid TEXT, stars INTEGER, at INTEGER)',
+  /* 30.10 (макет «Оценка и реакции в чате»): реакции как в Telegram и обратная связь при низкой оценке */
+  'CREATE TABLE IF NOT EXISTS chat_react (mid INTEGER NOT NULL, who TEXT NOT NULL, e TEXT NOT NULL, at INTEGER, PRIMARY KEY (mid, who, e))',
+  'CREATE TABLE IF NOT EXISTS chat_fb (mid INTEGER PRIMARY KEY, uid INTEGER, cid TEXT, stars INTEGER, reasons TEXT, text TEXT, at INTEGER)',
   'CREATE TABLE IF NOT EXISTS cur_hw (id INTEGER PRIMARY KEY AUTOINCREMENT, cid TEXT, uid INTEGER, answer_id INTEGER, lesson_id INTEGER, lesson TEXT, status TEXT, pts INTEGER, comment TEXT, sent_at INTEGER, at INTEGER)',
   'CREATE INDEX IF NOT EXISTS cur_hw_cid ON cur_hw (cid, at)'];
 const B_STATUS = [['plastic', 0, 'Пластиковая'], ['violet', 1e4, 'Фиолетовая'], ['copper', 5e4, 'Медная'], ['silver', 1e5, 'Серебряная'], ['gold', 3e5, 'Золотая'], ['black', 5e5, 'Чёрная'], ['plat', 1e6, 'Платиновая']];
@@ -1804,7 +1807,12 @@ async function tgFileToBank(env, uid, m) { let fid = null, name = 'фото.jpg'
 
 /* ---------- чат ученик ↔ куратор ---------- */
 const CW = uid => 'app' + uid; /* ключ ожидания в cwait/cresp для чата на платформе */
-const chatPub = x => ({ id: x.id, dir: x.dir, text: x.text || '', file: x.file_id ? { id: x.file_id, name: x.fname || 'файл', mime: x.fmime || null } : null, reply_to: x.reply_to || null, via: x.via || 'app', who: x.who || null, at: x.at, read: x.read_at ? 1 : 0, stars: x.stars || null });
+const REACT_OK = ['👍', '❤️', '🔥', '😂', '😮', '😢', '🙏', '👎', '👏', '🎉', '🤔', '💯', '👀', '😍', '🤝'];
+const reactKey = W => W.me === 'student' ? 's' : W.s && W.s.role === 'admin' ? 'a' : 'c:' + ((W.s && W.s.cid) || '');
+async function reactsFor(env, ids, mine) { const R = {}; if (!ids.length) return R;
+  for (let i = 0; i < ids.length; i += 90) { const part = ids.slice(i, i + 90); const rs = await qAll(env.DB.prepare('SELECT mid, who, e, at FROM chat_react WHERE mid IN (' + part.map(() => '?').join(',') + ') ORDER BY at').bind(...part));
+    for (const r of rs) { const L = R[r.mid] || (R[r.mid] = []); let g = L.find(x => x.e === r.e); if (!g) L.push(g = { e: r.e, n: 0, me: false, by: [] }); g.n++; g.by.push(r.who); if (r.who === mine) g.me = true } } return R }
+const chatPub = x => ({ id: x.id, dir: x.dir, text: x.text || '', file: x.file_id ? { id: x.file_id, name: x.fname || 'файл', mime: x.fmime || null } : null, reply_to: x.reply_to || null, via: x.via || 'app', who: x.who || null, at: x.at, read: x.read_at ? 1 : 0, stars: x.stars || null, fb: x.fb_at ? 1 : 0, re: x.re || [] });
 /* новое сообщение: запись, ожидание ответа (cwait → cresp), уведомление второй стороне в бот */
 async function chatSend(env, o) { const at = msNow(), sec = at / 1000 | 0;
   const r = await env.DB.prepare('INSERT INTO chat_msg (uid, cid, dir, text, file_id, reply_to, via, who, at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id').bind(o.uid, o.cid || null, o.dir, o.text || '', o.file || null, o.reply_to || null, o.via || 'app', o.who || null, at).first();
@@ -1857,7 +1865,8 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
     return json(req, { ok: true, me: s.role, f, dialogs: out, wait: out.filter(x => x.wait_since).length, wait_tg: wtg }, 200, { 'Cache-Control': 'no-store' }) }
   const uid = W.uid; if (!uid) return json(req, { ok: false, err: 'Укажи ученика' }, 400);
   if (path === '/chat/list') { const before = +u.searchParams.get('before') || 0, st = await env.DB.prepare('SELECT curator, name FROM student WHERE uid=?').bind(uid).first() || {};
-    const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
+    const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, fb.at fb_at, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN chat_fb fb ON fb.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
+    { const RE = await reactsFor(env, ms.map(m => m.id), reactKey(W)); for (const m of ms) m.re = RE[m.id] || []; if (W.me !== 'student') for (const m of ms) m.fb_at = null }
     const un = await env.DB.prepare('SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir=? AND read_at IS NULL AND del=0').bind(uid, W.me === 'student' ? 'out' : 'in').first();
     return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: await stuName(env, uid) }, curator: st.curator ? await curCard(env, st.curator) : null, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/chat/file') { const f = await env.DB.prepare("SELECT name, mime, data FROM bank_file WHERE id=? AND uid=? AND kind='chat'").bind(+u.searchParams.get('id'), uid).first(); if (!f) return new Response('нет файла', { status: 404, headers: cors(req) });
@@ -1870,7 +1879,26 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
     if (!(stars >= 1 && stars <= 5)) return json(req, { ok: false, err: 'Оценка — от 1 до 5' }, 400);
     const m = await env.DB.prepare("SELECT id, cid FROM chat_msg WHERE id=? AND uid=? AND dir='out' AND del=0").bind(+o.mid, uid).first(); if (!m || !m.cid) return json(req, { ok: false, err: 'Оценить можно только ответ куратора' }, 400);
     await env.DB.prepare('INSERT INTO chat_rate (mid, uid, cid, stars, at) VALUES (?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, at=excluded.at').bind(m.id, uid, m.cid, stars, msNow()).run();
+    if (stars <= 2) { try { const c = CURATORS.find(x => x.id === m.cid), t0 = await env.DB.prepare('SELECT text FROM chat_msg WHERE id=?').bind(m.id).first();
+      const txt = '⭐ ' + stars + ' из 5 — ' + esc(await stuName(env, uid)) + ' оценил' + ' ответ куратора ' + esc(c ? c.name : m.cid) + (t0 && t0.text ? ':\n«' + esc(String(t0.text).slice(0, 200)) + '»' : '') + '\n\nЕсли ученик напишет, что не так, — пришлю следом.';
+      for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) { await logIt(env, 'rate-notify-err', uid, String(e && e.message || e)) } }
     await logIt(env, 'chat-rate', uid, m.cid + ' ' + stars); return json(req, { ok: true, mid: m.id, stars }) }
+  if (path === '/chat/react') { const e = String(o.e || ''); if (!REACT_OK.includes(e)) return json(req, { ok: false, err: 'Такой реакции нет' }, 400);
+    const m = await env.DB.prepare('SELECT id FROM chat_msg WHERE id=? AND uid=? AND del=0').bind(+o.mid, uid).first(); if (!m) return json(req, { ok: false, err: 'Сообщение не найдено' }, 404);
+    const k = reactKey(W), had = await env.DB.prepare('SELECT 1 x FROM chat_react WHERE mid=? AND who=? AND e=?').bind(m.id, k, e).first();
+    if (had) await env.DB.prepare('DELETE FROM chat_react WHERE mid=? AND who=? AND e=?').bind(m.id, k, e).run();
+    else { const n = await env.DB.prepare('SELECT COUNT(*) n FROM chat_react WHERE mid=? AND who=?').bind(m.id, k).first(); if (n && n.n >= 3) return json(req, { ok: false, err: 'Не больше трёх реакций на сообщение' }, 400);
+      await env.DB.prepare('INSERT INTO chat_react (mid, who, e, at) VALUES (?,?,?,?)').bind(m.id, k, e, msNow()).run() }
+    const RE = await reactsFor(env, [m.id], k); return json(req, { ok: true, mid: m.id, re: RE[m.id] || [] }) }
+  if (path === '/chat/feedback') { if (W.me !== 'student') return json(req, { ok: false, err: 'Отзыв оставляет ученик' }, 403);
+    const r = await env.DB.prepare('SELECT mid, cid, stars FROM chat_rate WHERE mid=? AND uid=?').bind(+o.mid, uid).first(); if (!r) return json(req, { ok: false, err: 'Сначала поставь оценку' }, 400);
+    const RS = ['Долго отвечал', 'Не помог', 'Отписка, без разбора', 'Непонятно объяснил', 'Грубо', 'Можно подробнее', 'Хочу пример', 'Другое'];
+    const reasons = (Array.isArray(o.reasons) ? o.reasons : []).map(String).filter(x => RS.includes(x)).slice(0, 8), text = String(o.text || '').trim().slice(0, 1500);
+    if (!reasons.length && !text) return json(req, { ok: false, err: 'Выбери причину или напиши пару слов' }, 400);
+    await env.DB.prepare('INSERT INTO chat_fb (mid, uid, cid, stars, reasons, text, at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, reasons=excluded.reasons, text=excluded.text, at=excluded.at').bind(r.mid, uid, r.cid, r.stars, JSON.stringify(reasons), text, msNow()).run();
+    try { const c = CURATORS.find(x => x.id === r.cid); const txt = '💬 Отзыв к оценке ⭐ ' + r.stars + ' — ' + esc(await stuName(env, uid)) + ' про ' + esc(c ? c.name : r.cid) + (reasons.length ? '\nПричины: ' + esc(reasons.join(', ')) : '') + (text ? '\n«' + esc(text) + '»' : '');
+      for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) {}
+    return json(req, { ok: true }) }
   if (path === '/chat/send') { const text = String(o.text || '').trim().slice(0, 4000); if (!text && !o.file) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
     const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first() || {}, rt = +o.reply_to || 0;
     if (rt && !(await env.DB.prepare('SELECT id FROM chat_msg WHERE id=? AND uid=?').bind(rt, uid).first())) return json(req, { ok: false, err: 'Нет такого сообщения' }, 400);
