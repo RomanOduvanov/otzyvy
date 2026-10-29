@@ -2,7 +2,7 @@
    поэтому в каждую вставлен HTML-блок <script src="https://romanoduvanov.github.io/otzyvy/gc/paypage.js"></script>. Имя файла постоянное — при новом payskin
    менять здесь PAYSKIN (scripts/publish_pages.sh --payskin делает это сам). Работает только в окне Telegram (?tg=1 / #tgWebAppVersion / метка вкладки) и на ширине ≤767. */
 (function () { try {
-  var PAYSKIN = '5e080807', R = document.documentElement, on = /[?&]tg=1\b/.test(location.search) || /tgWebAppVersion=/.test(location.hash);
+  var PAYSKIN = '3be371a0', R = document.documentElement, on = /[?&]tg=1\b/.test(location.search) || /tgWebAppVersion=/.test(location.hash);
   try { if (on) sessionStorage.setItem('ecoTg', '1'); else on = sessionStorage.getItem('ecoTg') === '1' } catch (e) {}
   if (!on || innerWidth > 767 || window.__payskin || document.getElementById('ecoPayskin')) return;
   R.classList.add('eco-tg');
