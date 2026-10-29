@@ -46,7 +46,8 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS tg_admin (chat TEXT PRIMARY KEY, name TEXT, added TEXT)',
   'CREATE TABLE IF NOT EXISTS student (uid INTEGER PRIMARY KEY, name TEXT, tg_chat TEXT, tg_token TEXT, tg_at TEXT, curator TEXT, cur_at TEXT)',
   'CREATE TABLE IF NOT EXISTS gc_name (uid INTEGER PRIMARY KEY, name TEXT, at TEXT)',
-  'CREATE TABLE IF NOT EXISTS mail_off (uid INTEGER PRIMARY KEY, kind TEXT, at TEXT)', /* 30.10: отписка от писем о модулях */
+  'CREATE TABLE IF NOT EXISTS mail_off (uid INTEGER PRIMARY KEY, kind TEXT, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS stu_tg (uid INTEGER PRIMARY KEY, username TEXT, at TEXT)', /* 30.10: Telegram ученика из формы первого входа — видит куратор */ /* 30.10: отписка от писем о модулях */
   'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
   'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
   'CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)',
@@ -1845,6 +1846,8 @@ async function chatWho(env, req, u, o) { const t = (req.headers.get('Authorizati
   if (s.role === 'student') return s.uid ? { me: 'student', uid: +s.uid } : null; if (s.role !== 'admin' && s.role !== 'curator') return null;
   const target = +((o && o.u) || u.searchParams.get('u') || 0); if (!target) return { me: s.role, s, uid: 0 };
   const st = await staffCan(env, s, target); return st ? { me: s.role, s, uid: target, st } : { me: s.role, s, uid: 0, forbidden: true } }
+async function stuTg(env, uid) { const a = await env.DB.prepare('SELECT username FROM stu_tg WHERE uid=?').bind(uid).first().catch(() => null); if (a && a.username) return a.username;
+  const b = await env.DB.prepare('SELECT u.username FROM student s JOIN tg_user u ON u.chat=s.tg_chat WHERE s.uid=?').bind(uid).first().catch(() => null); return b && b.username || null }
 async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt(env);
   const o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, W = await chatWho(env, req, u, o); if (!W) return deny(req);
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
@@ -1869,13 +1872,20 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
     const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, fb.at fb_at, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN chat_fb fb ON fb.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
     { const RE = await reactsFor(env, ms.map(m => m.id), reactKey(W)); for (const m of ms) m.re = RE[m.id] || []; if (W.me !== 'student') for (const m of ms) m.fb_at = null }
     const un = await env.DB.prepare('SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir=? AND read_at IS NULL AND del=0').bind(uid, W.me === 'student' ? 'out' : 'in').first();
-    return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: await stuName(env, uid) }, curator: st.curator ? await curCard(env, st.curator) : null, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
+    return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: await stuName(env, uid), tg: W.me === 'student' ? undefined : await stuTg(env, uid) }, curator: st.curator ? await curCard(env, st.curator) : null, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/chat/file') { const f = await env.DB.prepare("SELECT name, mime, data FROM bank_file WHERE id=? AND uid=? AND kind='chat'").bind(+u.searchParams.get('id'), uid).first(); if (!f) return new Response('нет файла', { status: 404, headers: cors(req) });
     return new Response(Uint8Array.from(atob(f.data), c => c.charCodeAt(0)), { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
   if (req.method !== 'POST') return json(req, { ok: false, err: 'not found' }, 404);
   if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
   if (path === '/chat/read') { const dir = W.me === 'student' ? 'out' : W.me === 'curator' ? 'in' : null; if (!dir) return json(req, { ok: true, marked: 0 });
     const r = await env.DB.prepare('UPDATE chat_msg SET read_at=? WHERE uid=? AND dir=? AND read_at IS NULL').bind(msNow(), uid, dir).run(); return json(req, { ok: true, marked: (r.meta && r.meta.changes) || 0 }) }
+  /* 30.10: первый вход — ученик пишет свой @username (GET — прочитать). Куратор видит его в шапке чата (/chat/list → student.tg) */
+  if (path === '/chat/tgname') { if (W.me !== 'student' || W.ro) return json(req, { ok: false, err: 'Только ученик' }, 403);
+    if (req.method !== 'POST') { const r = await env.DB.prepare('SELECT username FROM stu_tg WHERE uid=?').bind(uid).first(); return json(req, { ok: true, tg: r ? r.username : null }) }
+    const t = String(o.tg || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
+    if (!t) { await env.DB.prepare('DELETE FROM stu_tg WHERE uid=?').bind(uid).run(); return json(req, { ok: true, tg: null }) }
+    if (!/^[A-Za-z0-9_]{5,32}$/.test(t)) return json(req, { ok: false, err: 'Проверь ник: латиница, цифры и _, от 5 символов' }, 400);
+    await env.DB.prepare('INSERT OR REPLACE INTO stu_tg (uid, username, at) VALUES (?,?,?)').bind(uid, t, new Date().toISOString()).run(); return json(req, { ok: true, tg: t }) }
   if (path === '/chat/rate') { if (W.me !== 'student') return json(req, { ok: false, err: 'Оценку ставит ученик' }, 403); const stars = Math.round(+o.stars);
     if (!(stars >= 1 && stars <= 5)) return json(req, { ok: false, err: 'Оценка — от 1 до 5' }, 400);
     const m = await env.DB.prepare("SELECT id, cid FROM chat_msg WHERE id=? AND uid=? AND dir='out' AND del=0").bind(+o.mid, uid).first(); if (!m || !m.cid) return json(req, { ok: false, err: 'Оценить можно только ответ куратора' }, 400);
