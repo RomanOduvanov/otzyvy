@@ -4,7 +4,7 @@
    Telegram GetCourse не хранит — пишем на наш сервер (/chat/tgname), куратор видит его в шапке чата. После «Сохранить» — экран «Готово». */
 (function () {
   if (window.__fsFl) return; window.__fsFl = 1;
-  var NB = ' ', DONE = 'fsflDone', M00 = '/teach/control/stream/view/id/935917159', COVER = 'https://romanoduvanov.github.io/otzyvy/gc/covers/m00.jpg';
+  var NB = '\u00a0', DONE = 'fsflDone', M00 = '/teach/control/stream/view/id/935917159', COVER = 'https://romanoduvanov.github.io/otzyvy/gc/covers/m00.jpg';
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) };
   var nb = function (s) { return String(s).replace(/ (?=[^ ]{1,3}( |$))/g, NB) };
   var IC = {
@@ -17,7 +17,7 @@
     var F = '"Inter Tight",system-ui,-apple-system,sans-serif', R = 'html.fsfl-on ';
     s.textContent =
       /* страница GetCourse под нашим экраном — прячем; форма переезжает к нам */
-      R + '.xdget-myProfileSystemPage .layout-fixwidth>:not(#fsfl),' + R + 'body .global-controls,' + R + 'body .global-controls.eco-gc,' + R + '.xdget-userCompleteForm>.xdget-header,' + R + '.xdget-userCompleteForm>.xdget-html,' + R + '.xdget-userCompleteForm .xdget-form-field-profile_image{display:none!important}'
+      R + '.xdget-myProfileSystemPage .layout-fixwidth>:not(#fsfl),' + R + '.eco-nr,' + R + '.eco-chip,' + R + 'body .global-controls,' + R + 'body .global-controls.eco-gc,' + R + '.xdget-userCompleteForm>.xdget-header,' + R + '.xdget-userCompleteForm>.xdget-html,' + R + '.xdget-userCompleteForm .xdget-form-field-profile_image{display:none!important}'
       + '#fsfl{--s2:#16161b;--s3:#1f1f26;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--mut:rgba(255,255,255,.64);--dim:rgba(255,255,255,.44);--vio:#c38bff;color:#fff;font:400 15px/1.45 ' + F + ';max-width:1120px;margin:28px 0 48px;-webkit-font-smoothing:antialiased}'
       + '#fsfl *{box-sizing:border-box;font-family:' + F + '!important}'
       + '#fsfl a{text-decoration:none}#fsfl a.fl-row,#fsfl a.fl-row b{color:#fff!important}#fsfl a.fl-row:hover b{color:#d9b8ff!important}'
@@ -51,14 +51,14 @@
       + '#fsfl form.xdget-userCompleteForm>*{grid-column:1/-1;margin:0!important}'
       + '#fsfl form .xdget-userFormField,#fsfl form .fl-tg{grid-column:auto!important}'
       + '#fsfl form .form-field{display:grid;gap:8px;align-content:start;margin:0!important;padding:0!important}'
-      + '#fsfl form .field-label{display:block!important;margin:0!important;font-size:14px!important;font-weight:400!important;color:var(--mut)!important}#fsfl form .required-sign{display:none!important}'
+      + '#fsfl form .field-label{display:block!important;margin:0!important;font-size:14px!important;font-weight:400!important;line-height:1.42857!important;color:var(--mut)!important}#fsfl form .required-sign{display:none!important}'
       + '#fsfl form input.form-control,#fsfl .fl-tg input{height:52px!important;min-height:52px!important;border-radius:14px!important;border:1px solid var(--line2)!important;background:#0b0b0d!important;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:0 16px!important;font-size:16px!important;box-shadow:none!important;width:100%!important;outline:0}'
       + '#fsfl form input.form-control:focus,#fsfl .fl-tg input:focus{border-color:#c38bff!important;box-shadow:0 0 0 3px rgba(195,139,255,.18)!important}'
       + '#fsfl input::placeholder{color:var(--dim)!important;-webkit-text-fill-color:var(--dim)!important;opacity:1}'
       + '#fsfl input:-webkit-autofill{-webkit-box-shadow:0 0 0 1000px #0b0b0d inset!important;-webkit-text-fill-color:#fff!important;caret-color:#fff}'
       + '#fsfl .fl-hint{font-size:12.5px;color:var(--dim)}#fsfl .fl-err{font-size:12.5px;color:#f87171}'
-      + '#fsfl .bad input.form-control,#fsfl .fl-tg.bad input{border-color:#f87171!important}'
-      + '#fsfl .fl-tg{display:grid;gap:8px;align-content:start}#fsfl .fl-tg label{font-size:14px;color:var(--mut);margin:0}'
+      + '#fsfl .bad input.form-control,#fsfl .fl-tg.bad input,#fsfl .bad input.form-control:focus,#fsfl .fl-tg.bad input:focus{border-color:#f87171!important;box-shadow:0 0 0 3px rgba(248,113,113,.16)!important}#fsfl .bad .fl-hint{display:none}'
+      + '#fsfl .fl-tg{display:grid;gap:8px;align-content:start}#fsfl .fl-tg label{display:block;font-size:14px!important;font-weight:400!important;line-height:1.42857!important;color:var(--mut)!important;margin:0!important}'
       + '#fsfl form .global-confirm-checkbox-block{margin-top:6px!important;padding:0!important}'
       + '#fsfl form .global-confirm-checkbox-block label{display:flex!important;gap:12px;align-items:flex-start;font-size:14px!important;line-height:1.45;color:rgba(255,255,255,.75)!important;margin:0!important;cursor:pointer;font-weight:400!important}'
       + '#fsfl form .global-confirm-checkbox{-webkit-appearance:none!important;appearance:none!important;flex:none;width:22px!important;height:22px!important;margin:0!important;border-radius:7px!important;border:1.5px solid rgba(255,255,255,.28)!important;background:#0b0b0d no-repeat center/14px!important;cursor:pointer;position:static!important;opacity:1!important}'
@@ -72,10 +72,10 @@
       + '#fsfl form .error-message{border:0!important;background:rgba(248,113,113,.12)!important;color:#fca5a5!important;border-radius:12px!important;font-size:14px}'
       + '#fsfl form .login-block,#fsfl form .remind-block{color:#fff}'
       /* «Готово» */
-      + '#fsfl .fl-done{max-width:640px;display:grid;gap:20px;margin-top:20px}#fsfl .fl-dc{display:grid;justify-items:center;text-align:center;gap:8px;padding:32px 24px}'
+      + '#fsfl .fl-done{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;margin-top:20px;align-items:start}#fsfl .fl-dr{display:grid;gap:20px}#fsfl .fl-dc{padding:48px 32px!important;min-height:100%;align-content:center}#fsfl .fl-dc{display:grid;justify-items:center;text-align:center;gap:8px;padding:32px 24px}'
       + '#fsfl .fl-ck{width:64px;height:64px;border-radius:50%;background:rgba(74,222,128,.15);color:#4ade80;display:grid;place-items:center;margin-bottom:8px}#fsfl .fl-ck svg{width:30px;height:30px}'
       + '#fsfl .fl-btn{height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-size:16px;font-weight:600}'
-      + '@media(max-width:900px){#fsfl .fl-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"me" "form" "next"}#fsfl .fl-h1{font-size:40px}}'
+      + '@media(max-width:900px){#fsfl .fl-done{grid-template-columns:minmax(0,1fr)}#fsfl .fl-dc{padding:32px 24px!important}#fsfl .fl-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"me" "form" "next"}#fsfl .fl-h1{font-size:40px}}'
       + '@media(max-width:600px){#fsfl{margin-top:12px}#fsfl .fl-h1{font-size:28px;letter-spacing:-.02em}#fsfl .fl-k{font-size:13px}#fsfl .fl-set{display:none}#fsfl .c{border-radius:24px;padding:20px 18px}#fsfl .fl-formc{padding:24px 18px}'
       + '#fsfl .fl-steps{padding:10px 14px;gap:8px;flex-wrap:nowrap;overflow:hidden}#fsfl .fl-st{font-size:14px;gap:6px}#fsfl .fl-st i{width:22px;height:22px;font-size:11px}#fsfl .fl-st:not(.ok) i{display:none}#fsfl .fl-st .l{display:none}#fsfl .fl-st .s{display:inline!important}'
       + '#fsfl .fl-sep{flex:0 0 auto;width:auto;height:auto;background:none;color:var(--dim)}#fsfl .fl-sep:before{content:"→"}'
@@ -106,7 +106,8 @@
   function mountDone(root, I) { var nm = (I.name || '').split(' ')[0];
     root.innerHTML = '<div class="fl-k">Добро пожаловать в' + NB + 'OduvanovSchool</div><div class="fl-h1">' + esc(I.name || 'Профиль') + '</div>' + steps(3)
       + '<div class="fl-done"><div class="c fl-dc"><span class="fl-ck">' + IC.ok + '</span><div class="fl-hi">Готово' + (nm ? ', ' + esc(nm) : '') + '!</div><div class="fl-sub">Профиль сохранён. Осталось два' + NB + 'шага&nbsp;— и' + NB + 'ты в' + NB + 'потоке.</div></div>'
-      + '<div data-next>' + next(null) + '</div><a class="fl-btn" href="' + M00 + '">Начать первый урок' + IC.arr + '</a></div>';
+      + '<div class="fl-dr"><div data-next>' + next(null) + '</div><a class="fl-btn" href="' + M00 + '">Начать первый урок' + IC.arr + '</a></div></div>';
+    try { window.scrollTo(0, 0) } catch (e) {}
     getMe().then(function (me) { var n = root.querySelector('[data-next]'); if (me && n) n.innerHTML = next(me) }) }
 
   function mount(form) { var page = document.querySelector('.xdget-myProfileSystemPage .layout-fixwidth'); if (!page) return false;
@@ -129,6 +130,12 @@
     Object.keys(H).forEach(function (k) { var inp = form.querySelector('input[name=' + k + ']'); if (!inp) return; var h = H[k], ff = inp.closest('.form-field'), lab = ff && ff.querySelector('.label-value');
       if (lab) lab.textContent = h[0]; if (h[1]) inp.setAttribute('placeholder', h[1]); inp.setAttribute('autocomplete', k === 'birthday' ? 'off' : h[3]); if (k === 'phone') inp.setAttribute('inputmode', 'tel');
       if (h[2] && ff && !ff.querySelector('.fl-hint')) { var d = document.createElement('span'); d.className = 'fl-hint'; d.innerHTML = h[2]; ff.appendChild(d) } });
+    /* дата рождения: вводится с клавиатуры (точки ставим сами), календарь GetCourse не всплывает и не стирает набранное */
+    var bdi = form.querySelector('input[name=birthday]');
+    if (bdi) { try { var dp = window.jQuery && jQuery(bdi).data('datepicker'); if (dp && dp.o) { dp.o.showOnFocus = false; dp.o.forceParse = false } } catch (e) {}
+      bdi.setAttribute('inputmode', 'numeric'); bdi.setAttribute('maxlength', '10');
+      bdi.addEventListener('input', function () { var d = bdi.value.replace(/\D/g, '').slice(0, 8), v = d.slice(0, 2) + (d.length > 2 ? '.' + d.slice(2, 4) : '') + (d.length > 4 ? '.' + d.slice(4) : ''); if (v !== bdi.value) bdi.value = v });
+      bdi.addEventListener('blur', function () { var v = bdi.value.trim(); if (!v) return; try { if (window.jQuery && jQuery(bdi).data('datepicker')) { jQuery(bdi).datepicker('update', v); bdi.value = v } } catch (e) {} }) }
     /* Telegram — наше поле, после даты рождения (или перед галочкой) */
     var tg = document.createElement('div'); tg.className = 'fl-tg'; tg.innerHTML = '<label for="flTg">Telegram</label><input id="flTg" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="@username" maxlength="40"><span class="fl-hint">Чтобы' + NB + 'куратор мог написать</span>';
     var bd = form.querySelector('.xdget-form-field-birthday') || form.querySelector('.xdget-userFormField:last-of-type'); if (bd && bd.parentNode === form) form.insertBefore(tg, bd.nextSibling); else form.insertBefore(tg, form.querySelector('.form-buttons'));
@@ -149,7 +156,10 @@
       if (b.__wait) { e.preventDefault(); e.stopImmediatePropagation(); return }
       var bad = false, ph = form.querySelector('input[name=phone]'), cb = form.querySelector('.global-confirm-checkbox'), ti = tg.querySelector('input');
       if (ph) { var dg = ph.value.replace(/\D/g, ''); var m = ph.value.trim() && dg.length < 10 ? 'Не' + NB + 'хватает цифр&nbsp;— проверь номер' : ''; err(ph, m); bad = bad || !!m }
-      var tv = ti.value.trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, ''); var tm = tv && !/^[A-Za-z0-9_]{5,32}$/.test(tv) ? 'Ник латиницей, от' + NB + '5' + NB + 'символов, например @ivan_design' : ''; err(ti, tm); bad = bad || !!tm;
+      var bi = form.querySelector('input[name=birthday]'); if (bi) { var bv = bi.value.trim(), bm = bv.match(/^(\d{2})\.(\d{2})\.(\d{4})$/), bad2 = '';
+        if (bv) { var yy = bm ? +bm[3] : 0, dt = bm ? new Date(yy, +bm[2] - 1, +bm[1]) : null; if (!bm || dt.getMonth() !== +bm[2] - 1 || yy < 1940 || yy > new Date().getFullYear() - 5) bad2 = 'Проверь дату: дд.мм.гггг, например 14.03.1998' }
+        err(bi, bad2); bad = bad || !!bad2 }
+      var tv = ti.value.trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, ''); var tm = tv && !/^[A-Za-z0-9_]{5,32}$/.test(tv) ? 'Ник латиницей, от' + NB + '5' + NB + 'символов, например' + NB + '@ivan_design' : ''; err(ti, tm); bad = bad || !!tm;
       if (cb && !cb.checked) { err(cb, 'Отметь согласие, чтобы сохранить'); bad = true } else if (cb) err(cb, '');
       if (bad) { e.preventDefault(); e.stopImmediatePropagation(); var f1 = form.querySelector('.bad input'); if (f1) f1.focus(); return }
       try { sessionStorage.setItem(DONE, '1') } catch (x) {}
