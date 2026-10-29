@@ -224,7 +224,7 @@ body.lg::after{content:"";position:fixed;left:0;right:0;bottom:-160px;height:420
 .L .po+.po{margin-top:-4px}
 .L .po .pt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .L .po .pt b{font-size:15px;font-weight:500;line-height:1.25;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;white-space:nowrap}
-@media (max-width:359px){.L .po{gap:10px;padding:10px 12px}.L .po .pr{font-size:15px}}
+@media (max-width:359px){.L .po{gap:10px;padding:10px 12px}.L .po .pr{font-size:15px}.L .po .pr .prt{white-space:normal;max-width:84px;margin-left:auto}} /* 30.10: на 320 «общая сумма 47 900 ₽» — в две строки, иначе «В рассрочку» не влезает */
 .L .po .pt small{font-size:12px;color:var(--ink3);line-height:1.3}
 .L .po .pr{font-size:17px;font-weight:600;white-space:nowrap;flex:none;text-align:right}.L .po .pr .prt{display:block;margin-top:2px;font-size:12px;font-weight:400;color:currentColor;opacity:.45}
 .L .po .pts{height:20px;padding:0 7px;font-size:10.5px;border-radius:7px}
@@ -594,6 +594,7 @@ function lExp(){lPage(esc(cShort(LRN.course)),'доступ закончился
    P1 продление курса · P1a Спринт/Практикум · P1b плашка на «Учёбе» · P2 повышение (из L2c) · P9 «смотреть как» (оплата выключена, без шторки) · P9a нет сети.
    «Оплатить» = openGC('<страница>?ecoBuy=<оффер>'): страница GetCourse в коже site/payskin.js сама выбирает оффер и отправляет лайт-форму (почта и имя — скрытые поля GetCourse).
    Цены и офферы — как на страницах сайта (бриф 28.10); сервер может прислать свои в /ma/learn → pay:{c|sprint|prak|amz:{o:[[оффер,мес,цена,от/мес]]}} — тогда берём их. */
+/* офферы оплаты: [оффер, мес (0 — сразу), цена, платёж в месяц]. Платёж в месяц — только у рассрочки Премиум Амазон: «от 2 000 ₽/мес» — минимальный ежемесячный платёж по рассрочке банка (макет 4в, 28.10; та же цифра в site/payskin.js OFF). Нет поля — цена / месяцы с округлением вверх */
 var PAYD={c:{path:'/prodlenie-2-0',nm:'AI-креатор 2.0',o:[[8846950,1,4990],[8846951,3,12990],[8846952,6,19990]]},sprint:{path:'/prodlenie-sprint',nm:'Спринт',o:[[8846954,1,1490],[8846956,3,2990],[8846958,6,4990]]},
   prak:{path:'/prodlenie-praktikum',nm:'Практикум',o:[[8846961,1,990],[8846963,3,1990]]},amz:{path:'/povyshenie-premium-amazon',nm:'Премиум Амазон',o:[[8846965,0,39900],[8846966,24,47900,2000]]}},PS=null,PSEL={};
 function payD(k){var s=LRN&&LRN.pay&&LRN.pay[k],d=PAYD[k];return s&&s.o&&s.o.length?{path:s.path||d.path,nm:d.nm,o:s.o}:d}
@@ -610,7 +611,7 @@ function pMail(){var e=(LRN&&LRN.email)||(HOME&&HOME.me&&HOME.me.email)||'';retu
 function accChip(acc){var n=accDays(acc);if(acc==='dead'||(n!=null&&n<0))return '<span class="acc end">'+ic('lock',13)+'Доступ закончился'+(n!=null?' '+dm(acc+'T09:00:00Z'):'')+'</span>';
   if(n==null)return '<span class="acc">'+ic('cal',14)+'Бессрочный доступ</span>';return '<span class="acc'+(n<14?' wn':'')+'">'+ic('cal',14)+'Доступ до&nbsp;'+dFull(ymd(acc))+'</span>'}
 function pOpt(o,i,on,k,last){var lab,sub,pr=rub(o[2]);
-  if(k==='amz'){lab=o[1]?'В&nbsp;рассрочку':'Сразу';sub=o[1]?'до&nbsp;'+o[1]+'&nbsp;месяцев, банк на&nbsp;выбор':'одним платежом';if(o[1])pr='от&nbsp;'+n0(o[3]||Math.ceil(o[2]/o[1]))+'&nbsp;₽/мес<small class="prt">всего '+rub(o[2])+'</small>'}
+  if(k==='amz'){lab=o[1]?'В&nbsp;рассрочку':'Сразу';sub=o[1]?'до&nbsp;'+o[1]+'&nbsp;месяцев, банк на&nbsp;выбор':'одним платежом';if(o[1])pr='от&nbsp;'+n0(o[3]||Math.ceil(o[2]/o[1]))+'&nbsp;₽/мес<small class="prt">общая сумма '+rub(o[2])+'</small>'}
   else{lab=monL(o[1])+(last?' <span class="pts ok">выгоднее</span>':'');sub=(o[1]>1?'≈&nbsp;':'')+rub(Math.round(o[2]/o[1]))+' в&nbsp;месяц'}
   return '<button class="po'+(on?' on':'')+'" data-l="psel" data-i="'+i+'" role="radio" aria-checked="'+(on?'true':'false')+'"><span class="pt"><b>'+lab+'</b><small>'+sub+'</small></span><span class="pr">'+pr+'</span></button>'}
 function pBtnL(){var o=PS.o[PS.sel];return PS.k==='amz'&&o[1]?'Оформить рассрочку':'Оплатить '+rub(o[2])}
