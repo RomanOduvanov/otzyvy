@@ -1265,9 +1265,9 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
   const out = [];
   const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}; if (priv) for (const r of D.rows) byU[String(r.uid)] = r;
   const MU = {}; for (const m of (D.hw_multi || [])) if (m.status !== 'accepted') MU[+m.uid] = (MU[+m.uid] || 0) + 1;
-  const SR = (rs.results || []).filter(s => !isStaffUid(env, s.uid)), have = {}; for (const s of SR) have[s.uid] = 1;
+  const GS = await gcStaffSet(env), SR = (rs.results || []).filter(s => !isStaffUid(env, s.uid) && !GS.has(+s.uid)), have = {}; for (const s of SR) have[s.uid] = 1;
   /* админ «Все»: весь поток из рейтинга, даже без записи в базе и без куратора; без строк «id …» у тех, кого нет в рейтинге и кто не заходил */
-  if (cid === 'all' && priv) for (const x of D.rows) if (x.uid != null && !have[+x.uid] && !isStaffUid(env, x.uid)) { have[+x.uid] = 1; SR.push({ uid: +x.uid, name: x.name, curator: null, tg_chat: null }) }
+  if (cid === 'all' && priv) for (const x of D.rows) if (x.uid != null && !have[+x.uid] && !isStaffUid(env, x.uid) && !GS.has(+x.uid)) { have[+x.uid] = 1; SR.push({ uid: +x.uid, name: x.name, curator: null, tg_chat: null }) }
   for (const s of SR) { const r = (priv ? byU[String(s.uid)] : byH[await hashUid(s.uid)]) || null; if (cid === 'all' && !r && !s.curator) continue; /* «Все» у админа = текущий поток (рейтинг) + все, у кого есть куратор; старые потоки из базы не показываем */
     out.push({ uid: s.uid, name: (r && r.name) || s.name || ('id ' + s.uid), cur: s.curator, tar: r && r.tar || null, acc: r && r.acc || null,
       place: r && r.place || null, pts: r ? r.pts | 0 : null, week: r ? r.week | 0 : null, lessons: r ? r.lessons | 0 : null, hw: r ? r.hw | 0 : null, ontime: r && r.ontime != null ? r.ontime : null,
