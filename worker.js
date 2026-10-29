@@ -207,53 +207,52 @@ function tipsOf(D, v) {
 function subjectOf(D) { return 'Отчёт об обучении · ' + D.name + ' · ' + (D.N === 1 ? human(D.end) : human(D.start).replace(/ .*/, '') + '–' + human(D.end)) }
 
 function renderReport(D, o) {
-  const v = verdictOf(D), T = tipsOf(D, v);
+  /* 30.10: тёмный стиль школы (макет «Письма школы» v3) — таблицы и инлайн-стили, логика прежняя */
+  const v = verdictOf(D), T = tipsOf(D, v), F = "'Inter Tight',Inter,Arial,Helvetica,sans-serif";
   const per = D.N === 1 ? human(D.end) + ' · день' : (D.start.slice(5, 7) === D.end.slice(5, 7) ? human(D.start).split(' ')[0] : human(D.start)) + '–' + human(D.end) + ' · ' + (D.N === 7 ? 'неделя' : D.N + ' ' + pl(D.N, ['день', 'дня', 'дней']));
-  const prevLbl = D.N === 1 ? 'позавчера' : D.N === 7 ? 'прошлая неделя' : 'прошлый период';
-  const vc = { good: ['#e9f8ef', '#145c36', '#1a9f5c', '↑'], ok: ['#eef0ff', '#2b3576', '#4b5bd6', '→'], down: ['#fff3e6', '#7a3d00', '#e8780c', '↓'], none: ['#f1eef7', '#3d3552', '#8a7fa8', '·'] }[v.k];
+  const prevLbl = 'было';
+  const vc = { good: ['#12301f', '#22a861', '↑', '#c9f2d7'], ok: ['#1d2140', '#5b6cf0', '→', '#d3d8ff'], down: ['#3a2410', '#e8780c', '↓', '#ffd9b3'], none: ['#26262b', '#6b6b75', '·', '#bdbdc4'] }[v.k];
   const C = D.cur || { lessons: 0, hw: 0, pts: 0 }, P = D.prev;
-  const met = (title, val, d, sub) => `<td width="50%" style="padding:6px"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:18px"><tr><td style="padding:16px 18px">
-    <div style="font-size:13px;color:#6b6780">${title}</div>
-    <div style="margin-top:6px"><span style="font-size:30px;font-weight:600;letter-spacing:-.5px;color:#141220">${val}</span>${d ? ` <span style="display:inline-block;vertical-align:6px;margin-left:6px;font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;${d.t === 'up' ? 'color:#137a45;background:#e3f6ea' : d.t === 'dn' ? 'color:#c5302f;background:#fde9e8' : 'color:#6b6780;background:#efeef3'}">${d.s}</span>` : ''}</div>
-    <div style="margin-top:4px;font-size:12px;color:#8a86a0">${sub}</div></td></tr></table></td>`;
+  const UP = 'color:#4ade80;background-color:#12301f', DN = 'color:#ff6b6b;background-color:#3a1717', EQ = 'color:#bdbdc4;background-color:#26262b';
+  const met = (title, val, d, sub, side) => { const pad = side === 'l' ? 'padding:0 5px 10px 0' : 'padding:0 0 10px 5px';
+    const badge = d ? `<span style="display:inline-block;font-size:12px;line-height:16px;font-weight:700;padding:3px 8px;border-radius:99px;${d.t === 'up' ? UP : d.t === 'dn' ? DN : EQ}">${d.s}</span>` : '<span style="display:inline-block;font-size:12px;line-height:16px;padding:3px 0;color:#6b6b75">&nbsp;</span>';
+    return `<td width="50%" valign="top" style="${pad}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0b0b0d" style="background-color:#0b0b0d;border:1px solid #262626;border-radius:18px;padding:16px 16px 14px">`
+      + `<div style="font-size:13px;line-height:18px;color:#8b8b95;white-space:nowrap">${title}</div><div style="margin-top:6px;font-size:24px;line-height:30px;font-weight:600;color:#ffffff;white-space:nowrap">${val}</div>`
+      + `<div style="margin-top:6px">${badge}</div><div style="margin-top:6px;font-size:12px;line-height:16px;color:#6b6b75;white-space:nowrap">${sub}</div></td></tr></table></td>` };
   const pd = D.placePrev && D.place ? (D.placePrev - D.place) : null;
   const placeD = pd == null ? null : pd === 0 ? { t: 'eq', s: '= 0' } : { t: pd > 0 ? 'up' : 'dn', s: (pd > 0 ? '▲ +' : '▼ −') + Math.abs(pd) };
+  const hi = v.k === 'down' || v.k === 'none' ? '#e8780c' : '#a66bff';
   const mx = Math.max(1, ...D.days.map(d => ((D.byDay[d] || {}).video || 0) + ((D.byDay[d] || {}).site || 0) * .25));
   const bars = D.days.map((d, i) => { const x = D.byDay[d] || {}; const val = (x.video || 0) + (x.site || 0) * .25; const hgt = Math.round(70 * val / mx); const wd = WD[new Date(d + 'T00:00:00Z').getUTCDay()];
-    return `<td align="center" valign="bottom" style="padding:0 4px"><div style="height:${Math.max(hgt, 3)}px;border-radius:7px;background:${i === 6 ? '#8b45e6' : val ? '#d9c6f7' : '#ece8f4'}"></div><div style="margin-top:6px;font-size:11px;color:#8a86a0">${wd}</div></td>` }).join('');
+    return `<td align="center" valign="bottom" style="padding:0 4px"><div style="height:${Math.max(hgt, 4)}px;border-radius:7px;background-color:${val ? (i === 6 ? hi : '#3b2a55') : '#262626'}"></div><div style="margin-top:6px;font-size:11px;color:#8b8b95">${wd}</div></td>` }).join('');
   const prog = D.r && D.total ? Math.round(100 * D.r.lessons / D.total) : 0;
-  const tipsHtml = T.praise ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#f1e8fd,#fde9f7);background-color:#f4ebfd;border-radius:18px"><tr><td width="50" valign="top" style="padding:16px 0 16px 16px"><div style="width:34px;height:34px;border-radius:11px;background:#8b45e6;color:#fff;font-size:17px;line-height:34px;text-align:center">★</div></td><td style="padding:16px 16px 16px 12px;font-size:14px;line-height:1.55;color:#35314a"><b style="color:#141220">Самое время похвалить.</b> ${nb(esc(T.praise))}</td></tr></table>`
-    : `<div style="font-size:16px;font-weight:600;color:#141220;margin-bottom:4px">Три идеи, как поддержать</div>` + T.tips.map((t, i) => `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px"><tr><td width="38" valign="top"><div style="width:26px;height:26px;border-radius:13px;background:#f1e8fd;color:#8b45e6;font-size:13px;font-weight:700;line-height:26px;text-align:center">${i + 1}</div></td><td style="font-size:14px;line-height:1.55;color:#35314a"><b style="color:#141220">${nb(esc(t[0]))}</b>${nb(esc(t[1]))}</td></tr></table>`).join('');
-  const greet = D.parentName ? `<div style="font-size:14px;color:#35314a;margin-bottom:10px">${esc(D.parentName)}, здравствуйте!</div>` : '';
-  const foot = o.token ? `<a href="{{BASE}}/unsub?t=${o.token}" style="color:#8b45e6;text-decoration:none">Отписаться</a> · <a href="${CARE}" style="color:#8b45e6;text-decoration:none">Служба заботы</a>` : `<a href="${CARE}" style="color:#8b45e6;text-decoration:none">Служба заботы</a>`;
-  const mark = `<img src="https://romanoduvanov.github.io/otzyvy/gc/brand/email-logo.png" width="164" height="23" alt="OduvanovSchool" style="display:block;border:0">`;
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(subjectOf(D))}</title></head>
-<body style="margin:0;padding:0;background:#e9e6f0;font-family:'Inter Tight',Inter,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#e9e6f0"><tr><td align="center" style="padding:24px 12px">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#f3f1f7;border-radius:28px"><tr><td style="padding:26px 24px 22px">
- <table width="100%" cellpadding="0" cellspacing="0"><tr><td>${mark}</td><td align="right"><span style="font-size:12.5px;color:#6b6780;background:#fff;border-radius:99px;padding:6px 12px;white-space:nowrap">${per}</span></td></tr></table>
- <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;background:#fff;border-radius:22px"><tr><td style="padding:22px">
-  ${greet}<div style="font-size:13px;color:#6b6780">Отчёт об обучении · курс «AI-креатор»</div>
-  <div style="margin-top:4px;font-size:30px;font-weight:600;letter-spacing:-.8px;color:#141220">${esc(D.name)}</div>
-  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;background:${vc[0]};border-radius:16px"><tr><td width="44" valign="top" style="padding:14px 0 14px 16px"><div style="width:30px;height:30px;border-radius:10px;background:${vc[2]};color:#fff;font-weight:700;line-height:30px;text-align:center">${vc[3]}</div></td>
-  <td style="padding:14px 16px 14px 10px;font-size:14px;line-height:1.5;color:${vc[1]}"><b style="display:block;font-size:15px;margin-bottom:2px">${esc(v.t)}</b>${nb(esc(v.s))}</td></tr></table>
- </td></tr></table>
- <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px"><tr>
-  ${met('Время за уроками', hrs(D.tCur.video), delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null)), prevLbl + ': ' + (D.tPrev.video || D.tPrev.site ? hrs(D.tPrev.video) : 'нет данных'))}
-  ${met('Уроков пройдено', D.cur ? C.lessons : (D.r ? D.r.lessons : 0), P ? delta(C.lessons, P.lessons) : null, P ? prevLbl + ': ' + P.lessons : D.cur ? 'за период' : 'всего на курсе')}
- </tr><tr>
-  ${met('Домашек сдано', D.cur ? C.hw : (D.r ? D.r.hw : 0), P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ': ' + P.hw : D.cur ? 'за период' : 'всего на курсе')}
-  ${met('Место в потоке', D.place || '—', placeD, 'из ' + D.n + ' учеников')}
- </tr></table>
- <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background:#fff;border-radius:22px"><tr><td style="padding:22px">
-  <div style="font-size:13px;color:#6b6780">Активность по дням · всего на платформе ${hrs(D.tCur.site)}</div>
-  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;height:96px"><tr>${bars}</tr></table>
-  <div style="margin-top:16px;font-size:13px;color:#6b6780">Прогресс курса · ${D.r ? D.r.lessons : 0} из ${D.total || '—'} открытых ${pl(D.total || 0, ['урока', 'уроков', 'уроков'])}</div>
-  <div style="margin-top:8px;height:10px;border-radius:5px;background:#ece8f4"><div style="width:${prog}%;height:10px;border-radius:5px;background:#8b45e6"></div></div>
- </td></tr></table>
- <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background:#fff;border-radius:22px"><tr><td style="padding:22px">${tipsHtml}</td></tr></table>
- <div style="margin-top:16px;font-size:12px;line-height:1.6;color:#8a86a0;text-align:center">${nb('Отчёт ' + (fem(D.name) ? 'настроила ' : 'настроил ') + esc(D.name) + ' в личном кабинете OduvanovSchool.')}<br>${foot}</div>
-</td></tr></table></td></tr></table></body></html>`;
+  const box = inner => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px"><tr><td bgcolor="#0b0b0d" style="background-color:#0b0b0d;border:1px solid #262626;border-radius:20px;padding:20px 22px;color:#ffffff">${inner}</td></tr></table>`;
+  const tipsHtml = T.praise ? box(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="46" valign="top"><div style="width:34px;height:34px;border-radius:11px;background-color:#a66bff;color:#fff;font-size:17px;line-height:34px;text-align:center">★</div></td><td style="font-size:14px;line-height:22px;color:#e6e6ea"><b style="color:#ffffff">Самое время похвалить.</b> ${nb(esc(T.praise))}</td></tr></table>`)
+    : box('<div style="font-size:16px;line-height:22px;font-weight:600;color:#ffffff">Три идеи, как поддержать</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' + T.tips.map((t, i) => `<tr><td width="38" valign="top" style="padding-top:12px"><div style="width:26px;height:26px;line-height:26px;border-radius:13px;background-color:#2a1d3d;color:#c38bff;font-size:13px;font-weight:700;text-align:center">${i + 1}</div></td><td style="padding-top:12px;font-size:14px;line-height:22px;color:#e6e6ea"><b style="color:#ffffff">${nb(esc(t[0]))}</b>${nb(esc(t[1]))}</td></tr>`).join('') + '</table>');
+  const greet = D.parentName ? `<div style="font-size:14px;line-height:20px;color:#bdbdc4;margin:2px 0 6px">${esc(D.parentName)}, здравствуйте!</div>` : '';
+  const A = 'color:#a78bfa;text-decoration:underline';
+  const foot = (o.token ? `<a href="{{BASE}}/unsub?t=${o.token}" style="${A}">Отписаться</a> · ` : '') + `<a href="${CARE}" style="${A}">Служба заботы</a>`;
+  const lessonsV = D.cur ? C.lessons : (D.r ? D.r.lessons : 0), hwV = D.cur ? C.hw : (D.r ? D.r.hw : 0);
+  const grid = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;table-layout:fixed"><tr>'
+    + met('Время за&nbsp;уроками', nb(hrs(D.tCur.video)), delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null)), D.tPrev.video || D.tPrev.site ? prevLbl + ' ' + nb(hrs(D.tPrev.video)) : 'нет данных', 'l')
+    + met('Уроков пройдено', lessonsV, P ? delta(C.lessons, P.lessons) : null, P ? prevLbl + ' ' + P.lessons : D.cur ? 'за период' : 'всего на курсе', 'r') + '</tr><tr>'
+    + met('Домашек сдано', hwV, P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ' ' + P.hw : D.cur ? 'за период' : 'всего на курсе', 'l')
+    + met('Место в&nbsp;потоке', D.place || '—', placeD, 'из ' + D.n + ' учеников', 'r') + '</tr></table>';
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${esc(subjectOf(D))}</title></head>
+<body style="margin:0;padding:0;background-color:#000106;-webkit-font-smoothing:antialiased"><div style="margin:0;padding:0;background-color:#000106"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000106" style="background-color:#000106;width:100%"><tr><td align="center" style="padding:32px 12px 40px">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">
+<tr><td style="padding:0 8px 24px"><img src="https://romanoduvanov.github.io/otzyvy/gc/email-logo-white.png" width="240" height="33" alt="OduvanovSchool" style="display:block;border:0;width:240px;height:33px"></td></tr>
+<tr><td bgcolor="#141414" style="background-color:#141414;border:1px solid #262626;border-radius:28px;padding:32px 28px 28px;font-family:${F};color:#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top"><div style="font-size:15px;line-height:20px;font-weight:600;color:#c38bff;margin:0 0 10px">Отчёт об&nbsp;обучении</div></td><td align="right" valign="top"><span style="font-size:12.5px;color:#bdbdc4;background-color:#26262b;border-radius:99px;padding:6px 12px;white-space:nowrap">${per}</span></td></tr></table>
+${greet}<div style="font-size:30px;line-height:36px;font-weight:600;color:#ffffff;margin:0 0 14px">${esc(D.name)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${vc[0]}" style="background-color:${vc[0]};border-radius:16px;padding:14px 16px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="42" valign="top"><div style="width:30px;height:30px;border-radius:10px;background-color:${vc[1]};color:#fff;font-weight:700;line-height:30px;text-align:center">${vc[2]}</div></td>
+<td style="font-size:14px;line-height:21px;color:${vc[3]}"><b style="display:block;font-size:15px;color:#ffffff;margin-bottom:2px">${esc(v.t)}</b>${nb(esc(v.s))}</td></tr></table></td></tr></table>
+${grid}
+${box(`<div style="font-size:13px;line-height:18px;color:#8b8b95">Активность по&nbsp;дням · всего на&nbsp;платформе ${nb(hrs(D.tCur.site))}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;height:90px"><tr>${bars}</tr></table><div style="margin-top:16px;font-size:13px;line-height:18px;color:#8b8b95">Прогресс курса · ${D.r ? D.r.lessons : 0} из&nbsp;${D.total || '—'} открытых ${pl(D.total || 0, ['урока', 'уроков', 'уроков'])}</div><div style="margin-top:8px;height:10px;border-radius:5px;background-color:#262626"><div style="width:${prog}%;height:10px;border-radius:5px;background-color:#a66bff"></div></div>`)}
+${tipsHtml}
+</td></tr>
+<tr><td style="padding:22px 8px 0;font-family:Inter,Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6b75">${nb('Отчёт ' + (fem(D.name) ? 'настроила ' : 'настроил ') + esc(D.name) + ' в личном кабинете OduvanovSchool.')} ${foot}</td></tr>
+</table></td></tr></table></div></body></html>`;
 }
 
 /* ---------- письма ---------- */
