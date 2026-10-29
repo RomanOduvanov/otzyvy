@@ -25,7 +25,7 @@ h2{font-size:32px;font-weight:500;letter-spacing:-.03em;margin:56px 0 20px}h2 sp
 .rn{font-size:16px;font-weight:500;margin-top:4px}.rp{font-size:12px;color:var(--ink3);margin-top:4px}
 .medals{display:flex;gap:10px;flex-wrap:wrap}.md{background:var(--s1);border-radius:99px;padding:11px 18px 11px 12px;display:flex;align-items:center;gap:10px;font-size:15px;box-shadow:inset 0 0 0 1px var(--hair)}
 .md i{width:26px;height:26px;border-radius:50%;background:var(--l400)}.md.off{opacity:.4}.md.off i{background:var(--s2)}.md small{color:var(--ink3)}
-.search{display:flex;gap:10px;margin-bottom:14px}.search input{flex:1;background:var(--s1);color:#fff;border:0;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);padding:14px 16px;font:400 15px inherit;font-family:inherit}
+.search{display:flex;gap:10px;margin-bottom:14px}.search input{flex:1;background:var(--s1);color:#fff;border:0;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);padding:14px 16px;font-size:16px;font-weight:400;font-family:inherit}
 .tbl{padding:10px}.th,.tr{display:grid;grid-template-columns:48px 1.5fr 1fr 1fr .5fr .6fr .6fr .6fr .7fr;align-items:center;gap:10px;padding:11px 18px}
 .th{font-size:12px;color:var(--ink3)}.tr{border-radius:16px;font-size:15px}.tr+.tr{box-shadow:0 -1px 0 var(--hair)}
 .tr.me{background:linear-gradient(180deg,rgba(150,87,232,.22),rgba(150,87,232,.08));box-shadow:inset 0 0 0 1px rgba(195,139,255,.5)}
@@ -481,7 +481,7 @@ FS.shareCard=async function(D,r,o){
 };
 
 FS.data().then(D=>{const A='../awards/';const {esc,fmt}=FS;
-document.getElementById('upd').textContent='Обновлено '+D.updated+' · '+D.n+' учеников';
+document.getElementById('upd').textContent='Обновлено '+D.updated+' · '+D.n+' '+(D.n%10===1&&D.n%100!==11?'ученик':D.n%10>=2&&D.n%10<=4&&(D.n%100<12||D.n%100>14)?'ученика':'учеников');
 const MED=[['Ранняя пташка','уроки модуля в срок ×2'],['Голос потока','8+ анкет обратной связи'],['Максималист','3 домашки на максимальном уровне'],['Первый в потоке','первым сдал принятую домашку']];
 let me=null;try{me=localStorage.getItem('rt-me-name')}catch(e){}
 let auto=null,adm=null;let SK='place',SD=1;
