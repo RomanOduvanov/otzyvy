@@ -1,6 +1,8 @@
 /* 28.10: загрузчик кожи оплаты для страниц-форм GetCourse (/prodlenie-*, /povyshenie-premium-amazon). У этих CMS-страниц свой шаблон без eco.js,
    поэтому в каждую вставлен HTML-блок <script src="https://romanoduvanov.github.io/otzyvy/gc/paypage.js"></script>. Имя файла постоянное — при новом payskin
    менять здесь PAYSKIN (scripts/publish_pages.sh --payskin делает это сам). Работает только в окне Telegram (?tg=1 / #tgWebAppVersion / метка вкладки) и на ширине ≤767. */
+/* 30.10 (Роман): на /povyshenie-premium-amazon у рассрочки крупно «от 2 000 ₽/мес», ниже «общая сумма 47 900 ₽» — на всех ширинах (тексты заданы в CSS самой страницы) */
+(function () { try { var st = document.createElement('style'); st.textContent = 'html body .fspay-opt .form-position[data-offer-id="8846966"] .form-position-price::before{content:"от\\00a0 2\\00a0 000\\00a0 ₽/мес"!important}html body .fspay-opt .form-position[data-offer-id="8846966"] .form-position-price::after{content:"общая сумма 47\\00a0 900\\00a0 ₽"!important}'; (document.head || document.documentElement).appendChild(st) } catch (e) {} })();
 (function () { try {
   var PAYSKIN = '3be371a0', R = document.documentElement, on = /[?&]tg=1\b/.test(location.search) || /tgWebAppVersion=/.test(location.hash);
   try { if (on) sessionStorage.setItem('ecoTg', '1'); else on = sessionStorage.getItem('ecoTg') === '1' } catch (e) {}
