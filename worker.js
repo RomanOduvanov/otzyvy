@@ -842,7 +842,8 @@ export default {
       if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) return deny(req);
         /* 29.10: кураторам статистика школы и продажи закрыты на сервере, даже если в GetCourse у них есть право «статистика» */
         const cur = CURATORS.some(c => c.uid === uid) || !!(await env.DB.prepare('SELECT s.uid FROM student s JOIN cur_tg c ON c.tg_id=s.tg_chat WHERE s.uid=?').bind(uid).first());
-        const ok = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || (!cur && ((await kvGet(env, 'statUids')) || []).map(Number).includes(uid));
+        const STAT_ALLOW = [499762163, 507696386]; /* 30.10 (Роман): Сергей Тертерян, Вика Копцева — статистика всегда, не дожидаясь выгрузки прав */
+        const ok = String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || (!cur && (STAT_ALLOW.includes(uid) || ((await kvGet(env, 'statUids')) || []).map(Number).includes(uid)));
         if (!ok) await logIt(env, 'fin-k-deny', uid, cur ? 'curator' : 'no-right');
         return ok ? json(req, { ok: true, k: await statKey(env) }) : json(req, { ok: false }, 403) }
       if (path === '/fin') { if (u.searchParams.get('k') !== await statKey(env)) return json(req, { ok: false }, 403); await ensure(env); const g = n => (u.searchParams.get(n) || '').match(/^\d{4}-\d{2}-\d{2}$/) ? u.searchParams.get(n) : null; return json(req, await finData(env, g('from'), g('to'), g('pfrom'), g('pto'))) }
