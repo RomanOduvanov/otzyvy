@@ -367,7 +367,7 @@ html.fs .k-chs.k-so{display:none}html.fs .k-chs .k-cst{display:none}html.fs .k-c
 <button data-t="more"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><em>Ещё</em></button>
 </nav>
 <script src="efir.js?v=1"></script>
-<script src="bank.js?v=13"></script>
+<script src="bank.js?v=14"></script>
 <script>
 (function(){
 var API='https://oduvanov-api.romanoduvanov52.workers.dev', GC='https://oduvanovroman.getcourse.ru', TGW=window.Telegram&&Telegram.WebApp, T=null, HOME=null, TOP=null, IMG=null, BUSY=false, CUR='learn';
@@ -987,8 +987,10 @@ function kHwSt(x){var w=x.hw,st=w&&w.st;
   if(st==='wn')return {k:'wn',o:0,p:'<span class="k-pill r"><i></i>Доработать</span>',s:'есть замечания куратора'};
   if(st==='rv')return {k:'rv',o:1,p:'<span class="k-pill a"><i></i>Проверяет</span>',s:'сдана, куратор проверяет'};
   var lk=xLock(x);return {k:'no',o:3,p:'<span class="k-pill n">'+(st==='dr'?'Черновик':'Не&nbsp;сдано')+'</span>',s:lk==='date'?'откроется '+dm(x.at):lk==='stop'?'откроется после стоп-урока':'Модуль '+esc(x.m.n)+' · до&nbsp;'+(x.hwMax||70)+'&nbsp;баллов'}}
-/* 30.10 QA №28: урок ДЗ в GetCourse часто называется просто «Домашнее задание» — в «Моих работах» показываем «ДЗ «<предыдущий урок>»» (макет 5.2) */
-function kHwT(x){var t=x.t||'',L=x.m&&x.m.ls;if(!/^\s*(домашнее\s+задание|дз)\s*[\d.№#:]*\s*$/i.test(t)||!L)return t;for(var k=L.indexOf(x)-1;k>=0;k--){var y=L[k];if(y&&y.kind!=='hw'&&y.kind!=='anketa'&&y.t)return 'ДЗ «'+y.t+'»'}return t}
+/* 30.10 QA №28 → 31.10 Н7: урок ДЗ в GetCourse часто называется просто «Домашнее задание». Название берём по теме ДЗ — части курса, где лежит урок
+   («ДЗ «Композиция»», как в ленте ответов куратора), без части — по модулю; совсем без названий — «ДЗ к уроку «…»» по последнему уроку той же части */
+function kHwT(x){var t=x.t||'';if(!/^\s*(домашнее\s+задание|дз)\s*[\d.№#:]*\s*$/i.test(t))return t;var p=x.p,m=x.m,bad=/^(часть\s*\d+|модуль\s*\d+|домашн|дз(\s|$))/i,pt=p&&String(p.title||'').trim(),mt=m&&String(m.title||'').trim();if(bad.test(pt))pt='';if(bad.test(mt))mt='';
+  if(pt)return 'ДЗ «'+pt+'»';if(mt)return 'ДЗ «'+mt+'»';var L=p&&p.lessons||[];for(var k=L.indexOf(x)-1;k>=0;k--){var y=L[k];if(y&&y.kind==='lesson'&&y.t)return 'ДЗ к уроку «'+y.t+'»'}return t}
 function kHwRow(x){var s=kHwSt(x);return '<button class="k-li" data-k="les" data-id="'+x.id+'"><img class="k-cv" src="'+wide(x.m)+'" alt="" loading="lazy"><span class="t"><b>'+nbt(kHwT(x))+'</b><small>'+(s.k==='no'?'':'Модуль '+esc(x.m.n)+' · ')+s.s+'</small></span>'+s.p+'</button>'}
 function kHwSort(L){return L.slice().sort(function(a,b){var x=kHwSt(a).o,y=kHwSt(b).o;return x-y||((a.m.n||0)-(b.m.n||0))})}
 function kWorks(){var box=$('kWk');if(!box)return;lGet().then(function(){box=$('kWk');if(!box)return;var hd='<div class="k-hd"><b>Мои работы</b>';
