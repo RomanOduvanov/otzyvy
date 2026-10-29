@@ -927,11 +927,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -2492,6 +2492,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     const n = await env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(e.id).first(), p = efPub(e, now); delete p.chapters;
     return json(req, { ok: true, efir: p, regs: n ? n.n : 0, bot: 'https://t.me/' + BOT(env) + '?start=e' + e.id }) }
   const W = await efirWho(env, req, u, o); if (!W) return deny(req);
+  if (env.KINESCOPE_KEY) try { await kinAutoLive(env, now) } catch (x) {}
   if (path.startsWith('/efir/host/') || path.startsWith('/efir/kin/')) return efirHostApi(env, req, path, u, o, W, now);
   const id = +(o.id || u.searchParams.get('id') || 0);
   /* 9.1 список: идёт сейчас, ближайшие (с «Напомнить»), записи с досмотром */
@@ -2612,6 +2613,54 @@ async function efLeadNotify(env, e, L) { const cfg = (await kvGet(env, 'efir_lea
   for (const c of chats.slice(0, 5)) await tgSend(env, c, t, L.uid ? [[{ text: 'Профиль в GetCourse', url: SITE + '/user/control/user/update/id/' + L.uid }]] : null) }
 
 /* ---------- эфиры: команда (админ — все, куратор — свои) ---------- */
+/* 30.10 (Роман: «эфир одной кнопкой»): одна постоянная повторяющаяся трансляция школы в Kinescope (Live API v2, docs.kinescope.com/api/live/events).
+   Сервер и ключ потока для OBS не меняются: OBS настраивается один раз. Эфир в пульте сам получает плеер этой трансляции, время в Kinescope ставится само,
+   «Начать» включает приём потока, «Завершить» закрывает поток, запись подтягивает крон (:05, задача efkin). Всё «мягко»: ошибки Kinescope не мешают эфиру на нашей стороне.
+   kv efir_kin = {id, rtmp, key, play, at, warn}. Ключ потока отдаётся только админу. Без секрета KINESCOPE_KEY — всё по-старому (ссылка вручную). */
+const KIN_API = 'https://api.kinescope.io';
+const kinErrTxt = s => s === 401 || s === 403 ? 'Kinescope не принял ключ — проверь секрет KINESCOPE_KEY в Cloudflare' : s === 404 ? 'Трансляция не найдена в Kinescope — нажми «Настроить заново»' : s === 429 ? 'Kinescope просит подождать минуту — попробуй ещё раз' : !s ? 'Нет связи с Kinescope — попробуй ещё раз' : 'Kinescope ответил ошибкой ' + s + ' — попробуй ещё раз';
+async function kinCall(env, method, path, body) { let r = null, j = null;
+  try { r = await fetch(KIN_API + path, { method, headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, 'Content-Type': 'application/json', Accept: 'application/json' }, body: body ? JSON.stringify(body) : undefined }) } catch (x) { r = null }
+  try { j = r ? await r.json() : null } catch (x) { j = null }
+  if (!r || !r.ok) { const st = r ? r.status : 0, m = j && (j.error && (j.error.message || j.error.detail || (typeof j.error === 'string' ? j.error : '')) || j.message) || '';
+    await logIt(env, 'kin-err', 0, method + ' ' + path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/gi, ':id') + ' ' + st + (m ? ' ' + String(m).slice(0, 160) : '')); return { ok: false, st, err: kinErrTxt(st) } }
+  return { ok: true, data: j && j.data !== undefined ? j.data : j } }
+const kinPub = (K, adm) => K ? Object.assign({ id: K.id, play: K.play || null, rtmp: K.rtmp || null, at: K.at || null, warn: K.warn || null }, adm ? { key: K.key || null } : {}) : null;
+async function kinGet(env) { return env.KINESCOPE_KEY ? await kvGet(env, 'efir_kin') : null }
+/* создать трансляцию школы (один раз). Поля сверх name/type Kinescope может не знать — тогда повтор с минимальным телом */
+async function kinSetup(env, force) { const old = await kvGet(env, 'efir_kin'); if (old && old.id && !force) return { ok: true, K: old, created: false };
+  const base = { name: 'OduvanovSchool · эфиры', type: 'recurring' }, folder = await kvGet(env, 'efir_kin_folder');
+  const full = Object.assign({}, base, { auto_start: true, chat_active: false }, folder ? { record: { parent_id: String(folder) } } : {});
+  let r = await kinCall(env, 'POST', '/v2/live/events', full); if (!r.ok && (r.st === 400 || r.st === 422)) r = await kinCall(env, 'POST', '/v2/live/events', base);
+  if (!r.ok) return r; const d = r.data || {};
+  if (!d.id || !d.streamkey) { await logIt(env, 'kin-err', 0, 'setup: нет id/streamkey в ответе'); return { ok: false, err: 'Kinescope не вернул ключ трансляции — напиши разработчику' } }
+  const K = { id: String(d.id), key: String(d.streamkey), rtmp: String(d.rtmp_link || 'rtmp://rtmp.kinescope.io/live'), play: d.play_link ? String(d.play_link) : 'https://kinescope.io/' + d.id, at: msNow(), warn: null };
+  await kvPut(env, 'efir_kin', K); await kinCall(env, 'PUT', '/v2/live/events/' + K.id + '/enable'); await logIt(env, 'kin-setup', 0, K.id); return { ok: true, K, created: true } }
+/* время ближайшего эфира в Kinescope: новый поток события, если не вышло — перенос существующего */
+async function kinSchedule(env, K, start) { if (!K || !start) return null; const at = new Date(start).toISOString();
+  let r = await kinCall(env, 'POST', '/v2/live/events/' + K.id + '/stream', { started_at: at }); if (!r.ok && r.st && r.st !== 401 && r.st !== 403) r = await kinCall(env, 'PUT', '/v2/live/events/' + K.id + '/stream', { started_at: at });
+  return r.ok ? null : 'Время в Kinescope не обновилось (' + r.err + '). Эфир от этого не зависит — запусти трансляцию в OBS как обычно.' }
+const kinIsMine = (K, e) => { const v = efVideo(efJ(e.video, null) || e.video), kv = K && efVideo({ url: K.play }); return !!(v && kv && v.id === kv.id) };
+/* идёт ли поток в Kinescope прямо сейчас (кэш 20 с в памяти воркера) */
+let KIN_LIVE = { t: 0, v: null };
+async function kinLiveNow(env, K) { if (!K) return null; if (msNow() - KIN_LIVE.t < 2e4) return KIN_LIVE.v; KIN_LIVE.t = msNow();
+  const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id); if (!r.ok) return (KIN_LIVE.v = null);
+  const d = r.data || {}, st = String((d.stream && d.stream.status) || d.status || '').toLowerCase(); return (KIN_LIVE.v = /^(live|active|online|streaming|started|running|on_air)$/.test(st) ? true : st ? false : null) }
+/* поток пошёл — запланированный эфир с этим плеером (±30 мин от начала) сам становится «в эфире» */
+async function kinAutoLive(env, now) { const K = await kinGet(env); if (!K || !K.id) return 0; const live = await kinLiveNow(env, K); if (live !== true) return 0;
+  const L = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind!='auto' AND status='plan' AND start BETWEEN ? AND ?").bind(now - 36e5, now + 18e5)); let n = 0;
+  for (const e of L) { if (!kinIsMine(K, e)) continue; await env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=? WHERE id=? AND status='plan'").bind(now, now, e.id).run(); await logIt(env, 'efir-start-kin', 0, e.id); n++; break }
+  return n }
+/* крон: запись эфира из Kinescope в «Записи» (эфиры с плеером трансляции школы, закончились за 7 дней, записи ещё нет) */
+async function kinRecJob(env, B) { const K = await kinGet(env); if (!K || !K.id) return { skip: 'nokey' }; const now = msNow();
+  const L = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind!='auto' AND status IN ('done','rec') AND (rec IS NULL OR rec='' OR rec='null') AND at_end>? ORDER BY at_end DESC LIMIT 5").bind(now - 7 * 864e5)).then(x => x.filter(e => kinIsMine(K, e)));
+  if (!L.length) return { n: 0 }; const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos'); if (!r.ok) return { err: r.st };
+  const V = (Array.isArray(r.data) ? r.data : (r.data && (r.data.items || r.data.videos)) || []).map(v => ({ id: v.id, at: Date.parse(v.created_at || v.started_at || '') || 0, st: String(v.status || '').toLowerCase(), dur: +v.duration || 0 })).filter(v => v.id);
+  let n = 0; for (const e of L) { const t0 = (e.at_live || e.start || 0) - 15 * 6e4, t1 = (e.at_end || now) + 30 * 6e4;
+    const v = V.filter(x => x.at >= t0 && x.at <= t1 && (!x.st || /done|ready|processed|uploaded/.test(x.st))).sort((a, b) => b.dur - a.dur)[0]; if (!v) continue;
+    const rv = efVideo({ id: String(v.id), provider: 'kinescope' }); if (!rv) continue;
+    await env.DB.prepare('UPDATE efir SET rec=?, upd=? WHERE id=?').bind(JSON.stringify(rv), now, e.id).run(); await logIt(env, 'efir-rec-kin', 0, e.id + ' ' + v.id); n++ }
+  return { n } }
 async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json(req, { ok: false, err: 'Только для команды школы' }, 403);
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
   if (path === '/efir/kin/videos') { if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1, err: 'Ключ Kinescope не подключён — вставь ID или ссылку видео из Kinescope' });
@@ -2620,13 +2669,19 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const j = await r.json().catch(() => ({})), L = (j.data || j.items || []).map(v => ({ id: v.id, title: v.title || '', dur: Math.round(+v.duration || 0), poster: v.poster && (v.poster.md || v.poster.original || v.poster.sm || (typeof v.poster === 'string' ? v.poster : null)) || null, link: v.play_link || null, at: v.created_at || null, status: v.status || null }));
     return json(req, { ok: true, videos: q ? L.filter(v => v.title.toLowerCase().includes(q)) : L, meta: j.meta || null }) }
   /* TODO: создание трансляции через API Kinescope — эндпоинт live-событий в открытой документации не найден (30.10); пока трансляция создаётся в кабинете Kinescope, в эфир вставляется её ID/ссылка */
-  if (path === '/efir/kin/live') return json(req, { ok: false, todo: 1, err: 'Создай трансляцию в кабинете Kinescope (Трансляции → Новая) и вставь сюда её ссылку' });
+  /* трансляция школы: GET — состояние (ключ — только админу), POST — создать (один раз; force — заново, новый ключ) */
+  if (path === '/efir/kin/setup' || path === '/efir/kin/live') { if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1, err: 'Kinescope не подключён: нужен секрет KINESCOPE_KEY в Cloudflare' });
+    if (req.method !== 'POST') { const K = await kvGet(env, 'efir_kin'); return json(req, { ok: true, ready: !!(K && K.id), kin: kinPub(K, W.adm), live: K && K.id ? await kinLiveNow(env, K) : null }, 200, { 'Cache-Control': 'no-store' }) }
+    if (!W.adm) return json(req, { ok: false, err: 'Трансляцию школы настраивает Роман' }, 403);
+    const r = await kinSetup(env, !!o.force); if (!r.ok) return json(req, { ok: false, err: r.err }, 502);
+    return json(req, { ok: true, ready: true, created: r.created, kin: kinPub(r.K, true) }, 200, { 'Cache-Control': 'no-store' }) }
   const id = +(o.id || u.searchParams.get('id') || 0);
   if (path === '/efir/host/list') { const L = await qAll(W.adm ? env.DB.prepare('SELECT * FROM efir WHERE del=0 ORDER BY start DESC LIMIT 200') : env.DB.prepare('SELECT * FROM efir WHERE del=0 AND host_cid=? ORDER BY start DESC LIMIT 200').bind(W.cid));
     const ids = L.map(e => e.id), C = {}; if (ids.length) { const ph = ids.map(() => '?').join(','), [rg, sn, ld] = await env.DB.batch([env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_reg WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids), env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n, SUM(CASE WHEN last>? AND sess>=0 THEN 1 ELSE 0 END) live FROM efir_seen WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(now - 9e4, ...ids), env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_lead WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids)]);
       for (const x of rg.results || []) (C[x.efir_id] = C[x.efir_id] || {}).reg = x.n; for (const x of sn.results || []) Object.assign(C[x.efir_id] = C[x.efir_id] || {}, { came: x.n, now: x.live }); for (const x of ld.results || []) (C[x.efir_id] = C[x.efir_id] || {}).leads = x.n }
     const sc = W.adm ? await qAll(env.DB.prepare('SELECT id, src_id, ver, title, at, note FROM efir_scen ORDER BY id DESC LIMIT 60')) : [];
-    return json(req, { ok: true, now, role: W.me, cid: W.cid, kin: !!env.KINESCOPE_KEY, efirs: L.map(e => Object.assign(efPub(e, now, { full: true }), { cfg: efEditCfg(e), counts: C[e.id] || {} })), scen: sc, leads_cfg: W.adm ? ((await kvGet(env, 'efir_leads')) || {}) : null, curators: CURATORS.map(c => ({ cid: c.id, name: c.full })) }) }
+    const KL = env.KINESCOPE_KEY ? await kvGet(env, 'efir_kin') : null;
+    return json(req, { ok: true, now, role: W.me, cid: W.cid, kin: !!env.KINESCOPE_KEY, kin_ready: !!(KL && KL.id), kin_warn: KL && KL.warn || null, kin_live: KL && KL.id ? await kinLiveNow(env, KL) : null, efirs: L.map(e => Object.assign(efPub(e, now, { full: true }), { cfg: efEditCfg(e), counts: C[e.id] || {} })), scen: sc, leads_cfg: W.adm ? ((await kvGet(env, 'efir_leads')) || {}) : null, curators: CURATORS.map(c => ({ cid: c.id, name: c.full })) }) }
   if (path === '/efir/host/save' && req.method === 'POST') { const old = id ? await efGet(env, id) : null; if (id && !old) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (old && !efOwn(W, old)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
     const title = bStr(o.title, 140); if (!title) return json(req, { ok: false, err: 'Напиши тему эфира' }, 400);
     let kind = EF_KINDS.includes(o.kind) ? o.kind : 'live', acc = EF_ACC.includes(o.access) ? o.access : 'all';
@@ -2638,14 +2693,18 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     cfg.lead = W.adm && ci.lead && bStr(ci.lead.title, 100) ? { on: 1, title: bStr(ci.lead.title, 100), sub: bStr(ci.lead.sub, 160), btn: bStr(ci.lead.btn, 40) || 'Оставить заявку', timer: Math.min(180, Math.max(0, +ci.lead.timer | 0)), url: /^https:\/\//.test(ci.lead.url || '') ? bStr(ci.lead.url, 400) : null, min: ci.lead.min != null && ci.lead.min !== '' ? Math.max(0, +ci.lead.min | 0) : null } : null;
     if (kind === 'auto') { const sd = ci.sched || {}; cfg.sched = { days: (Array.isArray(sd.days) ? sd.days : []).map(Number).filter(x => x >= 0 && x <= 6), times: (Array.isArray(sd.times) ? sd.times : String(sd.times || '').split(/[\s,;]+/)).filter(t => /^\d{1,2}:\d{2}$/.test(t)).slice(0, 6), every: Math.max(0, +sd.every | 0), after: Math.max(0, +sd.after | 0) };
       if (ci.scen != null) { const sc = +ci.scen ? await env.DB.prepare('SELECT id, src_id FROM efir_scen WHERE id=?').bind(+ci.scen).first() : null; cfg.scen = sc ? sc.id : null; if (sc && sc.src_id) { const src = await efGet(env, sc.src_id); if (src) cfg.orig_at = src.at_live || src.start } } }
-    const v = efVideo(o.video), rv = efVideo(o.rec), ch = (Array.isArray(o.chapters) ? o.chapters : []).map(x => ({ t: Math.max(0, +x.t | 0), title: bStr(x.title, 120) })).filter(x => x.title).sort((a, b) => a.t - b.t).slice(0, 60);
+    const K0 = kind !== 'auto' ? await kinGet(env) : null, vIn = efVideo(o.video), oldV = old ? efVideo(efJ(old.video, null) || old.video) : null;
+    /* Kinescope подключён и ссылку не вписали (или стоял плеер трансляции школы) — плеер трансляции школы ставится сам */
+    const v = vIn || (K0 && K0.play && (!oldV || (old && kinIsMine(K0, old))) ? efVideo({ url: K0.play }) : null), rv = efVideo(o.rec), ch = (Array.isArray(o.chapters) ? o.chapters : []).map(x => ({ t: Math.max(0, +x.t | 0), title: bStr(x.title, 120) })).filter(x => x.title).sort((a, b) => a.t - b.t).slice(0, 60);
     const host = W.adm ? (CURATORS.find(c => c.id === o.host) ? o.host : 'admin') : W.cid, hc = CURATORS.find(c => c.id === host), cover = /^https:\/\/[^\s"'<>]+$/.test(o.cover || '') ? bStr(o.cover, 400) : null;
     const status = ['draft', 'plan'].includes(o.status) ? o.status : (old ? old.status : 'plan'), dur = Math.min(600, Math.max(10, +o.dur | 0 || 60));
     const vals = [title, bStr(o.about, 1000), host, hc ? hc.uid : efAdminUid(env), hc ? hc.full : 'Роман Одуванов', start || null, dur, kind, acc, old && ['live', 'done', 'rec'].includes(old.status) && ['draft', 'plan'].includes(status) && !o.reopen ? old.status : status, v ? JSON.stringify(v) : null, rv ? JSON.stringify(rv) : null, cover, JSON.stringify(ch), JSON.stringify(cfg), now];
     let nid = id; if (old) await env.DB.prepare('UPDATE efir SET title=?, about=?, host_cid=?, host_uid=?, host_name=?, start=?, dur=?, kind=?, tariff=?, status=?, video=?, rec=?, cover=?, chapters=?, cfg=?, upd=? WHERE id=?').bind(...vals, id).run();
     else nid = (await env.DB.prepare('INSERT INTO efir (title, about, host_cid, host_uid, host_name, start, dur, kind, tariff, status, video, rec, cover, chapters, cfg, upd, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(...vals, now).first()).id;
     if (old && old.start !== start) await env.DB.prepare("UPDATE efir_reg SET rem='' WHERE efir_id=? AND sess=0").bind(id).run();
-    await logIt(env, 'efir-save', W.uid, nid + ' ' + kind + ' ' + (W.cid || 'admin')); return json(req, { ok: true, id: nid }) }
+    let kin_warn = null; if (K0 && K0.id && v && kind !== 'auto' && start > now && (!old || old.start !== start || !old.video)) { const nx = await env.DB.prepare("SELECT id FROM efir WHERE del=0 AND kind!='auto' AND status IN ('plan','draft') AND start>? ORDER BY start LIMIT 1").bind(now).first();
+      if (nx && nx.id === nid && efVideo({ url: K0.play }).id === v.id) kin_warn = await kinSchedule(env, K0, start) }
+    await logIt(env, 'efir-save', W.uid, nid + ' ' + kind + ' ' + (W.cid || 'admin')); return json(req, Object.assign({ ok: true, id: nid }, kin_warn ? { kin_warn } : {})) }
   const e = await efGet(env, id); if (!e) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (!efOwn(W, e)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
   const cfg = efJ(e.cfg, {}), S = efState(e, now), sess = e.kind === 'auto' ? +(o.sess || u.searchParams.get('sess') || S.sess || 0) : 0, sec = Math.max(0, Math.floor((now - (e.kind === 'auto' ? sess : (e.at_live || e.start || now))) / 1000));
   if (path === '/efir/host/del' && req.method === 'POST') { await env.DB.prepare('UPDATE efir SET del=1, upd=? WHERE id=?').bind(now, e.id).run(); await logIt(env, 'efir-del', W.uid, e.id); return json(req, { ok: true }) }
@@ -2661,7 +2720,14 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
       if (act === 'lead' && !data.title) return json(req, { ok: false, err: 'Заполни заявку в настройках эфира' }, 400); if (act === 'poll' && (!data.q || data.opts.length < 2)) return json(req, { ok: false, err: 'Вопрос и хотя бы 2 варианта через /' }, 400);
       q.push(env.DB.prepare('INSERT INTO efir_ev (efir_id, sess, sec, kind, data, at) VALUES (?,?,?,?,?,?)').bind(e.id, sess, sec, act, JSON.stringify(data), now)) }
     else return json(req, { ok: false, err: 'Неизвестное действие' }, 400);
-    await env.DB.batch(q); await logIt(env, 'efir-' + act, W.uid, e.id + ' ' + sec); return json(req, { ok: true, sec }) }
+    await env.DB.batch(q); await logIt(env, 'efir-' + act, W.uid, e.id + ' ' + sec);
+    /* трансляция школы: «Начать» — включить приём потока; «Завершить» — закрыть поток (запись подтянет крон) и снова включить событие для следующего эфира */
+    let kin_warn = null; if ((act === 'start' || act === 'end') && env.KINESCOPE_KEY) { const K = await kinGet(env); if (K && K.id && kinIsMine(K, e)) {
+      if (act === 'start') { const r = await kinCall(env, 'PUT', '/v2/live/events/' + K.id + '/enable'); if (!r.ok && r.st !== 400 && r.st !== 409 && r.st !== 422) kin_warn = r.err }
+      else { const r = await kinCall(env, 'PUT', '/v2/live/events/' + K.id + '/complete'), r2 = await kinCall(env, 'PUT', '/v2/live/events/' + K.id + '/enable');
+        if (!r2.ok && r2.st !== 400 && r2.st !== 409 && r2.st !== 422) { K.warn = 'После эфира трансляция не включилась обратно — проверь её в Kinescope перед следующим эфиром'; await kvPut(env, 'efir_kin', K); kin_warn = K.warn } else if (K.warn) { K.warn = null; await kvPut(env, 'efir_kin', K) }
+        if (!r.ok && r.st && r.st !== 400 && r.st !== 409 && r.st !== 422) kin_warn = kin_warn || 'Kinescope: ' + r.err; KIN_LIVE = { t: 0, v: null } } } }
+    return json(req, Object.assign({ ok: true, sec }, kin_warn ? { kin_warn } : {})) }
   /* пульт: всё, что видит ведущий (включая сообщения «видят модераторы», работы, руки, заявки) */
   if (path === '/efir/host/room') { const after = +u.searchParams.get('after') || 0, [ms, qs, hd, wk, ld, vr, rg, ev] = await env.DB.batch([
       env.DB.prepare("SELECT * FROM efir_msg WHERE efir_id=? AND (sess=? OR ?=-1) AND del=0 AND id>? AND kind='msg' ORDER BY id DESC LIMIT 120").bind(e.id, sess, e.kind === 'auto' && !sess ? -1 : 0, after),
