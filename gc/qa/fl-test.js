@@ -17,10 +17,10 @@
     var F = '"Inter Tight",system-ui,-apple-system,sans-serif', R = 'html.fsfl-on ';
     s.textContent =
       /* страница GetCourse под нашим экраном — прячем; форма переезжает к нам */
-      R + '.xdget-myProfileSystemPage .layout-fixwidth>:not(#fsfl),' + R + '.global-controls,' + R + '.xdget-userCompleteForm>.xdget-header,' + R + '.xdget-userCompleteForm>.xdget-html,' + R + '.xdget-userCompleteForm .xdget-form-field-profile_image{display:none!important}'
-      + '#fsfl{--s2:#16161b;--s3:#1f1f26;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--mut:rgba(255,255,255,.64);--dim:rgba(255,255,255,.44);--vio:#c38bff;color:#fff;font:400 15px/1.45 ' + F + ';max-width:1120px;margin:0 0 48px;-webkit-font-smoothing:antialiased}'
+      R + '.xdget-myProfileSystemPage .layout-fixwidth>:not(#fsfl),' + R + 'body .global-controls,' + R + 'body .global-controls.eco-gc,' + R + '.xdget-userCompleteForm>.xdget-header,' + R + '.xdget-userCompleteForm>.xdget-html,' + R + '.xdget-userCompleteForm .xdget-form-field-profile_image{display:none!important}'
+      + '#fsfl{--s2:#16161b;--s3:#1f1f26;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--mut:rgba(255,255,255,.64);--dim:rgba(255,255,255,.44);--vio:#c38bff;color:#fff;font:400 15px/1.45 ' + F + ';max-width:1120px;margin:28px 0 48px;-webkit-font-smoothing:antialiased}'
       + '#fsfl *{box-sizing:border-box;font-family:' + F + '!important}'
-      + '#fsfl a{text-decoration:none}'
+      + '#fsfl a{text-decoration:none}#fsfl a.fl-row,#fsfl a.fl-row b{color:#fff!important}#fsfl a.fl-row:hover b{color:#d9b8ff!important}'
       + '#fsfl .fl-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}'
       + '#fsfl .fl-k{font-size:14px;font-weight:500;color:var(--vio)}'
       + '#fsfl .fl-h1{font-size:52px;line-height:1.05;font-weight:600;letter-spacing:-.035em;margin:6px 0 0;color:#fff}'
@@ -64,7 +64,7 @@
       + '#fsfl form .global-confirm-checkbox{-webkit-appearance:none!important;appearance:none!important;flex:none;width:22px!important;height:22px!important;margin:0!important;border-radius:7px!important;border:1.5px solid rgba(255,255,255,.28)!important;background:#0b0b0d no-repeat center/14px!important;cursor:pointer;position:static!important;opacity:1!important}'
       + '#fsfl form .global-confirm-checkbox:checked{background-color:#c38bff!important;border-color:#c38bff!important;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27m5 12.5 4.5 4.5L19 7.5%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%273%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")!important}'
       + '#fsfl form .global-confirm-checkbox-block.bad .global-confirm-checkbox{border-color:#f87171!important}'
-      + '#fsfl form .global-confirm-checkbox-block a{color:#d77fff!important}#fsfl form .fl-ofe{margin:6px 0 0 34px}'
+      + '#fsfl form .global-confirm-checkbox-block .checkbox-text{margin:0!important;padding:0!important}#fsfl form .global-confirm-checkbox-block a{color:#d77fff!important}#fsfl form .fl-ofe{margin:6px 0 0 34px}'
       + '#fsfl form .form-buttons{margin-top:4px!important;padding:0!important;text-align:center}'
       + '#fsfl form .form-buttons .btn{display:flex!important;align-items:center;justify-content:center;width:100%!important;height:56px!important;border:0!important;border-radius:16px!important;background:linear-gradient(180deg,#fef8ff,#fccbff)!important;color:#602364!important;font-size:16px!important;font-weight:600!important;text-transform:none!important;letter-spacing:0!important;box-shadow:none!important;padding:0 20px!important}'
       + '#fsfl form .form-buttons .btn:hover{filter:brightness(1.03)}'
@@ -76,7 +76,7 @@
       + '#fsfl .fl-ck{width:64px;height:64px;border-radius:50%;background:rgba(74,222,128,.15);color:#4ade80;display:grid;place-items:center;margin-bottom:8px}#fsfl .fl-ck svg{width:30px;height:30px}'
       + '#fsfl .fl-btn{height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-size:16px;font-weight:600}'
       + '@media(max-width:900px){#fsfl .fl-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"me" "form" "next"}#fsfl .fl-h1{font-size:40px}}'
-      + '@media(max-width:600px){#fsfl .fl-h1{font-size:28px;letter-spacing:-.02em}#fsfl .fl-k{font-size:13px}#fsfl .fl-set{display:none}#fsfl .c{border-radius:24px;padding:20px 18px}#fsfl .fl-formc{padding:24px 18px}'
+      + '@media(max-width:600px){#fsfl{margin-top:12px}#fsfl .fl-h1{font-size:28px;letter-spacing:-.02em}#fsfl .fl-k{font-size:13px}#fsfl .fl-set{display:none}#fsfl .c{border-radius:24px;padding:20px 18px}#fsfl .fl-formc{padding:24px 18px}'
       + '#fsfl .fl-steps{padding:10px 14px;gap:8px;flex-wrap:nowrap;overflow:hidden}#fsfl .fl-st{font-size:14px;gap:6px}#fsfl .fl-st i{width:22px;height:22px;font-size:11px}#fsfl .fl-st:not(.ok) i{display:none}#fsfl .fl-st .l{display:none}#fsfl .fl-st .s{display:inline!important}'
       + '#fsfl .fl-sep{flex:0 0 auto;width:auto;height:auto;background:none;color:var(--dim)}#fsfl .fl-sep:before{content:"→"}'
       + '#fsfl .fl-me{padding:22px 18px}#fsfl .fl-av{width:96px;height:96px}#fsfl .fl-me .fl-hr,#fsfl .fl-me .fl-note{display:none}'
