@@ -787,7 +787,7 @@ export default {
       /* 29.10: ключ «Статистики» без ввода — тем, у кого в GetCourse есть право «Может видеть статистику» и нет запрета на список заказов (список statUids присылает сборщик рейтинга) */
       if (path === '/fin/staff' && req.method === 'POST') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env);
         let o; try { o = JSON.parse(await req.text() || '{}') } catch (e) { return json(req, { ok: false, err: 'json' }, 400) } const ids = (Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid);
-        await kvPut(env, 'statUids', ids); await logIt(env, 'stat-staff', 0, ids.join(',')); return json(req, { ok: true, n: ids.length }) }
+        await kvPut(env, 'statUids', ids); const sx = (Array.isArray(o.staff) ? o.staff : []).map(Number).filter(okUid); if (sx.length) { await kvPut(env, 'gcStaff', sx); GC_STAFF = null } await logIt(env, 'stat-staff', 0, ids.join(',') + (sx.length ? ' | staff ' + sx.length : '')); return json(req, { ok: true, n: ids.length }) }
       if (path === '/fin/names' && req.method === 'POST') { if (!(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env); return json(req, await syncNames(env, budget(40), true)) }
       if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) return deny(req);
         /* 29.10: кураторам статистика школы и продажи закрыты на сервере, даже если в GetCourse у них есть право «статистика» */
@@ -1098,6 +1098,9 @@ async function aiErr(env, uid, code, cf) { const where = cf ? (cf.colo || '?') +
 function aiQuick(t) { const m = String(t || '').match(/\n?\s*\[\[([^\]]{2,200})\]\]\s*$/); if (!m) return { text: t, quick: [] };
   return { text: t.slice(0, m.index).trim(), quick: m[1].split('|').map(x => x.trim()).filter(Boolean).slice(0, 3) } }
 const isStaffUid = (env, uid) => String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/).includes(String(uid)) || CURATORS.some(c => c.uid === +uid);
+/* 30.10: сотрудники GetCourse (все «ответственные» из сборщика рейтинга → /fin/staff {staff:[…]}) — не ученики: не показываем в банке учеников и списках */
+let GC_STAFF = null, GC_STAFF_AT = 0;
+async function gcStaffSet(env) { if (GC_STAFF && Date.now() - GC_STAFF_AT < 300000) return GC_STAFF; let a = []; try { a = (await kvGet(env, 'gcStaff')) || [] } catch (e) {} GC_STAFF = new Set(a.map(Number)); GC_STAFF_AT = Date.now(); return GC_STAFF }
 /* ---------- Нейро: защита от спама и сообщений не по делу (сервер) ----------
    Правила без нейросети: бессмыслица, мат/оскорбления, повтор, флуд (> MOD_FLOOD за минуту). Неясно — дешёвая проверка моделью «да/нет».
    Лестница: каждые MOD_WARN нарушений — ограничение MOD_STEPS (мин): 30 → 60 → 180 → 720 → 1440; после последнего ещё MOD_WARN — полная блокировка.
@@ -1547,15 +1550,15 @@ async function bankStaffList(env, st) {
   /* 30.10 QA №6: m6 — ₽ за 6 месяцев (старые → новые, последний — текущий месяц по МСК), c6 — число оплат; один запрос на всех */
   const M6 = [], mk0 = dayStr().slice(0, 7); for (let i = 5; i >= 0; i--) { let [y, m] = mk0.split('-').map(Number); m -= i; while (m < 1) { m += 12; y-- } M6.push(y + '-' + String(m).padStart(2, '0')) }
   const mon = {}; for (const r of ((await env.DB.prepare('SELECT uid, substr(day,1,7) m, COALESCE(SUM(COALESCE(rub, amount)),0) s, COUNT(id) n FROM bank_tx WHERE del_at IS NULL AND day>=? GROUP BY uid, substr(day,1,7)').bind(M6[0] + '-01').all()).results || [])) (mon[r.uid] = mon[r.uid] || {})[r.m] = r;
-  const seen = {}, out = [], CN = {}; for (const c of CURATORS) CN[c.id] = c.full;
-  const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
+  const seen = {}, out = [], CN = {}, GS = await gcStaffSet(env); for (const c of CURATORS) CN[c.id] = c.full;
+  const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid) || GS.has(+uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {}, tot = Math.round(m.total || 0), cf = Math.round(m.conf || 0), bs = bStatus(tot);
     out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
       conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null,
       m6: M6.map(k => Math.round(((mon[uid] || {})[k] || {}).s || 0)), c6: M6.map(k => ((mon[uid] || {})[k] || {}).n || 0) }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
-  for (const s of studs) add(+s.uid, s.name, null, null);
-  for (const uid in sums) add(+uid, null, null, null);
+  /* 30.10: в списке только ученики потока (состав — из рейтинга, т.е. из групп потока в GetCourse). Раньше сюда попадали все, кто хоть раз открыл бота, — в т.ч. сотрудники */
+  if (!(D.rows || []).length) { for (const s of studs) add(+s.uid, s.name, null, null); for (const uid in sums) add(+uid, null, null, null) }
   out.sort((a, b) => (!a.name - !b.name) || b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
   return { ok: true, role: st.role, cid: st.cid || null, curators: st.role === 'admin' ? CURATORS.map(c => ({ id: c.id, full: c.full })) : CURATORS.filter(c => c.id === st.cid).map(c => ({ id: c.id, full: c.full })), students: out } }
 /* 30.10 QA №11: все заказы учеников для «Заказов учеников» — без клиента, Telegram, ТЗ и файлов; куратор — только свои, админ — все. Без loadData: имена страница берёт из /bank/staff/list. */
@@ -2025,7 +2028,7 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     const Q = await hwQueues(env);
     const curators = CURATORS.map(c => { const k = st.curators.find(x => x.id === c.id) || {}; return { cid: c.id, name: c.full, students: n[c.id] || 0, wait: (k.waiting || []).length, median_min: k.median == null ? null : Math.max(1, Math.round(k.median / 60)), in2h: k.in2h == null ? null : k.in2h, answered: k.answered || 0, tg: k.tg || null, connected: !!k.connected, hours: k.hours || null,
       stars: R[c.id] ? Math.round(R[c.id].a * 10) / 10 : null, stars_n: R[c.id] ? R[c.id].n : 0, hw_checked: H[c.id] || 0, earned: Math.round((E[c.id] || {}).total || 0), earned_conf: Math.round((E[c.id] || {}).conf || 0), hw_wait: Q[c.id] ? Q[c.id].n : null, hw_old: Q[c.id] ? Q[c.id].old48 || 0 : null, hw_q_at: Q[c.id] ? Q[c.id].at : null } });
-    let none = []; try { const D = await loadData(env); none = (D.rows || []).filter(r => r.uid != null && !cur[+r.uid] && !isStaffUid(env, r.uid)).map(r => ({ uid: +r.uid, name: r.name, tar: r.tar || null, place: r.place || null })) } catch (e) {}
+    let none = []; try { const D = await loadData(env); const GS = await gcStaffSet(env); none = (D.rows || []).filter(r => r.uid != null && !cur[+r.uid] && !isStaffUid(env, r.uid) && !GS.has(+r.uid)).map(r => ({ uid: +r.uid, name: r.name, tar: r.tar || null, place: r.place || null })) } catch (e) {}
     const qa = Q.all; return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length, hw_wait: qa ? qa.n : null, hw_old: qa ? qa.old48 || 0 : null, hw_oldest: qa ? qa.oldest || null : null, hw_q_at: qa ? qa.at : null, hw_part: !!(qa && qa.part) }, 200, { 'Cache-Control': 'no-store' }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 
