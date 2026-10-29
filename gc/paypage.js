@@ -4,7 +4,7 @@
 /* 30.10 (Роман): на /povyshenie-premium-amazon у рассрочки крупно «от 2 000 ₽/мес», ниже «общая сумма 47 900 ₽» — на всех ширинах (тексты заданы в CSS самой страницы) */
 (function () { try { var st = document.createElement('style'); st.textContent = 'html body .fspay-opt .form-position[data-offer-id="8846966"] .form-position-price::before{content:"от\\00a0 2\\00a0 000\\00a0 ₽/мес"!important}html body .fspay-opt .form-position[data-offer-id="8846966"] .form-position-price::after{content:"общая сумма 47\\00a0 900\\00a0 ₽"!important}'; (document.head || document.documentElement).appendChild(st) } catch (e) {} })();
 (function () { try {
-  var PAYSKIN = '3be371a0', R = document.documentElement, on = /[?&]tg=1\b/.test(location.search) || /tgWebAppVersion=/.test(location.hash);
+  var PAYSKIN = 'ffc78f13', R = document.documentElement, on = /[?&]tg=1\b/.test(location.search) || /tgWebAppVersion=/.test(location.hash);
   try { if (on) sessionStorage.setItem('ecoTg', '1'); else on = sessionStorage.getItem('ecoTg') === '1' } catch (e) {}
   if (!on || innerWidth > 767 || window.__payskin || document.getElementById('ecoPayskin')) return;
   R.classList.add('eco-tg');
