@@ -434,7 +434,7 @@ async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days
     const rs = ((await env.DB.prepare('SELECT wsec, sec, day FROM cresp WHERE cid=? AND answered>=? ORDER BY wsec').bind(c.id, from).all()).results || []);
     const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
     const byDay = {}; for (const r of rs) (byDay[r.day] = byDay[r.day] || []).push(r.wsec);
-    const wait = ((await env.DB.prepare('SELECT w.uid, w.since, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h) })); /* 30.10 QA №7: свои тесты команды не считаем — как в списке учеников */
+    const wait = ((await env.DB.prepare('SELECT w.uid, w.since, w.chat, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h), src: /^app/.test(String(w.chat)) ? 'app' : 'tg' })); /* 30.10 QA №7: свои тесты команды не считаем — как в списке учеников. Раунд 3 (Н5): src — откуда ждут: tg (личка куратора в Telegram) или app (чат платформы) */
     res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec).filter(x => x > 0)), offHours: rs.filter(r => !(r.wsec > 0)).length, in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
       days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d].filter(x => x > 0)), n: byDay[d].length })), waiting: wait }) }
   return { ok: true, days, curators: res } }
@@ -1718,6 +1718,10 @@ async function staffSess(env, req, u) { const t = (req.headers.get('Authorizatio
 async function staffCan(env, s, uid) { if (!s || !okUid(uid) || isStaffUid(env, uid)) return null; const st = await env.DB.prepare('SELECT uid, curator, tg_chat, name FROM student WHERE uid=?').bind(+uid).first();
   if (s.role === 'admin') return st || { uid: +uid, curator: null, tg_chat: null }; return st && s.cid && st.curator === s.cid ? st : null }
 const staffWho = s => s.role === 'admin' ? (String(s.name || '').split(' ')[0] || 'Роман') : ((CURATORS.find(c => c.id === s.cid) || {}).name || 'Куратор');
+/* QA раунд 3 (Н2): название ДЗ без своего «ДЗ · …», «ДЗ:», «Домашнее задание …» и внешних кавычек — бот сам пишет «ДЗ «…»» (иначе «ДЗ «ДЗ · Композиция»») */
+const hwName = v => { let t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  for (let i = 0; i < 4; i++) { const p = t; t = t.replace(/^(?:ДЗ|Д\/З|Домашн(?:ее|яя)\s+(?:задание|работа)|Домашка)(?:\s*№\s*\d+)?(?=$|[\s·:.,\-—–|«"“„(])\s*[·:.,\-—–|]*\s*/i, '').trim();
+    const m = t.match(/^[«"“„]([^«»"“”„]*)[»"”“]$/); if (m) t = m[1].trim(); if (t === p) break } return t };
 const staffBy = s => s.role === 'admin' ? 'admin' : s.cid;
 const byName = (by, s0) => by === 'admin' ? 'Роман' : ((CURATORS.find(c => c.id === by) || {}).name || s0 || null);
 /* уведомления ученику: что присылает бот (ответ куратора выключить нельзя) */
@@ -1783,16 +1787,21 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
   const o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, W = await chatWho(env, req, u, o); if (!W) return deny(req);
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
   if (path === '/chat/dialogs') { if (!W.s) return json(req, { ok: false, err: 'Только для кураторов' }, 403); const s = W.s, adm = s.role === 'admin', f = u.searchParams.get('f') === 'wait' ? 'wait' : 'all';
-    const [sr, lr, ur, wr] = await env.DB.batch([adm ? env.DB.prepare('SELECT uid, curator, name FROM student WHERE uid IN (SELECT DISTINCT uid FROM chat_msg) OR curator IS NOT NULL') : env.DB.prepare('SELECT uid, curator, name FROM student WHERE curator=?').bind(s.cid),
+    const [sr, lr, ur, wr, tr] = await env.DB.batch([adm ? env.DB.prepare('SELECT uid, curator, name FROM student WHERE uid IN (SELECT DISTINCT uid FROM chat_msg) OR curator IS NOT NULL') : env.DB.prepare('SELECT uid, curator, name FROM student WHERE curator=?').bind(s.cid),
       env.DB.prepare('SELECT m.uid, m.text, m.at, m.dir, m.file_id FROM chat_msg m JOIN (SELECT uid, MAX(id) mid FROM chat_msg WHERE del=0 GROUP BY uid) x ON x.mid=m.id'),
       env.DB.prepare("SELECT uid, COUNT(*) n FROM chat_msg WHERE dir='in' AND read_at IS NULL AND del=0 GROUP BY uid"),
-      env.DB.prepare("SELECT uid, cid, since FROM cwait WHERE chat LIKE 'app%'")]);
+      env.DB.prepare("SELECT uid, cid, since FROM cwait WHERE chat LIKE 'app%'"),
+      /* QA раунд 3 (Н5): ожидания из Telegram-лички куратора (те же cwait, что считает пульт) — строкой «ждёт ответа в Telegram» */
+      adm ? env.DB.prepare("SELECT w.cid, w.chat, w.uid, w.since, s.name sname, u.username, u.name uname FROM cwait w LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.chat NOT LIKE 'app%'")
+        : env.DB.prepare("SELECT w.cid, w.chat, w.uid, w.since, s.name sname, u.username, u.name uname FROM cwait w LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.chat NOT LIKE 'app%' AND w.cid=?").bind(s.cid)]);
     const L = {}, U = {}, Wt = {}; for (const x of lr.results || []) L[x.uid] = x; for (const x of ur.results || []) U[x.uid] = x.n; for (const x of wr.results || []) Wt[x.uid] = x.since * 1000;
     const N = await nameMap(env), out = [];
     for (const x of sr.results || []) { if (isStaffUid(env, x.uid)) continue; if (adm && !L[x.uid] && f === 'all' && !Wt[x.uid]) continue; if (f === 'wait' && !Wt[x.uid]) continue; const l = L[x.uid];
       out.push({ uid: x.uid, name: N[x.uid] || x.name || null, cid: x.curator || null, last: l ? { text: l.text || (l.file_id ? '📎 файл' : ''), at: l.at, dir: l.dir } : null, unread: U[x.uid] || 0, wait_since: Wt[x.uid] || null }) }
+    let wtg = 0; for (const w of tr.results || []) { if (w.uid && isStaffUid(env, w.uid)) continue; if (!CURATORS.some(c => c.id === w.cid)) continue; wtg++;
+      out.push({ uid: w.uid || null, name: (w.uid && N[w.uid]) || w.sname || w.uname || (w.username ? '@' + w.username : null), cid: w.cid, cname: (CURATORS.find(c => c.id === w.cid) || {}).name || null, src: 'tg', tg: w.username || null, chat: String(w.chat), last: null, unread: 0, wait_since: w.since * 1000 }) }
     out.sort((a, b) => (!!b.wait_since - !!a.wait_since) || (a.wait_since && b.wait_since ? a.wait_since - b.wait_since : 0) || ((b.last ? b.last.at : 0) - (a.last ? a.last.at : 0)) || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
-    return json(req, { ok: true, me: s.role, f, dialogs: out, wait: out.filter(x => x.wait_since).length }, 200, { 'Cache-Control': 'no-store' }) }
+    return json(req, { ok: true, me: s.role, f, dialogs: out, wait: out.filter(x => x.wait_since).length, wait_tg: wtg }, 200, { 'Cache-Control': 'no-store' }) }
   const uid = W.uid; if (!uid) return json(req, { ok: false, err: 'Укажи ученика' }, 400);
   if (path === '/chat/list') { const before = +u.searchParams.get('before') || 0, st = await env.DB.prepare('SELECT curator, name FROM student WHERE uid=?').bind(uid).first() || {};
     const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
@@ -1959,20 +1968,20 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
       students = ((await appStudents(env, 'all')).students || []).length }
     else { card = await curCard(env, cid); students = ((await qAll(env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cid))).filter(x => !isStaffUid(env, x.uid))).length }
     const hwc = ((nh.results || [])[0] || {}).n || 0, Q = await hwQueues(env);
-    return json(req, Object.assign({ ok: true, cid, name: card.name, role: s.role, students, wait: (nw.results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).length, hw: hwc, hw_checked: hwc, hw_days: 30, earned, earned_conf,
+    return json(req, Object.assign({ ok: true, cid, name: card.name, who: staffWho(s), role: s.role, students, wait: (nw.results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).length, hw: hwc, hw_checked: hwc, hw_days: 30, earned, earned_conf,
       avg_reply_min: card.avg_reply_min, stars: card.stars, stars_n: card.stars_n, hours: card.hours, online: card.online }, hwqOut(Q[cid])), 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/cur/hwlog' && req.method === 'POST') { const st = await staffCan(env, s, +o.uid); if (!st) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
     const status = o.status === 'rework' ? 'rework' : o.status === 'accept' ? 'accept' : null; if (!status) return json(req, { ok: false, err: 'status: accept или rework' }, 400);
-    const cid = adm ? (st.curator || null) : s.cid, pts = Math.max(0, Math.min(1000, Math.round(+o.pts || 0))), lesson = bStr(o.lesson, 200), comment = bStr(o.comment, 2000), lid = okUid(o.lesson_id) ? +o.lesson_id : null, aid = okUid(o.answer_id) ? +o.answer_id : null;
+    const cid = adm ? (st.curator || null) : s.cid, pts = Math.max(0, Math.min(1000, Math.round(+o.pts || 0))), lesson = bStr(hwName(o.lesson), 200), comment = bStr(o.comment, 2000), lid = okUid(o.lesson_id) ? +o.lesson_id : null, aid = okUid(o.answer_id) ? +o.answer_id : null;
     const sent = typeof o.sent_at === 'number' ? o.sent_at : o.sent_at ? Date.parse(o.sent_at) : NaN;
     const dup = aid && await env.DB.prepare('SELECT id FROM cur_hw WHERE answer_id=? AND status=? AND at>?').bind(aid, status, now - 10 * 60e3).first();
     const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now).first();
     await logIt(env, 'cur-hw', st.uid, (cid || 'admin') + ' ' + status + ' ' + pts);
-    let notified = false; if (!dup && st.tg_chat && await notifOn(env, st.uid, 'hw')) { const who = staffWho(s), L = lesson ? '«' + th(lesson) + '»' : '', btn = lid ? [[{ text: status === 'accept' ? 'Посмотреть работу' : 'Открыть замечания', url: maLink(env, 'l' + lid) }]] : null;
+    let notified = false; if (!dup && st.tg_chat && await notifOn(env, st.uid, 'hw')) { const who = staffWho(s), L = lesson ? ' «' + th(lesson) + '»' : '', btn = lid ? [[{ text: status === 'accept' ? 'Посмотреть работу' : 'Открыть замечания', url: maLink(env, 'l' + lid) }]] : null;
       if (status === 'accept') { let place = null; try { const D = await loadData(env), rr = await rowFor(D, st.uid); place = rr && rr.place || null } catch (e) {}
-        await tgSend(env, st.tg_chat, '✅ <b>ДЗ ' + L + ' принято</b>\n' + nbt((pts ? '+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) : 'Проверил' + fem(who) + ' ' + th(who)) + (place ? ' · ты на ' + place + ' месте' : '')) + (comment ? '\n\n«' + th(comment) + '» — ' + th(who) : ''), btn) }
+        await tgSend(env, st.tg_chat, '✅ <b>ДЗ' + L + ' принято</b>\n' + nbt((pts ? '+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) : 'Проверил' + fem(who) + ' ' + th(who)) + (place ? ' · ты на ' + place + ' месте' : '')) + (comment ? '\n\n«' + th(comment) + '» — ' + th(who) : ''), btn) }
       else { const notes = (Array.isArray(o.notes) && o.notes.length ? o.notes : comment.split(/\n+/)).map(x => bStr(x, 300)).filter(Boolean).slice(0, 10), due = /^\d{4}-\d{2}-\d{2}$/.test(o.due || '') ? o.due : null;
-        await tgSend(env, st.tg_chat, '✏️ <b>ДЗ ' + L + NB + '— нужно доработать</b>\n' + (notes.length ? notes.map((x, i) => (i + 1) + '. ' + th(x)).join('\n') : nbt('Посмотри замечания ' + th(who) + ' на странице урока.')) + (due ? '\n\n' + nbt('Пересдай до ' + human(due) + ', чтобы не потерять ×2') : ''), btn) }
+        await tgSend(env, st.tg_chat, '✏️ <b>ДЗ' + L + NB + '— нужно доработать</b>\n' + (notes.length ? notes.map((x, i) => (i + 1) + '. ' + th(x)).join('\n') : nbt('Посмотри замечания ' + th(who) + ' на странице урока.')) + (due ? '\n\n' + nbt('Пересдай до ' + human(due) + ', чтобы не потерять ×2') : ''), btn) }
       notified = true }
     return json(req, { ok: true, id: r.id, notified, dup: !!dup }) }
   if (path === '/cur/hwstat') { const days = Math.max(1, Math.min(90, +u.searchParams.get('days') || 30)), cq = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : 'all') : s.cid;
