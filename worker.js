@@ -46,6 +46,7 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS tg_admin (chat TEXT PRIMARY KEY, name TEXT, added TEXT)',
   'CREATE TABLE IF NOT EXISTS student (uid INTEGER PRIMARY KEY, name TEXT, tg_chat TEXT, tg_token TEXT, tg_at TEXT, curator TEXT, cur_at TEXT)',
   'CREATE TABLE IF NOT EXISTS gc_name (uid INTEGER PRIMARY KEY, name TEXT, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS mail_off (uid INTEGER PRIMARY KEY, kind TEXT, at TEXT)', /* 30.10: отписка от писем о модулях */
   'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
   'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
   'CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)',
@@ -262,6 +263,49 @@ async function sendMail(env, to, subject, body) {
     body: JSON.stringify({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [to], subject, html: body }) });
   const t = await r.text(); await logIt(env, r.ok ? 'mail-ok' : 'mail-err', 0, to + ' · ' + t.slice(0, 300)); return { ok: r.ok, reason: t.slice(0, 200) };
 }
+/* ---------- 30.10: письмо «Открыт новый модуль» (макет «Письма школы» v3) ----------
+   Раз в час (крон «5 * * * *», задача modmail): модуль, который открылся за последние 12 часов и по которому ещё не всё отправлено,
+   уходит письмом ученикам потока (строки рейтинга), кроме сотрудников и отписавшихся (mail_off). Почты — из ежедневной выгрузки GetCourse (gc_name.email).
+   Отправка пачками по 100 через Resend /emails/batch; кому ушло — в kv 'modmail:<id модуля>', чтобы при обрыве не прислать дважды.
+   Письмо GetCourse «Открыт новый урок» (тип 128) выключено — вместо писем на каждый урок одно письмо на модуль. */
+const MM_F = "'Inter Tight',Inter,Arial,Helvetica,sans-serif";
+function mskFmt(ts) { const d = msk(new Date(ts)); return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ', ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ' МСК' }
+function modInfo(D, m, now) { let L = 0, H = 0; for (const p of m.parts || []) for (const l of p.lessons || []) { const k = l.kind || (/^Анкета/i.test(l.t) ? 'anketa' : 'lesson'); if (k === 'hw') H++; else if (k === 'lesson') L++ }
+  const nm = String(m.name || '').match(/^Модуль (\d+)\s*—\s*(.+)$/), x = learnX2(D, m, now || Date.now());
+  return { title: nm ? 'Модуль ' + nm[1] + ' · ' + nm[2] : (m.name || 'Новый модуль'), subj: nm ? 'Открыт Модуль ' + nm[1] + ' «' + nm[2] + '» — ×2 к баллам 48 часов' : 'Открыт новый модуль — ×2 к баллам 48 часов', lessons: L, hw: H, x2: x && x.lessons_until ? mskFmt(Date.parse(x.lessons_until)) : null } }
+function modMailHtml(I, first, unsub) { const esc2 = esc, nb2 = t => nb(t);
+  const row = (k, v) => `<tr><td style="padding:6px 0;font-size:15px;line-height:22px;color:#8b8b95">${k}</td><td align="right" style="padding:6px 0;font-size:15px;line-height:22px;color:#ffffff;font-weight:600">${v}</td></tr>`;
+  const lead = (first ? esc2(first) + ', м' : 'М') + 'одуль уже открыт: ' + I.lessons + ' ' + pl(I.lessons, ['урок', 'урока', 'уроков']) + (I.hw ? ' и домашнее задание.' : '.') + (I.x2 ? ' <b style="color:#ffffff">Первые 48 часов баллы за уроки удваиваются</b> — успей до ' + I.x2 + '.' : '');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>${esc2(I.subj)}</title></head><body style="margin:0;padding:0;background-color:#000106">`
+    + `<div style="margin:0;padding:0;background-color:#000106"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000106" style="background-color:#000106;width:100%"><tr><td align="center" style="padding:32px 12px 40px"><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">`
+    + `<tr><td style="padding:0 8px 24px"><img src="https://romanoduvanov.github.io/otzyvy/gc/email-logo-white.png" width="240" height="33" alt="OduvanovSchool" style="display:block;border:0;width:240px;height:33px"></td></tr>`
+    + `<tr><td bgcolor="#141414" style="background-color:#141414;border:1px solid #262626;border-radius:28px;padding:36px 32px 32px;font-family:${MM_F};color:#ffffff">`
+    + `<div style="font-size:15px;line-height:20px;font-weight:600;color:#c38bff;margin:0 0 10px">Открыт новый модуль</div>`
+    + `<div style="font-size:30px;line-height:36px;font-weight:600;color:#ffffff;margin:0 0 14px">${nb2(esc2(I.title))}</div>`
+    + `<div style="font-size:16px;line-height:24px;color:#bdbdc4;margin:0 0 24px">${lead}</div>`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#fccbff" style="border-radius:16px;background-color:#fccbff;background-image:linear-gradient(180deg,#fef8ff,#fccbff)"><a href="https://t.me/oduvanov_school_bot?startapp=learn" style="display:block;padding:18px 24px;font-family:${MM_F};font-size:17px;line-height:22px;font-weight:600;color:#602364;text-decoration:none;border-radius:16px">Начать модуль</a></td></tr></table>`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px"><tr><td bgcolor="#0b0b0d" style="background-color:#0b0b0d;border:1px solid #262626;border-radius:20px;padding:20px 22px;color:#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">`
+    + row('Уроков', I.lessons) + (I.hw ? row('Домашнее задание', I.hw + ', до ' + HW_MAX + ' баллов') : '') + (I.x2 ? row('×2 к баллам', 'до ' + I.x2) : '') + `</table></td></tr></table>`
+    + `<div style="font-size:14px;line-height:21px;color:#8b8b95;margin-top:18px">Удобнее в Telegram: кнопка откроет приложение школы. С компьютера — <a href="${SITE}/teach/control/stream" style="color:#d77fff;text-decoration:none;font-weight:600">кабинет на сайте</a>.</div></td></tr>`
+    + `<tr><td style="padding:22px 8px 0;font-family:Inter,Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6b75">Онлайн-школа Романа Одуванова. Вопросы — в <a href="${CARE}" style="color:#a78bfa;text-decoration:underline">Службу заботы</a> или куратору в приложении. <a href="${unsub}" style="color:#a78bfa;text-decoration:underline">Не присылать письма о модулях</a></td></tr>`
+    + `</table></td></tr></table></div></body></html>` }
+async function modUnsubLink(env, uid) { return (env.BASE_URL || 'https://oduvanov-api.romanoduvanov52.workers.dev') + '/modunsub?u=' + uid + '&s=' + (await hmacHex(env, 'mo|' + uid)).slice(0, 24) }
+async function modMailJob(env, B) { if (!env.RESEND_KEY) return { skip: 'no-mail' }; const D = await loadData(env), now = Date.now();
+  const open = (D.modules || []).filter(m => !m.amazon && +m.id !== AMAZON_MOD && m.at && Date.parse(m.at) <= now && now - Date.parse(m.at) < 12 * 36e5);
+  if (!open.length) return { none: true }; const out = {};
+  const staff = await gcStaffSet(env), off = new Set(((await env.DB.prepare("SELECT uid FROM mail_off WHERE kind='mod'").all()).results || []).map(r => +r.uid));
+  const E = {}; for (const r of ((await env.DB.prepare('SELECT uid, name, email FROM gc_name WHERE email IS NOT NULL').all()).results || [])) E[+r.uid] = r;
+  for (const m of open) { const key = 'modmail:' + m.id, st = (await kvGet(env, key)) || { sent: [] }, done = new Set(st.sent.map(Number)); if (st.fin) { out[m.id] = 'готово'; continue }
+    const I = modInfo(D, m, now), to = [];
+    for (const r of D.rows || []) { const uid = +r.uid; if (!uid || done.has(uid) || staff.has(uid) || off.has(uid) || !E[uid]) continue; to.push(uid) }
+    let n = 0; for (let i = 0; i < to.length; i += 100) { if (!B.ok(1)) break; B.use(1); const part = to.slice(i, i + 100);
+      const msgs = await Promise.all(part.map(async uid => ({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [E[uid].email], subject: I.subj, html: modMailHtml(I, String(E[uid].name || '').split(' ')[0], await modUnsubLink(env, uid)) })));
+      const r = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(msgs) });
+      const t = await r.text(); await logIt(env, r.ok ? 'modmail-ok' : 'modmail-err', 0, m.id + ' · ' + part.length + ' · ' + t.slice(0, 200)); if (!r.ok) break;
+      part.forEach(u => st.sent.push(u)); n += part.length; await kvPut(env, key, st) }
+    if (st.sent.length && to.length === n) { st.fin = new Date().toISOString(); await kvPut(env, key, st) } out[m.id] = n }
+  return out }
+
 /* ---------- Telegram ---------- */
 const BOT = env => (env && env.TG_BOT) || 'oduvanov_school_bot';
 const sha = async s => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -595,14 +639,15 @@ async function syncNames(env, B, force) { if (!env.GC_KEY) return null; const to
   if (!force && !(await kvGet(env, 'exp:users')) && ((await kvGet(env, 'names_day')) === today || msk().getUTCHours() < 4)) return { skip: 'fresh' };
   const info = await gcExportStep(env, 'users', 'users', '2020-01-01', today, GC_HOST, env.GC_KEY, B, 3); if (!info) return { pending: true };
   const F = info.fields.map(f => String(f).trim()), fx = re => F.findIndex(f => re.test(f));
-  const I = { id: fx(/^(id|ID|Id|Номер)$/), fn: fx(/^Имя$/i), ln: fx(/^Фамилия$/i), full: fx(/^(ФИО|Пользователь|Имя Фамилия)$/i) };
+  const I = { id: fx(/^(id|ID|Id|Номер)$/), fn: fx(/^Имя$/i), ln: fx(/^Фамилия$/i), full: fx(/^(ФИО|Пользователь|Имя Фамилия)$/i), em: fx(/^(email|e-mail|эл\.? ?почта|почта)$/i) };
+  try { await env.DB.prepare('ALTER TABLE gc_name ADD COLUMN email TEXT').run() } catch (e) {} /* 30.10: почта — для писем об открытии модуля */
   if (I.id < 0 || (I.fn < 0 && I.full < 0)) { await logIt(env, 'names-err', 0, 'колонки: ' + F.slice(0, 30).join(', ')); await kvPut(env, 'names_day', today); return { err: 'cols' } }
   const D = await loadData(env), want = {};
   const [a, b] = await env.DB.batch([env.DB.prepare('SELECT uid FROM student'), env.DB.prepare('SELECT DISTINCT uid FROM bank_tx')]);
   for (const r of [...(a.results || []), ...(b.results || [])]) want[r.uid] = 1; for (const r of (D.rows || [])) if (r.uid != null) want[+r.uid] = 1;
-  const now = new Date().toISOString(), stm = env.DB.prepare('INSERT OR REPLACE INTO gc_name (uid, name, at) VALUES (?,?,?)'), rows = [];
+  const now = new Date().toISOString(), stm = env.DB.prepare('INSERT OR REPLACE INTO gc_name (uid, name, at, email) VALUES (?,?,?,?)'), rows = [];
   for (const r of info.items) { const uid = +r[I.id]; if (!want[uid]) continue;
-    const nm = (I.fn >= 0 ? [r[I.fn], I.ln >= 0 ? r[I.ln] : ''].join(' ') : String(r[I.full] || '')).replace(/\s+/g, ' ').trim(); if (nm) rows.push(stm.bind(uid, nm.slice(0, 80), now)) }
+    const nm = (I.fn >= 0 ? [r[I.fn], I.ln >= 0 ? r[I.ln] : ''].join(' ') : String(r[I.full] || '')).replace(/\s+/g, ' ').trim(); const em = I.em >= 0 ? String(r[I.em] || '').trim().toLowerCase() : ''; if (nm) rows.push(stm.bind(uid, nm.slice(0, 80), now, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) ? em : null)) }
   for (let i = 0; i < rows.length; i += 90) await env.DB.batch(rows.slice(i, i + 90));
   await env.DB.prepare("UPDATE student SET name=(SELECT g.name FROM gc_name g WHERE g.uid=student.uid) WHERE (name IS NULL OR name='') AND uid IN (SELECT uid FROM gc_name)").run();
   await kvPut(env, 'names_day', today); for (const k in APPC) delete APPC[k]; await logIt(env, 'names', 0, rows.length + ' имён из ' + info.items.length); return { n: rows.length, all: info.items.length } }
@@ -778,6 +823,12 @@ export default {
       /* CODE-02: свой отчёт — по токену чтения v; без токена — пример на обезличенных данных */
       if (path === '/preview') { const w = await who(env, u.searchParams.get('v') || u.searchParams.get('t'), 'av'); const f = +u.searchParams.get('f') || 0;
         const R = w.uid ? await buildReport(env, w.uid, { freq: f, preview: true }) : demoReport(f); return html(R.html.replace(/\{\{BASE\}\}/g, u.origin)) }
+      if (path === '/modunsub') { const uid = +u.searchParams.get('u'), sg = String(u.searchParams.get('s') || ''); let ok = false;
+        if (okUid(uid) && sg.length === 24 && same(sg, (await hmacHex(env, 'mo|' + uid)).slice(0, 24))) { await env.DB.prepare("INSERT OR REPLACE INTO mail_off (uid, kind, at) VALUES (?, 'mod', ?)").bind(uid, new Date().toISOString()).run(); await logIt(env, 'modunsub', uid, ''); ok = true }
+        return html(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OduvanovSchool</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#000106;font-family:'Inter Tight',Inter,-apple-system,Arial,sans-serif;color:#fff;text-align:center;padding:24px;box-sizing:border-box"><div style="max-width:420px;background:#141414;border:1px solid #262626;border-radius:28px;padding:32px 28px"><div style="font-size:24px;font-weight:600;line-height:1.25">${ok ? 'Готово, письма о модулях больше не придут' : 'Ссылка устарела'}</div><p style="color:#bdbdc4;font-size:15px;line-height:1.5;margin:12px 0 0">${ok ? 'Об открытии модулей по-прежнему напомнит бот и приложение школы.' : 'Напиши в <a href="' + CARE + '" style="color:#d77fff">Службу заботы</a> — отпишем вручную.'}</p></div></body>`) }
+      /* предпросмотр письма о модуле: ?m=<id модуля> (без личных данных, имя — пример) */
+      if (path === '/modmail/preview') { const D = await loadData(env), id = +u.searchParams.get('m'); const m = (D.modules || []).find(x => +x.id === id) || (D.modules || []).filter(x => !x.amazon && x.at).slice(-1)[0];
+        if (!m) return html('нет модулей', 404); return html(modMailHtml(modInfo(D, m, Date.parse(m.at) + 3600e3), 'Анастасия', '#')) }
       if (path === '/unsub') {
         const t = u.searchParams.get('t') || ''; const p = t && await env.DB.prepare('SELECT uid, student FROM parent WHERE token=?').bind(t).first();
         if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'unsub', p.uid, '') }
@@ -874,11 +925,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
