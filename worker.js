@@ -926,11 +926,11 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -2018,7 +2018,7 @@ async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, 
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
-const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue'];
+const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
 /* 30.10 (QA №7, №13): очередь ДЗ. Её знает только GetCourse (лента ответов входа куратора), поэтому кабинет «Проверка ДЗ» на сайте (?fs=cur)
    после загрузки ленты и после каждого «Принять / Вернуть» присылает POST /cur/queue {n, old48, oldest, by?:{<cid>|none:{n, old48, oldest}}} (by — только у Романа:
    его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
@@ -2109,7 +2109,63 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
       stars: R[c.id] ? Math.round(R[c.id].a * 10) / 10 : null, stars_n: R[c.id] ? R[c.id].n : 0, hw_checked: H[c.id] || 0, earned: Math.round((E[c.id] || {}).total || 0), earned_conf: Math.round((E[c.id] || {}).conf || 0), hw_wait: Q[c.id] ? Q[c.id].n : null, hw_old: Q[c.id] ? Q[c.id].old48 || 0 : null, hw_q_at: Q[c.id] ? Q[c.id].at : null } });
     let none = []; try { const D = await loadData(env); const GS = await gcStaffSet(env); none = (D.rows || []).filter(r => r.uid != null && !cur[+r.uid] && !isStaffUid(env, r.uid) && !GS.has(+r.uid)).map(r => ({ uid: +r.uid, name: r.name, tar: r.tar || null, place: r.place || null })) } catch (e) {}
     const qa = Q.all; return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length, hw_wait: qa ? qa.n : null, hw_old: qa ? qa.old48 || 0 : null, hw_oldest: qa ? qa.oldest || null : null, hw_q_at: qa ? qa.at : null, hw_part: !!(qa && qa.part) }, 200, { 'Cache-Control': 'no-store' }) }
+  /* 31.10 (Роман, задача 106): вкладка «Отзывы» пульта. Админ — всё: звёзды уроков и анкеты модулей (отчёт «Голос учеников»), Нейро 👍/👎, кураторы, лента.
+     Куратор — только соревнование кураторов: звёзды ответам, время ответа (своё и других). Оценок уроков и анкет куратор не получает (сервер их не отдаёт). */
+  if (path === '/rev/data') { const days = [7, 30].includes(+u.searchParams.get('days')) ? +u.searchParams.get('days') : 0, from = days ? now - days * 864e5 : 0;
+    const cs = await curStats(env, days || 3650), [rt, rd] = await env.DB.batch([env.DB.prepare('SELECT cid, stars, COUNT(*) n FROM chat_rate WHERE at>=? GROUP BY cid, stars').bind(from),
+      env.DB.prepare('SELECT cid, COUNT(DISTINCT uid) n FROM chat_rate WHERE at>=? GROUP BY cid').bind(from)]), dist = {}, who = {};
+    for (const x of rt.results || []) { const d = dist[x.cid] = dist[x.cid] || [0, 0, 0, 0, 0]; if (x.stars >= 1 && x.stars <= 5) d[x.stars - 1] += x.n } for (const x of rd.results || []) who[x.cid] = x.n;
+    const curators = CURATORS.map(c => { const k = cs.curators.find(x => x.id === c.id) || {}, d = dist[c.id] || [0, 0, 0, 0, 0], n = d.reduce((a, b) => a + b, 0);
+      return { cid: c.id, name: c.full, short: c.name, photo: 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + c.id + '.jpg', me: !adm && s.cid === c.id, stars: n ? Math.round(d.reduce((a, b, i) => a + b * (i + 1), 0) / n * 100) / 100 : null, stars_n: n, students_n: who[c.id] || 0, dist: d,
+        median_min: k.median == null ? null : Math.max(1, Math.round(k.median / 60)), in2h: k.in2h == null ? null : k.in2h, answered: k.answered || 0, efir: null } });
+    const out = { ok: true, role: adm ? 'admin' : 'curator', days, curators }; if (!adm) return json(req, out, 200, { 'Cache-Control': 'no-store' });
+    const D = await revSchool(env); if (D) { const W = D.week || {}, A = D.all || {}, M = {}; for (const m of D.mods || []) M[m.id] = m;
+      const mods = (D.mods || []).map(m => { const g = (D.agg || {})[m.id] || {}, sum = (f, w) => Object.values(g).reduce((t, x) => t + (x[f] != null ? x[f] * x[w] : 0), 0), cnt = w => Object.values(g).reduce((t, x) => t + (x[w] || 0), 0), nr = cnt('n_r'), ns = cnt('n_s');
+        const ws = w => Object.values(g).reduce((t, x) => t + (x.stars != null && w === 'n_r' ? x.n_r : 0), 0), wi = Object.values(g).reduce((t, x) => t + (x.interest != null ? x.n_s : 0), 0);
+        return { id: m.id, name: m.name, group: m.group, stars: ws('n_r') ? Math.round(sum('stars', 'n_r') / ws('n_r') * 100) / 100 : null, n_r: nr, interest: wi ? Math.round(sum('interest', 'n_s') / wi * 100) / 100 : null, n_s: ns } }).filter(m => m.n_r || m.n_s);
+      const dfrom = days ? new Date(from + 3 * 3600e3).toISOString().slice(0, 10) : '';
+      const feed = [], FK = {}; for (const c of (D.comments || []).filter(c => !dfrom || c.d >= dfrom).slice(0, 800)) { const src = c.src === 'Оценка урока' ? 'lesson' : 'anketa', k = src === 'anketa' ? [c.who, c.d, c.m, c.s].join('|') : null; /* анкета: ответы на «почему» и «вопросы» — одна запись */
+        if (k && FK[k]) { if (c.t && FK[k].t.indexOf(c.t) < 0) FK[k].t = (FK[k].t ? FK[k].t + ' · ' : '') + c.t; continue }
+        const x = { d: c.d, who: c.who, src, q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', low: revLow(c) }; if (k) FK[k] = x; feed.push(x) }
+      const seen = new Set(), low = feed.filter(c => c.low && !seen.has(c.who + c.d + c.src + c.mod) && seen.add(c.who + c.d + c.src + c.mod));
+      out.school = { updated: D.updated, week: W.ratings != null ? { stars: W.stars, n_r: W.ratings, n_s: W.surveys, interest: W.interest } : null, all: { stars: A.stars, n_r: A.n_r, n_s: A.n_s, interest: A.interest, useful: A.useful, apply: A.apply, dist: A.dist || null }, mods, feed: feed.slice(0, 300), low: low.slice(0, 20), low_n: low.length } }
+    try { const f = await env.DB.prepare('SELECT SUM(CASE WHEN vote>0 THEN 1 ELSE 0 END) up, SUM(CASE WHEN vote<0 THEN 1 ELSE 0 END) down FROM ai_fb WHERE at>=?').bind(from).first(); const up = (f && f.up) || 0, dn = (f && f.down) || 0; out.neuro = { up, down: dn, share: up + dn ? Math.round(up / (up + dn) * 100) : null } } catch (e) { out.neuro = null }
+    const fl = await qAll(env.DB.prepare('SELECT r.mid, r.uid, r.cid, r.stars, r.at, f.reasons, f.text, s.name FROM chat_rate r LEFT JOIN chat_fb f ON f.mid=r.mid LEFT JOIN student s ON s.uid=r.uid WHERE r.at>=? AND r.stars<=3 ORDER BY r.at DESC LIMIT 40').bind(from));
+    out.chat_low = fl.filter(x => !isStaffUid(env, x.uid)).map(x => ({ mid: x.mid, uid: x.uid, name: x.name, cid: x.cid, stars: x.stars, at: x.at, reasons: x.reasons, text: x.text }));
+    return json(req, out, 200, { 'Cache-Control': 'no-store' }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
+
+/* ---------- Отзывы (31.10, задача 106): данные отчёта «Голос учеников» (otzyvy/index.html, сборщик) — кэш 6 ч в kv revsrc; бот админам ----------
+   Сразу: анкета модуля ниже 5 из 10 или оценка урока ★1–2 (как только сборщик их принёс; уже отправленные — kv revsent).
+   Понедельник 10:00 МСК: сводка за неделю (kv revweek — день последней отправки, revprev — прошлые цифры для «было»). */
+const revLow = c => c.score != null && (c.scale === 10 ? c.score < 5 : c.score <= 2);
+let REV_MEM = null;
+async function revSchool(env) { const now = Date.now(); if (REV_MEM && now - REV_MEM.t < 1800e3) return REV_MEM.v; let c = await kvGet(env, 'revsrc');
+  if (!c || !c.v || now - (c.t || 0) > 6 * 3600e3) { let v = null;
+    try { const r = await fetch(env.SCHOOL_SRC || SCHOOL_SRC); if (r.ok) { const m = (await r.text()).match(/<script type="application\/json" id="data">([\s\S]*?)<\/script>/); if (m) { const D = JSON.parse(m[1]); if (D && D.all) { delete D.img; delete D.trend; D.comments = (D.comments || []).slice(0, 1500); v = D } } } } catch (e) {}
+    c = v ? { t: now, v } : { t: now - 5 * 3600e3, v: (c && c.v) || null }; if (v || c.v) await kvPut(env, 'revsrc', c) }
+  REV_MEM = { t: now, v: c.v }; return c.v }
+const PULT_URL = 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=pult';
+async function revJob(env, B) { const D = await revSchool(env); if (!D) return { skip: 'nodata' }; const out = { sent: 0 }, M = {}; for (const m of D.mods || []) M[m.id] = m.name;
+  const key = c => [c.who, c.d, c.src, c.m].join('|'), lowNow = [], seen = new Set(); for (const c of D.comments || []) { if (!revLow(c)) continue; const k = key(c); if (seen.has(k)) continue; seen.add(k); lowNow.push([k, c]) }
+  let sent = await kvGet(env, 'revsent'); const A = await admins(env);
+  if (!Array.isArray(sent)) { await kvPut(env, 'revsent', lowNow.map(x => x[0])); out.seeded = lowNow.length } /* первый запуск: старые низкие оценки не шлём */
+  else { const S = new Set(sent), fresh = lowNow.filter(x => !S.has(x[0])).slice(0, 8);
+    for (const [k, c] of fresh) { const t = (c.src === 'Анкета' ? '📝 <b>Анкета модуля ' + c.score + ' из 10</b>' : '⭐ <b>Низкая оценка ★' + c.score + '</b>') + '\n' + th(c.who) + ' — ' + (c.src === 'Анкета' ? 'модуль «' + th(M[c.m] || c.m) + '»' : 'урок «' + th(c.q) + '»') + (c.t ? '\n«' + th(String(c.t).slice(0, 300)) + '»' : '');
+      for (const a of A) { if (!B.ok(1)) break; B.use(1); await tgSend(env, a, t, [[{ text: 'Все отзывы', url: PULT_URL }]]) } sent.push(k); out.sent++ }
+    if (fresh.length) await kvPut(env, 'revsent', sent.slice(-3000)) }
+  const m = msk(), day = m.toISOString().slice(0, 10); /* понедельник, с 10:00 МСК — один раз */
+  if (m.getUTCDay() === 1 && m.getUTCHours() >= 10 && (await kvGet(env, 'revweek')) !== day) { const W = D.week || {}, P = await kvGet(env, 'revprev') || {}, from = Date.now() - 7 * 864e5, dfrom = new Date(from + 3 * 3600e3).toISOString().slice(0, 10);
+    const r = await env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate WHERE at>=?').bind(from).first(), wk = lowNow.filter(x => x[1].d >= dfrom).length;
+    const lr = (D.comments || []).filter(c => c.src === 'Оценка урока' && c.d >= dfrom && c.score != null), by = {}; for (const c of lr) (by[c.q] = by[c.q] || []).push(c.score);
+    const L = Object.entries(by).map(([q, a]) => [q, a.reduce((t, x) => t + x, 0) / a.length]).sort((x, y) => x[1] - y[1]), f1 = x => String(Math.round(x * 10) / 10).replace('.', ',');
+    const t = '<b>Отзывы за неделю</b>\n★ уроков ' + (W.stars != null ? f1(W.stars) + (P.stars != null ? ' (было ' + f1(P.stars) + ')' : '') + ' · ' + (W.ratings || 0) + ' оценок' : '—')
+      + '\nАнкеты ' + (W.interest != null ? f1(W.interest) + ' · ' + (W.surveys || 0) + ' анкет' : '—') + '\nКураторы ' + (r && r.n ? f1(r.a) + '★ · ' + r.n + ' оценок ответов' : '— оценок нет')
+      + (L.length ? '\nХуже всего: «' + th(L[0][0]) + '» ' + f1(L[0][1]) + (L.length > 1 ? '\nЛучше всего: «' + th(L[L.length - 1][0]) + '» ' + f1(L[L.length - 1][1]) : '') : '')
+      + '\nНизких оценок: ' + wk + (P.low != null ? ' (' + (wk - P.low >= 0 ? '+' : '') + (wk - P.low) + ')' : '') + '\n<i>Данные отчёта на ' + th(D.updated || '—') + '</i>';
+    for (const a of A) { if (!B.ok(1)) break; B.use(1); await tgSend(env, a, t, [[{ text: 'Открыть «Отзывы»', url: PULT_URL }]]) }
+    await kvPut(env, 'revweek', day); await kvPut(env, 'revprev', { stars: W.stars, low: wk }); out.week = true }
+  return out }
 
 /* ---------- Служба заботы: контроль качества ответов (Telegram Business) ----------
    Аккаунт службы заботы (CARE_USERNAME, по умолчанию zabota_oduvanov) подключает бота школы: Настройки → Telegram для бизнеса → Чат-боты.
