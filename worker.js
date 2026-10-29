@@ -215,11 +215,11 @@ function renderReport(D, o) {
   const vc = { good: ['#12301f', '#22a861', '↑', '#c9f2d7'], ok: ['#1d2140', '#5b6cf0', '→', '#d3d8ff'], down: ['#3a2410', '#e8780c', '↓', '#ffd9b3'], none: ['#26262b', '#6b6b75', '·', '#bdbdc4'] }[v.k];
   const C = D.cur || { lessons: 0, hw: 0, pts: 0 }, P = D.prev;
   const UP = 'color:#4ade80;background-color:#12301f', DN = 'color:#ff6b6b;background-color:#3a1717', EQ = 'color:#bdbdc4;background-color:#26262b';
-  const met = (title, val, d, sub, side) => { const pad = side === 'l' ? 'padding:0 5px 10px 0' : 'padding:0 0 10px 5px';
+  const met = (title, val, d, sub, side, last) => { const pad = (side === 'l' ? 'padding:0 5px ' : 'padding:0 0 ') + (last ? '0' : '10px') + (side === 'l' ? ' 0' : ' 5px');
     const badge = d ? `<span style="display:inline-block;font-size:12px;line-height:16px;font-weight:700;padding:3px 8px;border-radius:99px;${d.t === 'up' ? UP : d.t === 'dn' ? DN : EQ}">${d.s}</span>` : '<span style="display:inline-block;font-size:12px;line-height:16px;padding:3px 0;color:#6b6b75">&nbsp;</span>';
     return `<td width="50%" valign="top" style="${pad}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0b0b0d" style="background-color:#0b0b0d;border:1px solid #262626;border-radius:18px;padding:16px 16px 14px">`
-      + `<div style="font-size:13px;line-height:18px;color:#8b8b95;white-space:nowrap">${title}</div><div style="margin-top:6px;font-size:24px;line-height:30px;font-weight:600;color:#ffffff;white-space:nowrap">${val}</div>`
-      + `<div style="margin-top:6px">${badge}</div><div style="margin-top:6px;font-size:12px;line-height:16px;color:#6b6b75;white-space:nowrap">${sub}</div></td></tr></table></td>` };
+      + `<div style="font-size:13px;line-height:18px;color:#8b8b95">${title}</div><div style="margin-top:6px;font-size:22px;line-height:28px;font-weight:600;color:#ffffff">${val}</div>`
+      + `<div style="margin-top:6px">${badge}</div><div style="margin-top:6px;font-size:12px;line-height:16px;color:#6b6b75">${sub}</div></td></tr></table></td>` };
   const pd = D.placePrev && D.place ? (D.placePrev - D.place) : null;
   const placeD = pd == null ? null : pd === 0 ? { t: 'eq', s: '= 0' } : { t: pd > 0 ? 'up' : 'dn', s: (pd > 0 ? '▲ +' : '▼ −') + Math.abs(pd) };
   const hi = v.k === 'down' || v.k === 'none' ? '#e8780c' : '#a66bff';
@@ -237,8 +237,8 @@ function renderReport(D, o) {
   const grid = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;table-layout:fixed"><tr>'
     + met('Время за&nbsp;уроками', nb(hrs(D.tCur.video)), delta(D.tCur.video, D.tPrev.video ? D.tPrev.video : (D.tPrev.site ? 0 : null)), D.tPrev.video || D.tPrev.site ? prevLbl + ' ' + nb(hrs(D.tPrev.video)) : 'нет данных', 'l')
     + met('Уроков пройдено', lessonsV, P ? delta(C.lessons, P.lessons) : null, P ? prevLbl + ' ' + P.lessons : D.cur ? 'за период' : 'всего на курсе', 'r') + '</tr><tr>'
-    + met('Домашек сдано', hwV, P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ' ' + P.hw : D.cur ? 'за период' : 'всего на курсе', 'l')
-    + met('Место в&nbsp;потоке', D.place || '—', placeD, 'из ' + D.n + ' учеников', 'r') + '</tr></table>';
+    + met('Домашек сдано', hwV, P ? (C.hw === P.hw ? { t: 'eq', s: '= 0' } : { t: C.hw > P.hw ? 'up' : 'dn', s: (C.hw > P.hw ? '▲ +' : '▼ −') + Math.abs(C.hw - P.hw) }) : null, P ? prevLbl + ' ' + P.hw : D.cur ? 'за период' : 'всего на курсе', 'l', 1)
+    + met('Место в&nbsp;потоке', D.place || '—', placeD, 'из ' + D.n + ' учеников', 'r', 1) + '</tr></table>';
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${esc(subjectOf(D))}</title></head>
 <body style="margin:0;padding:0;background-color:#000106;-webkit-font-smoothing:antialiased"><div style="margin:0;padding:0;background-color:#000106"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000106" style="background-color:#000106;width:100%"><tr><td align="center" style="padding:32px 12px 40px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">
@@ -274,14 +274,14 @@ function modInfo(D, m, now) { let L = 0, H = 0; for (const p of m.parts || []) f
   const nm = String(m.name || '').match(/^Модуль (\d+)\s*—\s*(.+)$/), x = learnX2(D, m, now || Date.now());
   return { title: nm ? 'Модуль ' + nm[1] + ' · ' + nm[2] : (m.name || 'Новый модуль'), subj: nm ? 'Открыт Модуль ' + nm[1] + ' «' + nm[2] + '» — ×2 к баллам 48 часов' : 'Открыт новый модуль — ×2 к баллам 48 часов', lessons: L, hw: H, x2: x && x.lessons_until ? mskFmt(Date.parse(x.lessons_until)) : null } }
 function modMailHtml(I, first, unsub) { const esc2 = esc, nb2 = t => nb(t);
-  const row = (k, v) => `<tr><td style="padding:6px 0;font-size:15px;line-height:22px;color:#8b8b95">${k}</td><td align="right" style="padding:6px 0;font-size:15px;line-height:22px;color:#ffffff;font-weight:600">${v}</td></tr>`;
+  const row = (k, v) => `<tr><td style="padding:6px 12px 6px 0;font-size:15px;line-height:22px;color:#8b8b95;white-space:nowrap">${k}</td><td align="right" style="padding:6px 0;font-size:15px;line-height:22px;color:#ffffff;font-weight:600">${v}</td></tr>`;
   const lead = (first ? esc2(first) + ', м' : 'М') + 'одуль уже открыт: ' + I.lessons + ' ' + pl(I.lessons, ['урок', 'урока', 'уроков']) + (I.hw ? ' и домашнее задание.' : '.') + (I.x2 ? ' <b style="color:#ffffff">Первые 48 часов баллы за уроки удваиваются</b> — успей до ' + I.x2 + '.' : '');
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>${esc2(I.subj)}</title></head><body style="margin:0;padding:0;background-color:#000106">`
     + `<div style="margin:0;padding:0;background-color:#000106"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000106" style="background-color:#000106;width:100%"><tr><td align="center" style="padding:32px 12px 40px"><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">`
     + `<tr><td style="padding:0 8px 24px"><img src="https://romanoduvanov.github.io/otzyvy/gc/email-logo-white.png" width="240" height="33" alt="OduvanovSchool" style="display:block;border:0;width:240px;height:33px"></td></tr>`
     + `<tr><td bgcolor="#141414" style="background-color:#141414;border:1px solid #262626;border-radius:28px;padding:36px 32px 32px;font-family:${MM_F};color:#ffffff">`
     + `<div style="font-size:15px;line-height:20px;font-weight:600;color:#c38bff;margin:0 0 10px">Открыт новый модуль</div>`
-    + `<div style="font-size:30px;line-height:36px;font-weight:600;color:#ffffff;margin:0 0 14px">${nb2(esc2(I.title))}</div>`
+    + `<div style="font-size:30px;line-height:36px;font-weight:600;color:#ffffff;margin:0 0 14px">${nb2(esc2(I.title)).replace(/-/g, '\u2011')}</div>`
     + `<div style="font-size:16px;line-height:24px;color:#bdbdc4;margin:0 0 24px">${lead}</div>`
     + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#fccbff" style="border-radius:16px;background-color:#fccbff;background-image:linear-gradient(180deg,#fef8ff,#fccbff)"><a href="https://t.me/oduvanov_school_bot?startapp=learn" style="display:block;padding:18px 24px;font-family:${MM_F};font-size:17px;line-height:22px;font-weight:600;color:#602364;text-decoration:none;border-radius:16px">Начать модуль</a></td></tr></table>`
     + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px"><tr><td bgcolor="#0b0b0d" style="background-color:#0b0b0d;border:1px solid #262626;border-radius:20px;padding:20px 22px;color:#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">`
