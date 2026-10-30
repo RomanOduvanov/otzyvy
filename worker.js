@@ -840,7 +840,7 @@ export default {
         let o; try { o = JSON.parse(await req.text() || '{}') } catch (e) { return json(req, { ok: false, err: 'json' }, 400) } const ids = (Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid);
         await kvPut(env, 'statUids', ids); const sx = (Array.isArray(o.staff) ? o.staff : []).map(Number).filter(okUid); if (sx.length) { await kvPut(env, 'gcStaff', sx); GC_STAFF = null } await logIt(env, 'stat-staff', 0, ids.join(',') + (sx.length ? ' | staff ' + sx.length : '')); return json(req, { ok: true, n: ids.length }) }
       if (path === '/fin/names' && req.method === 'POST') { if (!(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env); return json(req, await syncNames(env, budget(40), true)) }
-      if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) return deny(req);
+      if (path === '/fin/k') { await ensure(env); const uid = await authUid(env, u.searchParams.get('t'), 'a'); if (!uid) { const cu = +u.searchParams.get('u') || 0; await logIt(env, 'fin-k-noauth', okUid(cu) ? cu : 0, (u.searchParams.get('t') ? 'bad-token' : 'no-token') + ' ' + bStr(u.searchParams.get('d'), 120)); return deny(req) }
         /* 29.10: кураторам статистика школы и продажи закрыты на сервере, даже если в GetCourse у них есть право «статистика» */
         const cur = CURATORS.some(c => c.uid === uid) || !!(await env.DB.prepare('SELECT s.uid FROM student s JOIN cur_tg c ON c.tg_id=s.tg_chat WHERE s.uid=?').bind(uid).first());
         const STAT_ALLOW = [499762163, 507696386]; /* 30.10 (Роман): Сергей Тертерян, Вика Копцева — статистика всегда, не дожидаясь выгрузки прав */
