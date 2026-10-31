@@ -1899,6 +1899,13 @@ async function srchCorpus(env) { const D = await loadData(env), X = (await kvGet
       L.push(k + ' | Эфир | ' + e.title + (e.about ? ' | ' + String(e.about).slice(0, 200) : '') + (ch.length ? ' | главы: ' + ch.map(c => hms0(c.t) + ' ' + c.title).join('; ') : '')) } } catch (x) {}
   return { text: L.join('\n'), ref } }
 const hms0 = s => { s = s | 0; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
+function srchParse(t) { t = String(t || '').replace(/```(?:json)?/g, ''); const i = t.indexOf('{'), k = t.lastIndexOf('}'); if (i < 0) return null;
+  try { return JSON.parse(t.slice(i, k + 1)) } catch (e) { }
+  const S = '"((?:[^"\\\\]|\\\\.)*)"', uq = x => { try { return JSON.parse('"' + x + '"') } catch (e) { return x } };
+  const am = t.match(new RegExp('"answer"\\s*:\\s*' + S)), hits = [], hp = t.indexOf('"hits"');
+  if (hp >= 0) for (const seg of t.slice(hp).split('{').slice(1)) { const r = seg.match(/"ref"\s*:\s*"?([\w-]+)/); if (!r) continue; const sc = seg.match(/"sec"\s*:\s*(\d+)/), w = seg.match(new RegExp('"why"\\s*:\\s*' + S));
+    hits.push({ ref: r[1], sec: sc ? +sc[1] : null, why: w ? uq(w[1]) : '' }) }
+  if (!am && !hits.length) return null; const ans = am ? uq(am[1]) : ''; return { answer: ans, hits } }
 async function srchApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
   const W = await chatWho(env, req, u, o); if (!W) return json(req, { ok: false, err: 'Нужно войти', st: 401 }, 401);
   if (path === '/srch/index' && req.method === 'POST') { if (W.me !== 'admin') return json(req, { ok: false, err: 'Только админ' }, 403);
@@ -1912,9 +1919,11 @@ async function srchApi(env, req, path) { const u = new URL(req.url); let o = {};
     const dk = 'srchn:' + (W.uid || W.me) + ':' + dayStr(), dn = +((await kvGet(env, dk)) || 0); if (W.me === 'student' && dn >= SRCH_DAY) return json(req, { ok: false, err: 'На сегодня вопросов хватит — спроси Нейро в чате' }, 429);
     const { text, ref } = await srchCorpus(env);
     const sys = 'Ты поиск по курсу онлайн-школы дизайна OduvanovSchool (дизайн карточек маркетплейсов с ИИ). Тебе дают список мест курса: строки «КОД | модуль | урок | о чём | тайм-коды | материалы». Ученик пишет вопрос своими словами. Найди 1–5 самых подходящих мест (уроки или эфиры) и, если по тайм-кодам видно нужный момент, — секунду начала. Ответь ТОЛЬКО JSON без пояснений: {"answer":"2–3 коротких предложения по-русски, на «ты», без воды: прямой ответ на вопрос по смыслу курса и где смотреть","hits":[{"ref":"КОД","sec":число или null,"why":"до 60 символов: что именно там, без повтора названия урока"}]}. Не выдумывай уроки, коды бери только из списка. Если в курсе этого нет — hits пустой, а в answer честно скажи, что в курсе такого урока нет, и предложи спросить Нейро или куратора.';
-    const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 700, system: [{ type: 'text', text: sys }, { type: 'text', text: text, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: q }] }));
-    if (!r || !r.ok) return json(req, { ok: false, err: 'Поиск сейчас недоступен — попробуй через минуту' }, 502);
-    let out = null; try { const t = ((j.content || []).find(c => c.type === 'text') || {}).text || ''; out = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)) } catch (e) { out = null }
+    /* 01.11: бывало «Не получилось разобрать ответ» — ответ модели обрезался/ломал JSON. Теперь лимит больше, 2 попытки и мягкий разбор */
+    let out = null, okAny = false;
+    for (let at = 0; at < 2 && !out; at++) { const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 1600, system: [{ type: 'text', text: sys + ' Кавычки внутри текста — только «ёлочки», никогда не прямые.' + (at ? ' ВАЖНО: ответь ТОЛЬКО валидным JSON, без текста вокруг, кавычки внутри строк экранируй.' : '') }, { type: 'text', text: text, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: q }] }));
+      if (!r || !r.ok) continue; okAny = true; out = srchParse(((j.content || []).find(c => c.type === 'text') || {}).text || '') }
+    if (!okAny) return json(req, { ok: false, err: 'Поиск сейчас недоступен — попробуй через минуту' }, 502);
     if (!out) return json(req, { ok: false, err: 'Не получилось разобрать ответ — попробуй переформулировать' }, 502);
     const hits = (Array.isArray(out.hits) ? out.hits : []).map(h => { const R = ref[h && h.ref]; if (!R) return null; let sec = h.sec != null && isFinite(+h.sec) ? Math.max(0, +h.sec | 0) : null;
       return { kind: R.kind, id: R.id, module: R.kind === 'lesson' ? R.module + (R.part && R.part !== R.module ? ' · ' + R.part : '') : R.module, title: R.title, sec, why: bStr(h.why, 90) } }).filter(Boolean).slice(0, 5);
