@@ -2444,7 +2444,7 @@ async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin')
    Создают и ведут: админ — любые, куратор — только свои (решение №4), без продаж: кнопки заявки и автовебинаров у кураторов нет.
    Зритель: ученик (токен ученика / сессия student), команда (сессия пульта), гость открытого эфира (?r=<метка из бота>). Ключ зрителя k: 'u<uid>' | 't<chat>'.
    Всё в эфире пишется с секундой от начала: чат efir_msg.sec, события efir_ev.sec (кнопка заявки, баннер, опрос) — из этого «Собрать из эфира» делает сценарий efir_scen.
-   Баллы — в отдельной таблице efir_pts (gamify подключит позже): 10 за 30 мин в эфире, 5 за досмотренную запись (90%), 2 за вопрос (до 3 в эфир), 15 за выход на сцену. */
+   Баллы — в отдельной таблице efir_pts (в рейтинг — /rating/efirpts): с 1.11 — 5 за каждые 15 мин в эфире, 10 за открытие записи без эфира; раньше 10 за 30 мин в эфире, 5 за досмотренную запись (90%), 2 за вопрос (до 3 в эфир), 15 за выход на сцену. */
 const EFIR_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS efir_cover (id INTEGER PRIMARY KEY AUTOINCREMENT, mime TEXT, data TEXT, by_uid INTEGER, at INTEGER)',
   'CREATE TABLE IF NOT EXISTS efir (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, about TEXT, host_cid TEXT, host_uid INTEGER, host_name TEXT, start INTEGER, dur INTEGER, kind TEXT, tariff TEXT, status TEXT, video TEXT, rec TEXT, cover TEXT, chapters TEXT, cfg TEXT, at_live INTEGER, at_end INTEGER, created INTEGER, upd INTEGER, del INTEGER DEFAULT 0)',
@@ -2464,7 +2464,7 @@ const EFIR_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS efir_pollv (ev TEXT NOT NULL, k TEXT NOT NULL, sess INTEGER NOT NULL DEFAULT 0, opt INTEGER, PRIMARY KEY (ev, k, sess))'];
 let EFIR_OK = false;
 async function efirEnsure(env) { await ensure(env); await bankEnsure(env); if (EFIR_OK) return; await env.DB.batch(EFIR_SCHEMA.map(s => env.DB.prepare(s))); EFIR_OK = true }
-const EF_PTS = { live30: 10, rec: 5, q: 2, stage: 15 }, EF_QMAX = 3, EF_KINDS = ['live', 'open', 'auto'], EF_ACC = ['all', 'amz', 'cur', 'open'];
+const EF_PTS = { live30: 10, live15: 5, rec: 10, q: 2, stage: 15 } /* 1.11 (Роман): 5 баллов за каждые 15 мин в эфире; 10 — за открытие записи, если на эфире не был. live30 — старые начисления */, EF_QMAX = 3, EF_KINDS = ['live', 'open', 'auto'], EF_ACC = ['all', 'amz', 'cur', 'open'];
 const efJ = (v, d) => { try { return v ? JSON.parse(v) : d } catch (e) { return d } };
 const efShort = n => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 && p[1] ? p[0] + ' ' + p[1][0].toUpperCase() + '.' : (p[0] || 'Зритель') };
 const efAdminUid = env => +String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/)[0];
@@ -2584,7 +2584,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     let seen = null; if (!W.ro) seen = await env.DB.prepare('INSERT INTO efir_seen (efir_id, k, sess, t0, scen, min, first, last, maxsec) VALUES (?,?,?,?,?,0,?,?,0) ON CONFLICT(efir_id, k, sess) DO UPDATE SET min=efir_seen.min+(CASE WHEN efir_seen.last<?-50000 AND efir_seen.last>?-180000 THEN 1 ELSE 0 END), last=CASE WHEN efir_seen.last<?-50000 THEN ? ELSE efir_seen.last END RETURNING t0, min, last, first')
       .bind(e.id, W.k, sess, e.kind === 'auto' ? (now - sess < 10 * 6e4 ? now : sess) : (e.at_live || e.start || now), cfg.scen || null, now, now, now, now, now, now).first();
     const t0 = seen && seen.t0 || (sess || e.at_live || e.start || now), sec = Math.max(0, Math.floor((now - t0) / 1000));
-    let pts = 0; if (seen && seen.min >= 30 && seen.last === now) pts = await efPts(env, W, e.id, 'live30', 0);
+    let pts = 0; if (seen && seen.min >= 15 && seen.last === now) pts = await efPts(env, W, e.id, 'live15', Math.floor(seen.min / 15));
     if (seen) await env.DB.prepare('UPDATE efir_seen SET maxsec=MAX(maxsec, ?) WHERE efir_id=? AND k=? AND sess=?').bind(sec, e.id, W.k, sess).run();
     const out = { ok: true, now, state: 'live', sess, t0, sec, kind: e.kind, pts_new: pts };
     if (e.kind === 'auto') { /* «как в настоящем эфире»: свой отсчёт t0 (опоздал меньше 10 мин — с начала), конец — t0 + длительность */
@@ -2653,10 +2653,11 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     const r = await env.DB.prepare('INSERT INTO efir_lead (efir_id, sess, k, uid, chat, name, contact, text, sec, at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(e.id, sessOf(), W.k, W.uid || null, chat, nm, contact, bStr(o.text, 500), sec, now).first();
     try { await efLeadNotify(env, e, { id: r.id, k: W.k, uid: W.uid, name: nm, contact, chat, text: bStr(o.text, 500), sec, sess: sessOf() }) } catch (x) { await logIt(env, 'efir-lead-tg-err', W.uid, String(x && x.message || x)) }
     return json(req, { ok: true, id: r.id }) }
-  /* прогресс записи: {id, pos, dur} секунды; 90% — +5 баллов */
+  /* прогресс записи: {id, pos, dur} секунды; открыл запись и не был на эфире — +10 баллов (rec_done = баллы за запись получены) */
   if (path === '/efir/ping' && req.method === 'POST') { const pos = Math.max(0, +o.pos | 0), dur = Math.max(0, +o.dur | 0) || (e.dur || 60) * 60;
     const r = await env.DB.prepare('INSERT INTO efir_seen (efir_id, k, sess, first, last, rec_pos, rec_max) VALUES (?,?,-1,?,?,?,?) ON CONFLICT(efir_id, k, sess) DO UPDATE SET last=excluded.last, rec_pos=excluded.rec_pos, rec_max=MAX(efir_seen.rec_max, excluded.rec_max) RETURNING rec_max, rec_done').bind(e.id, W.k, now, now, pos, pos).first();
-    let pts = 0; if (r && !r.rec_done && r.rec_max >= dur * 0.9) { await env.DB.prepare('UPDATE efir_seen SET rec_done=1 WHERE efir_id=? AND k=? AND sess=-1').bind(e.id, W.k).run(); pts = await efPts(env, W, e.id, 'rec', 0) }
+    let pts = 0; if (r && !r.rec_done) { const was = await env.DB.prepare('SELECT 1 x FROM efir_seen WHERE efir_id=? AND k=? AND sess>=0 AND min>=1').bind(e.id, W.k).first();
+      if (!was) { await env.DB.prepare('UPDATE efir_seen SET rec_done=1 WHERE efir_id=? AND k=? AND sess=-1').bind(e.id, W.k).run(); pts = await efPts(env, W, e.id, 'rec', 0) } }
     return json(req, { ok: true, pts, done: r && (r.rec_done || pts) ? 1 : 0 }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 /* куратор не продаёт: у эфиров кураторов кнопки заявки нет (решение №4) */
