@@ -501,7 +501,7 @@ async function tgUpdate(env, up) {
   if (up.business_message) return bizMessage(env, up.business_message);
   if (up.edited_business_message) return bizMessage(env, up.edited_business_message, true);
   if (up.deleted_business_messages) return careDeleted(env, up.deleted_business_messages);
-  if (up.callback_query && /^(bp|ch[rs]):/.test(up.callback_query.data || '')) return bksCallback(env, up.callback_query);
+  if (up.callback_query && /^(bp|ch[rs]|cr[tfw]):/.test(up.callback_query.data || '')) return bksCallback(env, up.callback_query);
   if (up.callback_query && /^cw[dn]:/.test(up.callback_query.data || '')) { const q = up.callback_query, [k, cid, wchat] = q.data.split(':');
     const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(cid).first(); if (!ct || String(q.from.id) !== String(ct.tg_id)) return tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Это напоминание другого куратора' });
     const w = await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(cid, wchat).first();
@@ -1854,6 +1854,22 @@ async function chatSend(env, o) { const at = msNow(), sec = at / 1000 | 0;
   if (o.notify !== false) { try { await chatNotify(env, o, msg) } catch (e) { await logIt(env, 'chat-tg-err', o.uid, String(e && e.message || e)) } }
   await logIt(env, 'chat-' + o.dir, o.uid, (o.cid || '-') + ' ' + (o.via || 'app') + (o.file ? ' file' : ''));
   return msg }
+/* оценка ответа куратора: из приложения/сайта (/chat/rate) и из бота (кнопки ☆ под ответом, 1.11) */
+async function chatRateDo(env, uid, mid, stars) {
+    const m = await env.DB.prepare("SELECT id, cid FROM chat_msg WHERE id=? AND uid=? AND dir='out' AND del=0").bind(mid, uid).first(); if (!m || !m.cid) return { ok: false, err: 'Оценить можно только ответ куратора' };
+    await env.DB.prepare('INSERT INTO chat_rate (mid, uid, cid, stars, at) VALUES (?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, at=excluded.at').bind(m.id, uid, m.cid, stars, msNow()).run();
+    if (stars <= 2) { try { const c = CURATORS.find(x => x.id === m.cid), t0 = await env.DB.prepare('SELECT text FROM chat_msg WHERE id=?').bind(m.id).first();
+      const txt = '⭐ ' + stars + ' из 5 — ' + esc(await stuName(env, uid)) + ' оценил' + ' ответ куратора ' + esc(c ? c.name : m.cid) + (t0 && t0.text ? ':\n«' + esc(String(t0.text).slice(0, 200)) + '»' : '') + '\n\nЕсли ученик напишет, что не так, — пришлю следом.';
+      for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) { await logIt(env, 'rate-notify-err', uid, String(e && e.message || e)) } }
+    await logIt(env, 'chat-rate', uid, m.cid + ' ' + stars); return { ok: true, mid: m.id, cid: m.cid } }
+const CHAT_FB_RS = ['Долго отвечал', 'Не помог', 'Отписка, без разбора', 'Непонятно объяснил', 'Грубо', 'Можно подробнее', 'Хочу пример', 'Другое'];
+async function chatFbDo(env, uid, r, reasons0, text0) { const reasons = (reasons0 || []).map(String).filter(x => CHAT_FB_RS.includes(x)).slice(0, 8), text = String(text0 || '').trim().slice(0, 1500);
+  await env.DB.prepare('INSERT INTO chat_fb (mid, uid, cid, stars, reasons, text, at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, reasons=excluded.reasons, text=excluded.text, at=excluded.at').bind(r.mid, uid, r.cid, r.stars, JSON.stringify(reasons), text, msNow()).run();
+  try { const c = CURATORS.find(x => x.id === r.cid); const txt = '💬 Отзыв к оценке ⭐ ' + r.stars + ' — ' + esc(await stuName(env, uid)) + ' про ' + esc(c ? c.name : r.cid) + (reasons.length ? '\nПричины: ' + esc(reasons.join(', ')) : '') + (text ? '\n«' + esc(text) + '»' : '');
+    for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) {} }
+/* кнопки оценки под ответом куратора в боте */
+const crStars = (mid, n) => [1, 2, 3, 4, 5].map(i => ({ text: (i <= n ? '⭐ ' : '☆ ') + i, callback_data: 'crt:' + mid + ':' + i }));
+const CR_LOW = ['Долго отвечал', 'Не помог', 'Отписка, без разбора', 'Непонятно объяснил', 'Грубо'];
 async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.slice(0, 1500)) : '📎 ' + (msg.file && /pdf/.test(msg.file.mime || '') ? 'файл' : 'фото');
   if (o.dir === 'in') { if (!o.cid) return; const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(o.cid).first(); if (!ct || !ct.tg_id) return;
     const nm = await stuName(env, o.uid), via = o.via === 'bot' ? ' в боте' : '';
@@ -1861,7 +1877,7 @@ async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.sli
     return frAdd(env, ct.tg_id, j, { uid: o.uid, as: 'out' }) }
   if (o.dir === 'out') { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(o.uid).first(); if (!st || !st.tg_chat) return;
     let quote = ''; if (!o.mass) { const qm = o.reply_to ? await env.DB.prepare("SELECT text FROM chat_msg WHERE id=? AND uid=?").bind(o.reply_to, o.uid).first() : await env.DB.prepare("SELECT text FROM chat_msg WHERE uid=? AND dir='in' AND id<? AND del=0 ORDER BY id DESC LIMIT 1").bind(o.uid, msg.id).first(); if (qm && qm.text) quote = '<blockquote>' + th(qm.text.slice(0, 200)) + '</blockquote>\n' }
-    const who = o.who || 'Куратор', j = await tgSend(env, st.tg_chat, '💬 <b>' + th(who) + (o.mass ? ' написал' : ' ответил') + fem(who) + '</b>\n' + quote + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat') }], [{ text: 'Ответить здесь', callback_data: 'chs:' + o.uid }]]);
+    const who = o.who || 'Куратор', j = await tgSend(env, st.tg_chat, '💬 <b>' + th(who) + (o.mass ? ' написал' : ' ответил') + fem(who) + '</b>\n' + quote + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat') }], [{ text: 'Ответить здесь', callback_data: 'chs:' + o.uid }]].concat(o.mass || !o.cid ? [] : [crStars(msg.id, 0)]));
     return frAdd(env, st.tg_chat, j, { uid: o.uid, as: 'in' }) } }
 /* кто открыл чат: ученик (свой), куратор (свой ученик ?u=), админ (любой ?u=); токен просмотра «смотреть как» — только чтение */
 async function chatWho(env, req, u, o) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || (o && o.t) || '';
@@ -1913,12 +1929,7 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
     await env.DB.prepare('INSERT OR REPLACE INTO stu_tg (uid, username, at) VALUES (?,?,?)').bind(uid, t, new Date().toISOString()).run(); return json(req, { ok: true, tg: t }) }
   if (path === '/chat/rate') { if (W.me !== 'student') return json(req, { ok: false, err: 'Оценку ставит ученик' }, 403); const stars = Math.round(+o.stars);
     if (!(stars >= 1 && stars <= 5)) return json(req, { ok: false, err: 'Оценка — от 1 до 5' }, 400);
-    const m = await env.DB.prepare("SELECT id, cid FROM chat_msg WHERE id=? AND uid=? AND dir='out' AND del=0").bind(+o.mid, uid).first(); if (!m || !m.cid) return json(req, { ok: false, err: 'Оценить можно только ответ куратора' }, 400);
-    await env.DB.prepare('INSERT INTO chat_rate (mid, uid, cid, stars, at) VALUES (?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, at=excluded.at').bind(m.id, uid, m.cid, stars, msNow()).run();
-    if (stars <= 2) { try { const c = CURATORS.find(x => x.id === m.cid), t0 = await env.DB.prepare('SELECT text FROM chat_msg WHERE id=?').bind(m.id).first();
-      const txt = '⭐ ' + stars + ' из 5 — ' + esc(await stuName(env, uid)) + ' оценил' + ' ответ куратора ' + esc(c ? c.name : m.cid) + (t0 && t0.text ? ':\n«' + esc(String(t0.text).slice(0, 200)) + '»' : '') + '\n\nЕсли ученик напишет, что не так, — пришлю следом.';
-      for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) { await logIt(env, 'rate-notify-err', uid, String(e && e.message || e)) } }
-    await logIt(env, 'chat-rate', uid, m.cid + ' ' + stars); return json(req, { ok: true, mid: m.id, stars }) }
+    const rr = await chatRateDo(env, uid, +o.mid, stars); if (!rr.ok) return json(req, rr, 400); return json(req, { ok: true, mid: rr.mid, stars }) }
   if (path === '/chat/react') { const e = String(o.e || ''); if (!REACT_OK.includes(e)) return json(req, { ok: false, err: 'Такой реакции нет' }, 400);
     const m = await env.DB.prepare('SELECT id FROM chat_msg WHERE id=? AND uid=? AND del=0').bind(+o.mid, uid).first(); if (!m) return json(req, { ok: false, err: 'Сообщение не найдено' }, 404);
     const k = reactKey(W), had = await env.DB.prepare('SELECT 1 x FROM chat_react WHERE mid=? AND who=? AND e=?').bind(m.id, k, e).first();
@@ -1928,13 +1939,9 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
     const RE = await reactsFor(env, [m.id], k); return json(req, { ok: true, mid: m.id, re: RE[m.id] || [] }) }
   if (path === '/chat/feedback') { if (W.me !== 'student') return json(req, { ok: false, err: 'Отзыв оставляет ученик' }, 403);
     const r = await env.DB.prepare('SELECT mid, cid, stars FROM chat_rate WHERE mid=? AND uid=?').bind(+o.mid, uid).first(); if (!r) return json(req, { ok: false, err: 'Сначала поставь оценку' }, 400);
-    const RS = ['Долго отвечал', 'Не помог', 'Отписка, без разбора', 'Непонятно объяснил', 'Грубо', 'Можно подробнее', 'Хочу пример', 'Другое'];
-    const reasons = (Array.isArray(o.reasons) ? o.reasons : []).map(String).filter(x => RS.includes(x)).slice(0, 8), text = String(o.text || '').trim().slice(0, 1500);
-    if (!reasons.length && !text) return json(req, { ok: false, err: 'Выбери причину или напиши пару слов' }, 400);
-    await env.DB.prepare('INSERT INTO chat_fb (mid, uid, cid, stars, reasons, text, at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(mid) DO UPDATE SET stars=excluded.stars, reasons=excluded.reasons, text=excluded.text, at=excluded.at').bind(r.mid, uid, r.cid, r.stars, JSON.stringify(reasons), text, msNow()).run();
-    try { const c = CURATORS.find(x => x.id === r.cid); const txt = '💬 Отзыв к оценке ⭐ ' + r.stars + ' — ' + esc(await stuName(env, uid)) + ' про ' + esc(c ? c.name : r.cid) + (reasons.length ? '\nПричины: ' + esc(reasons.join(', ')) : '') + (text ? '\n«' + esc(text) + '»' : '');
-      for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) {}
-    return json(req, { ok: true }) }
+    const reasons = (Array.isArray(o.reasons) ? o.reasons : []).map(String), text = String(o.text || '').trim();
+    if (!reasons.filter(x => CHAT_FB_RS.includes(x)).length && !text) return json(req, { ok: false, err: 'Выбери причину или напиши пару слов' }, 400);
+    await chatFbDo(env, uid, r, reasons, text); return json(req, { ok: true }) }
   if (path === '/chat/send') { const text = String(o.text || '').trim().slice(0, 4000); if (!text && !o.file) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
     const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first() || {}, rt = +o.reply_to || 0;
     if (rt && !(await env.DB.prepare('SELECT id FROM chat_msg WHERE id=? AND uid=?').bind(rt, uid).first())) return json(req, { ok: false, err: 'Нет такого сообщения' }, 400);
@@ -1950,6 +1957,18 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
 /* ---------- бот: «Ответить здесь», ученик пишет боту, напоминания об оплате, приглашение по карте ---------- */
 async function bksCallback(env, q) { await bankEnsure(env); const d = String(q.data || ''), from = String(q.from && q.from.id), ans = t => tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: t || undefined });
   const msg = q.message || {}, edit = (text, kb) => tg(env, 'editMessageText', { chat_id: msg.chat && msg.chat.id, message_id: msg.message_id, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: kb || [] } });
+  /* 1.11 (Роман: «оценка ответа куратора, когда он приходит в бота»): ☆ под ответом → chat_rate; 1–2 — «Что пошло не так?» с причинами */
+  const cr = d.match(/^cr([tfw]):(\d+)(?::(\d+))?$/); if (cr) { const mid = +cr[2], m = await env.DB.prepare("SELECT c.id, c.uid, c.cid, s.tg_chat FROM chat_msg c JOIN student s ON s.uid=c.uid WHERE c.id=? AND c.dir='out'").bind(mid).first();
+    if (!m || String(m.tg_chat) !== from) return ans('Это не твой чат');
+    if (cr[1] === 't') { const n = Math.max(1, Math.min(5, +cr[3] || 0)), r = await chatRateDo(env, m.uid, mid, n); if (!r.ok) return ans(r.err);
+      const kb = ((msg.reply_markup && msg.reply_markup.inline_keyboard) || []).filter(row => !(row[0] && /^crt:/.test(row[0].callback_data || ''))).concat([crStars(mid, n)]);
+      await tg(env, 'editMessageReplyMarkup', { chat_id: msg.chat && msg.chat.id, message_id: msg.message_id, reply_markup: { inline_keyboard: kb } });
+      if (n <= 2) { const had = await env.DB.prepare('SELECT 1 x FROM chat_fb WHERE mid=?').bind(mid).first(); if (!had) await tgSend(env, from, '<b>' + nbt('Что пошло не так?') + '</b>\n' + nbt('Роман прочитает лично. Куратор не увидит, кто написал.'), [[CR_LOW[0], CR_LOW[1]], [CR_LOW[2]], [CR_LOW[3], CR_LOW[4]]].map(row => row.map(t => ({ text: t, callback_data: 'crf:' + mid + ':' + CR_LOW.indexOf(t) }))).concat([[{ text: 'Написать своими словами', callback_data: 'crw:' + mid }]])) }
+      return ans(n <= 2 ? 'Спасибо, что честно' : 'Спасибо за оценку!') }
+    const r = await env.DB.prepare('SELECT mid, cid, stars FROM chat_rate WHERE mid=? AND uid=?').bind(mid, m.uid).first(); if (!r) return ans('Сначала поставь оценку');
+    if (cr[1] === 'f') { const why = CR_LOW[+cr[3]]; if (!why) return ans(); await chatFbDo(env, m.uid, r, [why], ''); await edit('🙏 ' + nbt('Спасибо, передали Роману: «' + why + '». Разберёмся и вернёмся к тебе.')); return ans('Передали') }
+    const j = await tg(env, 'sendMessage', { chat_id: from, text: nbt('✍️ Напиши, что было не так, ответом на это сообщение. Куратор не увидит, кто написал.'), reply_markup: { force_reply: true, input_field_placeholder: 'Что было не так' } });
+    await frAdd(env, from, j, { uid: m.uid, as: 'fb', mid }); return ans() }
   if (/^ch[rs]:\d+$/.test(d)) { const uid = +d.slice(4), st = await env.DB.prepare('SELECT uid, curator, tg_chat FROM student WHERE uid=?').bind(uid).first(); if (!st) return ans('Ученик не найден');
     if (d[2] === 'r') { const ct = st.curator && await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(st.curator).first(), adm = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(from).first();
       if (!adm && !(ct && String(ct.tg_id) === from)) return ans('Это ученик другого куратора');
@@ -1974,6 +1993,8 @@ async function bksCallback(env, q) { await bankEnsure(env); const d = String(q.d
 /* ответ на сообщение бота «Ответить здесь» (force_reply) или на само уведомление → в чат на платформе */
 async function bksReply(env, m, chat) { if (!m.reply_to_message) return false; await bankEnsure(env); const L = (await kvGet(env, 'fr:' + chat)) || [], x = L.find(y => y.m === m.reply_to_message.message_id); if (!x) return false;
   const st = await env.DB.prepare('SELECT uid, curator, tg_chat FROM student WHERE uid=?').bind(x.uid).first(); if (!st) return false;
+  if (x.as === 'fb') { const t = String(m.text || m.caption || '').trim(); if (!t || String(st.tg_chat) !== chat) return true; const r = await env.DB.prepare('SELECT mid, cid, stars FROM chat_rate WHERE mid=? AND uid=?').bind(x.mid, st.uid).first();
+    if (r) { const old = await env.DB.prepare('SELECT reasons FROM chat_fb WHERE mid=?').bind(x.mid).first(); await chatFbDo(env, st.uid, r, old ? efJ(old.reasons, []) : [], t) } await tgSend(env, chat, '🙏 ' + nbt('Спасибо, передали Роману. Разберёмся и вернёмся к тебе.')); return true }
   const text = String(m.text || m.caption || '').trim().slice(0, 4000), file = await tgFileToBank(env, st.uid, m).catch(() => null);
   if (!text && !file) { await tgSend(env, chat, 'Пока доходят только текст, фото и PDF до 650 КБ. Голосовое лучше отправить в чате приложения.'); return true }
   if (x.as === 'out') { const ct = st.curator && await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(st.curator).first(), adm = await env.DB.prepare('SELECT name FROM tg_admin WHERE chat=?').bind(chat).first(), isCur = !!(ct && String(ct.tg_id) === chat);
