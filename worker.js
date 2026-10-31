@@ -1610,14 +1610,16 @@ async function bankStaffList(env, st) {
   const M6 = [], mk0 = dayStr().slice(0, 7); for (let i = 5; i >= 0; i--) { let [y, m] = mk0.split('-').map(Number); m -= i; while (m < 1) { m += 12; y-- } M6.push(y + '-' + String(m).padStart(2, '0')) }
   const mon = {}; for (const r of ((await env.DB.prepare('SELECT uid, substr(day,1,7) m, COALESCE(SUM(COALESCE(rub, amount)),0) s, COUNT(id) n FROM bank_tx WHERE del_at IS NULL AND day>=? GROUP BY uid, substr(day,1,7)').bind(M6[0] + '-01').all()).results || [])) (mon[r.uid] = mon[r.uid] || {})[r.m] = r;
   const seen = {}, out = [], CN = {}, GS = await gcStaffSet(env); for (const c of CURATORS) CN[c.id] = c.full;
-  const add = (uid, name, tar, place) => { if (!uid || seen[uid] || isStaffUid(env, uid) || GS.has(+uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
+  const add = (uid, name, tar, place, strm) => { if (!uid || seen[uid] || isStaffUid(env, uid) || GS.has(+uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {}, tot = Math.round(m.total || 0), cf = Math.round(m.conf || 0), bs = bStatus(tot);
-    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: D.stream || 'AI-креатор 2.0', place: place || null, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
+    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: strm || D.stream || 'AI-креатор 2.0', place: place || null, outside: strm ? 1 : 0, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
       conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null,
       m6: M6.map(k => Math.round(((mon[uid] || {})[k] || {}).s || 0)), c6: M6.map(k => ((mon[uid] || {})[k] || {}).n || 0) }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
   /* 30.10: в списке только ученики потока (состав — из рейтинга, т.е. из групп потока в GetCourse). Раньше сюда попадали все, кто хоть раз открыл бота, — в т.ч. сотрудники */
   if (!(D.rows || []).length) { for (const s of studs) add(+s.uid, s.name, null, null); for (const uid in sums) add(+uid, null, null, null) }
+  /* 31.10 (Роман): ученики с оплатами в банке, которых нет в рейтинге потока (другой курс или прошлый поток), тоже в списке и в сумме — иначе подтверждённые оплаты «пропадали» из итогов */
+  else for (const uid in sums) add(+uid, null, null, null, 'Вне потока')
   out.sort((a, b) => (!a.name - !b.name) || b.total - a.total || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
   return { ok: true, role: st.role, cid: st.cid || null, curators: st.role === 'admin' ? CURATORS.map(c => ({ id: c.id, full: c.full })) : CURATORS.filter(c => c.id === st.cid).map(c => ({ id: c.id, full: c.full })), students: out } }
 /* 30.10 QA №11: все заказы учеников для «Заказов учеников» — без клиента, Telegram, ТЗ и файлов; куратор — только свои, админ — все. Без loadData: имена страница берёт из /bank/staff/list. */
