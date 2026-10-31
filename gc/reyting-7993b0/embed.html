@@ -158,11 +158,15 @@ const FS={
  API:'https://oduvanov-api.romanoduvanov52.workers.dev',
  /* часы на платформе и за видео уроков с сервера: {h:[сайт, видео]} в секундах */
  /* v42-SRV: рейтинг — с сервера и только ученику, вошедшему в кабинет. Токен чтения v даёт страница GetCourse (layout.js) через postMessage */
- auth(){return FS._a||(FS._a=new Promise(ok=>{const GC='https://oduvanovroman.getcourse.ru';let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
+ /* 01.11: у части учеников блок «Твои баллы и статус» не появлялся. Причины: ждали токен максимум 9 с (на медленном интернете не успевали),
+    ответ «нет токена» или 401/сбой сети не перезапрашивали — блок оставался пустым. Теперь: ждём до 25 с, при сбое 3 повтора (1,5 / 4 / 8 с),
+    на «нет токена» и 401 просим у страницы свежий токен (force). */
+ auth(force){if(!force&&FS._a)return FS._a;return FS._a=new Promise(ok=>{const GC='https://oduvanovroman.getcourse.ru';let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
   const f=e=>{if(e.origin!==GC||!e.data||!('fsAuth' in e.data))return;end(e.data.fsAuth)};addEventListener('message',f);
-  const ask=()=>{try{parent.postMessage({fsNeedAuth:1},GC)}catch(e){}};ask();iv=setInterval(ask,800);setTimeout(()=>end(null),9000)}))},
- data(){return FS._d||(FS._d=FS.auth().then(a=>{if(!a||!a.v)throw new Error('auth');const u=FS.uid();return fetch(FS.API+'/rating?v='+encodeURIComponent(a.v)+(u?'&for='+u:'')).then(r=>r.json())})
-  .then(D=>{if(!D||!D.rows)throw new Error('rating');D.fh=D.fh||D.me;return D}))},
+  const ask=()=>{try{parent.postMessage({fsNeedAuth:1,force:force?1:0},GC)}catch(e){}};ask();iv=setInterval(ask,800);setTimeout(()=>end(null),25000)})},
+ data(){return FS._d||(FS._d=(async()=>{let fr=0;for(let i=0;i<4;i++){try{const a=await FS.auth(fr);fr=0;if(!a||!a.v){fr=1;throw new Error('auth')}
+   const u=FS.uid(),r=await fetch(FS.API+'/rating?v='+encodeURIComponent(a.v)+(u?'&for='+u:''),{cache:'no-store'});if(r.status===401){fr=1;throw new Error('401')}if(!r.ok)throw new Error('http '+r.status);
+   const D=await r.json();if(!D||!D.rows)throw new Error('rating');D.fh=D.fh||D.me;return D}catch(e){if(i===3)throw e;await new Promise(s=>setTimeout(s,[1500,4000,8000][i]))}}})().catch(e=>{FS._d=null;throw e}))},
  hours(){return FS.data().then(D=>D.hours||null).catch(()=>null)},
  rki(D,r){let i=D.ranks.findIndex(x=>x[0]===r.rank);if(i<0){i=0;D.ranks.forEach((x,k)=>{if((r.pts||0)>=x[1])i=k})}return i},
  hrs(sec){const h=(sec||0)/3600;return h<0.05?'0 ч':h<10?(Math.round(h*10)/10).toString().replace('.',',')+' ч':Math.round(h)+' ч'},
