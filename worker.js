@@ -2692,6 +2692,10 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     return json(req, { ok: true, videos: q ? L.filter(v => v.title.toLowerCase().includes(q)) : L, meta: j.meta || null }) }
   /* TODO: создание трансляции через API Kinescope — эндпоинт live-событий в открытой документации не найден (30.10); пока трансляция создаётся в кабинете Kinescope, в эфир вставляется её ID/ссылка */
   /* трансляция ведущего: GET — своя (админ: ?host=… любая, ?all=1 — список ведущих без ключей), POST {host?, force} — создать свою (админ — любую); force — заново, новый ключ */
+  /* 31.10: проверка, доступен ли Kinescope Speak по ключу (только админ; ключ и ссылки не отдаём) */
+  if (path === '/efir/speak/probe') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1 });
+    let r = null, j = null; try { r = await fetch(KIN_API + '/v1/speak/rooms?per_page=5', { headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, Accept: 'application/json' } }); j = await r.json() } catch (x) {}
+    return json(req, { ok: !!(r && r.ok), st: r ? r.status : 0, n: j && Array.isArray(j.data) ? j.data.length : null, types: j && Array.isArray(j.data) ? j.data.map(x => [x.type, x.status, !!x.owner_id]) : null, err: j && !(r && r.ok) ? String((j.error && (j.error.message || j.error.detail)) || j.message || '').slice(0, 200) : null }) }
   if (path === '/efir/kin/setup' || path === '/efir/kin/live') { if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1, err: 'Kinescope не подключён: нужен секрет KINESCOPE_KEY в Cloudflare' });
     const mine = W.adm ? 'admin' : W.cid, want = bStr(o.host || u.searchParams.get('host') || '', 40) || mine; if (!mine) return json(req, { ok: false, err: 'Только для ведущих эфиров' }, 403);
     const h = kinHost(want); if (!W.adm && h !== kinHost(mine)) return json(req, { ok: false, err: 'Это трансляция другого ведущего' }, 403);
