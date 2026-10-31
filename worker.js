@@ -16,6 +16,7 @@ const until = env => (env && env.REPORT_UNTIL) || REPORT_UNTIL;
 const ORIGINS = ['https://oduvanovroman.getcourse.ru', 'https://romanoduvanov.github.io'];
 const SITE = 'https://oduvanovroman.getcourse.ru';
 const CARE = 'https://t.me/zabota_oduvanov';
+const TECH_TG = 'https://t.me/Yark0s';
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 
@@ -981,7 +982,8 @@ const AI_PAGES = [
   ['Рейтинг потока — места, баллы, звания', SITE + '/teach/control/stream/view/id/935952152'],
   ['Расписание — когда открываются модули', SITE + '/teach/control/schedule'],
   ['Настройки уведомлений', SITE + '/pl/notifications/settings/my'],
-  ['Забота о студентах (оплата, доступы, технические проблемы)', CARE]
+  ['Забота о студентах (оплата, доступы, технические проблемы)', CARE],
+  ['Технический специалист @Yark0s — поможет установить приложения и программы, разобраться с компьютером и телефоном', TECH_TG]
 ];
 /* как исправить уровень/ответ ДЗ — уточняется по разбору GetCourse (агент «Домашки», ночь 27.10) */
 const AI_HW_FIX = `пока работа «На проверке», ученик правит её сам:
@@ -1028,6 +1030,7 @@ function aiSystem() {
 - Баллы рейтинга: урок 10, анкета после модуля 15, ДЗ 20 / 40 / 70. x2: уроки и анкеты — 48 ч от открытия модуля, ДЗ — 72 ч. Звания: Новичок 0 · Джуниор 150 · Фрилансер 500 · Арт-директор 1000 · Владелец студии 1700 · Дизайнер-миллионер 2500 и 80% заданий в срок. 1 балл = 1 ₽ бонусного счёта (виден в «Мои покупки»). В топ рейтинга: проходить уроки и сдавать ДЗ в окно x2, ДЗ — на максимальном уровне, заполнять анкеты после модулей.
 - Куратор — личный, выбирается в профиле (если ещё не выбран). Сменить уже выбранного куратора — через Заботу о студентах. Проверяет ДЗ, отвечает на вопросы по работам, решает спорные баллы и уровни. Пишет в Telegram в свои рабочие часы (в блоке «Ученик сейчас»), обычно отвечает за 1–2 часа. Написать: вкладка «Ещё» → «Мой куратор». Когда нужен человек — вызови call_curator, и под ответом появится кнопка «Написать». Сам ты куратору ничего не отправляешь: не пиши «я передал куратору» — пиши, что и как ему написать.
 - Забота о студентах ${CARE}: оплата, рассрочка, возврат, продление и повышение тарифа, доступы, вход в кабинет, технические сбои платформы.
+- Технический специалист ${TECH_TG} (@Yark0s) — как куратор, только по технике: установить программы и приложения (Photoshop, Figma, нейросети, VPN, Telegram, мини-приложение), настроить компьютер или телефон, разобраться, куда нажимать, если с компьютером сложно. Предлагай его, когда ученик не может что-то установить или запутался в технике.
 - Банк (вкладка «Банк») — личный учёт дохода и заказов: «Новая оплата», «+ Новый заказ», статусы и дедлайны. Клиентов и ТЗ видит только сам ученик.
 - Telegram к кабинету: профиль в кабинете → «Подключить Telegram»; уведомления — страница настроек уведомлений.
 - Нейро: до 40 вопросов и 5 разборов картинок в день; картинку на разбор — через скрепку.
@@ -1890,6 +1893,27 @@ async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.sli
    (собирает админ скриптом в браузере → POST /srch/index) + записи эфиров с главами. Вопрос своими словами → ИИ: короткий ответ + 3–5 мест (урок/эфир + секунда).
    Ответы кэшируются по нормализованному вопросу на 7 дней; лимит 40 вопросов в сутки на ученика. */
 const SRCH_DAY = 40;
+/* 01.11 (макет «Поиск по платформе», одобрен): страницы кабинета в умном поиске — блок «Платформа». ic — иконка, act — подпись действия */
+const SRCH_PAGES = {
+  P_cur: { t: 'Мой куратор', d: 'кто твой куратор, его часы и статус, написать ему', href: '/teach/control/stream?fs=curator', act: 'Открыть', ic: 'user', k: 'куратор наставник проверяющий кто проверяет кто мой куратор поменять куратора' },
+  P_chat: { t: 'Чат с куратором', d: 'вопросы по урокам и домашкам, ответ приходит и в Telegram', href: '/teach/control/stream?fs=curator', act: 'Написать', ic: 'chat', k: 'написать куратору чат сообщения вопрос по уроку вопрос по дз' },
+  P_tech: { t: 'Технический специалист', d: 'установка программ и приложений, помощь с компьютером и телефоном · @Yark0s', href: TECH_TG, act: 'Написать', ic: 'tool', k: 'техподдержка техспец технический специалист установить программу фотошоп figma vpn не устанавливается компьютер телефон приложение не работает как установить' },
+  P_care: { t: 'Служба заботы', d: 'оплата, рассрочка, возврат, доступы, вход в кабинет · @zabota_oduvanov', href: CARE, act: 'Написать', ic: 'heart', k: 'поддержка забота оплата возврат рассрочка доступ пропал не могу войти поддержка школы' },
+  P_buy: { t: 'Мои покупки', d: 'доступы, сроки, тариф и бонусный счёт', href: '/sales/control/userProduct/my', act: 'Открыть', ic: 'key', k: 'доступ срок доступа до какого числа тариф покупки бонусы' },
+  P_up: { t: 'Продлить доступ или повысить тариф', d: 'с зачётом уже оплаченного', href: '/teach/control/stream?fs=upgrade', act: 'Открыть', ic: 'up', k: 'продлить доступ повысить тариф премиум амазон апгрейд' },
+  P_bank: { t: 'Мой банк и заказы', d: 'оплаты от клиентов, заказы и награды за рубежи', href: '/teach/control/stream?fs=bank', act: 'Открыть', ic: 'bank', k: 'банк заработок заказы клиенты оплаты деньги доход' },
+  P_efir: { t: 'Эфиры', d: 'ближайшие эфиры и записи прошедших', href: '/teach/control/stream?fs=efir', act: 'Открыть', ic: 'live', k: 'эфир трансляция созвон запись эфира прямой эфир' },
+  P_rate: { t: 'Рейтинг потока', d: 'места, баллы и звания', href: '/teach/control/stream/view/id/935952152', act: 'Открыть', ic: 'cup', k: 'рейтинг баллы место звание очки' },
+  P_sched: { t: 'Расписание', d: 'когда открываются модули', href: '/teach/control/schedule', act: 'Открыть', ic: 'cal', k: 'расписание когда откроется модуль даты открытия' },
+  P_notif: { t: 'Настройки уведомлений', d: 'какие письма и сообщения приходят', href: '/pl/notifications/settings/my', act: 'Открыть', ic: 'bell', k: 'уведомления письма рассылки отключить уведомления' },
+  P_prof: { t: 'Профиль', d: 'имя, фото, телефон и пароль', href: '/user/my/profile', act: 'Открыть', ic: 'user', k: 'профиль имя фото аватар пароль сменить почту телефон' }
+};
+const SRCH_PTXT = 'Страницы платформы (кабинет школы):\n' + Object.keys(SRCH_PAGES).map(k => k + ' | ' + SRCH_PAGES[k].t + ' | ' + SRCH_PAGES[k].d + ' | ' + SRCH_PAGES[k].k).join('\n');
+async function srchMe(env, uid) { if (!uid) return null; const o = {}; try { const D = await loadData(env), r = await rowFor(D, uid);
+    if (r) { o.баллы = r.pts | 0; o.место = r.place + ' из ' + D.n; if (r.tar) o.тариф = r.tar; if (r.acc) { const ad = new Date(r.acc); if (!isNaN(ad)) { o.доступ_до = ad.toISOString().slice(0, 10); o.дней_доступа_осталось = Math.max(0, Math.ceil((ad - Date.now()) / 864e5)) } } } } catch (e) {}
+  let cc = null; try { const s = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first(); if (s && s.curator) cc = await curCard(env, s.curator) } catch (e) {}
+  o.куратор = cc ? cc.name + ', часы ' + cc.hours.from + ':00–' + cc.hours.to + ':00 МСК (' + cc.hours.txt + '), сейчас ' + (cc.online ? 'на связи' : 'не на связи' + (cc.hours.next ? ', ' + cc.hours.next : '')) : 'ещё не назначен';
+  o.сегодня_мск = msk().toISOString().slice(0, 10); return { o, cc } }
 async function srchCorpus(env) { const D = await loadData(env), X = (await kvGet(env, 'srchidx')) || {}, L = [], ref = {};
   for (const m of D.modules || []) for (const p of m.parts || []) for (const l of p.lessons || []) { const x = X[l.id] || {}, k = 'L' + l.id;
     ref[k] = { kind: 'lesson', id: l.id, module: m.name, part: p.name, title: l.t, tc: x.tc || [] };
@@ -1912,23 +1936,30 @@ async function srchApi(env, req, path) { const u = new URL(req.url); let o = {};
     const X = (await kvGet(env, 'srchidx')) || {}, it = o.items || {}; let n = 0;
     for (const id of Object.keys(it).slice(0, 400)) { if (!/^\d{5,12}$/.test(id)) continue; const v = it[id] || {};
       X[id] = { a: (Array.isArray(v.a) ? v.a : []).map(x => bStr(x, 160)).filter(Boolean).slice(0, 12), tc: (Array.isArray(v.tc) ? v.tc : []).map(t => [Math.max(0, +t[0] | 0), bStr(t[1], 120)]).filter(t => t[1]).slice(0, 30), m: (Array.isArray(v.m) ? v.m : []).map(x => bStr(x, 80)).filter(Boolean).slice(0, 10) }; n++ }
-    await kvPut(env, 'srchidx', X); await kvPut(env, 'srchcache', {}); return json(req, { ok: true, n, total: Object.keys(X).length }) }
+    await kvPut(env, 'srchidx', X); await kvPut(env, 'srchcache2', {}); return json(req, { ok: true, n, total: Object.keys(X).length }) }
   if (path === '/srch/ask' && req.method === 'POST') { const q = String(o.q || '').replace(/\s+/g, ' ').trim().slice(0, 200); if (q.length < 3) return json(req, { ok: false, err: 'Напиши вопрос подлиннее' }, 400);
-    const key = q.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim(), C = (await kvGet(env, 'srchcache')) || {};
+    const key = q.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim(), C = (await kvGet(env, 'srchcache2')) || {};
     if (C[key] && msNow() - C[key].at < 7 * 864e5) return json(req, Object.assign({ ok: true, cached: 1 }, C[key].r));
     const dk = 'srchn:' + (W.uid || W.me) + ':' + dayStr(), dn = +((await kvGet(env, dk)) || 0); if (W.me === 'student' && dn >= SRCH_DAY) return json(req, { ok: false, err: 'На сегодня вопросов хватит — спроси Нейро в чате' }, 429);
-    const { text, ref } = await srchCorpus(env);
-    const sys = 'Ты поиск по курсу онлайн-школы дизайна OduvanovSchool (дизайн карточек маркетплейсов с ИИ). Тебе дают список мест курса: строки «КОД | модуль | урок | о чём | тайм-коды | материалы». Ученик пишет вопрос своими словами. Найди 1–5 самых подходящих мест (уроки или эфиры) и, если по тайм-кодам видно нужный момент, — секунду начала. Ответь ТОЛЬКО JSON без пояснений: {"answer":"2–3 коротких предложения по-русски, на «ты», без воды: прямой ответ на вопрос по смыслу курса и где смотреть","hits":[{"ref":"КОД","sec":число или null,"why":"до 60 символов: что именно там, без повтора названия урока"}]}. Не выдумывай уроки, коды бери только из списка. Если в курсе этого нет — hits пустой, а в answer честно скажи, что в курсе такого урока нет, и предложи спросить Нейро или куратора.';
+    const { text, ref } = await srchCorpus(env), ME = await srchMe(env, W.uid);
+    const sys = 'Ты умный поиск онлайн-школы дизайна OduvanovSchool (дизайн карточек маркетплейсов с ИИ): ищешь и по курсу, и по платформе. Тебе дают страницы платформы (коды P_…) и места курса (строки «КОД | модуль | урок | о чём | тайм-коды | материалы»), а в сообщении — данные ученика и его вопрос своими словами. Найди 1–6 самых подходящих мест: страницы платформы (если вопрос про куратора, техпомощь, оплату, доступ, банк, эфиры, рейтинг, настройки) и/или уроки и эфиры курса (если вопрос про учёбу); для урока, если по тайм-кодам видно нужный момент, — секунду начала. Ответь ТОЛЬКО JSON без пояснений: {"answer":"2–3 коротких предложения по-русски, на «ты», без воды: прямой ответ; если вопрос личный (куратор, доступ, тариф, баллы, место) — отвечай по данным ученика конкретно (имя куратора, статус, дата доступа)","fact":null или {"big":"до 20 символов — главная цифра или дата, например «до 15 марта»","small":"до 70 символов пояснение"} (только когда есть одна главная личная цифра или дата),"personal":true если в ответе использованы данные ученика,"hits":[{"ref":"КОД","sec":число или null,"why":"до 60 символов: что именно там, без повтора названия"}]}. Не выдумывай: коды и данные бери только из того, что дали. Если в курсе урока по теме нет — так и скажи и предложи Нейро или куратора; с программами и техникой предлагай технического специалиста (P_tech).';
     /* 01.11: бывало «Не получилось разобрать ответ» — ответ модели обрезался/ломал JSON. Теперь лимит больше, 2 попытки и мягкий разбор */
     let out = null, okAny = false;
-    for (let at = 0; at < 2 && !out; at++) { const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 1600, system: [{ type: 'text', text: sys + ' Кавычки внутри текста — только «ёлочки», никогда не прямые.' + (at ? ' ВАЖНО: ответь ТОЛЬКО валидным JSON, без текста вокруг, кавычки внутри строк экранируй.' : '') }, { type: 'text', text: text, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: q }] }));
+    for (let at = 0; at < 2 && !out; at++) { const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 1600, system: [{ type: 'text', text: sys + ' Кавычки внутри текста — только «ёлочки», никогда не прямые.' + (at ? ' ВАЖНО: ответь ТОЛЬКО валидным JSON, без текста вокруг, кавычки внутри строк экранируй.' : '') }, { type: 'text', text: SRCH_PTXT + '\n\nМеста курса:\n' + text, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: (ME ? 'Данные ученика: ' + JSON.stringify(ME.o) + '\n\n' : 'Данные ученика: нет (вошёл сотрудник без ученика)\n\n') + 'Вопрос: ' + q }] }));
       if (!r || !r.ok) continue; okAny = true; out = srchParse(((j.content || []).find(c => c.type === 'text') || {}).text || '') }
     if (!okAny) return json(req, { ok: false, err: 'Поиск сейчас недоступен — попробуй через минуту' }, 502);
     if (!out) return json(req, { ok: false, err: 'Не получилось разобрать ответ — попробуй переформулировать' }, 502);
-    const hits = (Array.isArray(out.hits) ? out.hits : []).map(h => { const R = ref[h && h.ref]; if (!R) return null; let sec = h.sec != null && isFinite(+h.sec) ? Math.max(0, +h.sec | 0) : null;
-      return { kind: R.kind, id: R.id, module: R.kind === 'lesson' ? R.module + (R.part && R.part !== R.module ? ' · ' + R.part : '') : R.module, title: R.title, sec, why: bStr(h.why, 90) } }).filter(Boolean).slice(0, 5);
-    const res = { answer: bStr(out.answer, 600), hits }; C[key] = { at: msNow(), r: res }; const ks = Object.keys(C); if (ks.length > 300) for (const k of ks.sort((a, b) => C[a].at - C[b].at).slice(0, ks.length - 300)) delete C[k];
-    await kvPut(env, 'srchcache', C); await kvPut(env, dk, dn + 1); await logIt(env, 'srch', W.uid || 0, q.slice(0, 120));
+    const hits = (Array.isArray(out.hits) ? out.hits : []).map(h => { const code = h && String(h.ref || '');
+      if (SRCH_PAGES[code]) { const P = SRCH_PAGES[code], x = { kind: 'page', code, title: P.t, why: P.d, href: P.href, act: P.act, ic: P.ic };
+        if ((code === 'P_cur') && ME && ME.cc) Object.assign(x, { meta: 'Мой куратор', title: ME.cc.name, why: null, status: ME.cc.online ? 'На связи · до ' + ME.cc.hours.to + ':00 МСК' : 'Не на связи' + (ME.cc.hours.next ? ' · ' + ME.cc.hours.next : ''), on: !!ME.cc.online });
+        return x }
+      const R = ref[code]; if (!R) return null; let sec = h.sec != null && isFinite(+h.sec) ? Math.max(0, +h.sec | 0) : null;
+      return { kind: R.kind, id: R.id, module: R.kind === 'lesson' ? R.module + (R.part && R.part !== R.module ? ' · ' + R.part : '') : R.module, title: R.title, sec, why: bStr(h.why, 90) } }).filter(Boolean)
+      .filter((x, i, A) => A.findIndex(y => (y.code || y.kind + y.id) === (x.code || x.kind + x.id)) === i).slice(0, 7);
+    const fact = out.fact && out.fact.big ? { big: bStr(out.fact.big, 30), small: bStr(out.fact.small || '', 90) } : null;
+    const res = { answer: bStr(out.answer, 600), fact, hits }, priv = !!out.personal || !!fact || hits.some(x => x.kind === 'page');
+    if (!priv) { C[key] = { at: msNow(), r: res }; const ks = Object.keys(C); if (ks.length > 300) for (const k of ks.sort((a, b) => C[a].at - C[b].at).slice(0, ks.length - 300)) delete C[k]; await kvPut(env, 'srchcache2', C) }
+    await kvPut(env, dk, dn + 1); await logIt(env, 'srch', W.uid || 0, q.slice(0, 120));
     return json(req, Object.assign({ ok: true }, res)) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 async function chatWho(env, req, u, o) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || (o && o.t) || '';
