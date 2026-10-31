@@ -752,6 +752,10 @@ export default {
         if (!D || !Array.isArray(D.rows) || !D.rows.length || D.rows.some(r => !okUid(r.uid) || !r.h)) return json(req, { ok: false, err: 'rows: нужны uid и h в каждой строке' }, 400);
         await kvPut(env, 'rating', t); await kvPut(env, 'rating_at', new Date().toISOString()); RC = null; await logIt(env, 'rating-put', 0, D.rows.length + ' rows'); return json(req, { ok: true, rows: D.rows.length }) }
       /* баллы за заработок для gamify.py: только подтверждённые куратором оплаты, floor(₽/10000)*100 */
+      /* 1.11 (Роман: «после эфира не начислились баллы»): баллы за эфиры (efir_pts: 30 мин в эфире, запись, вопросы, сцена) → рейтинг, как bankpts. {uid: баллы} */
+      if (path === '/rating/efirpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403);
+        let rs = []; try { rs = await qAll(env.DB.prepare('SELECT uid, SUM(pts) p FROM efir_pts WHERE uid IS NOT NULL GROUP BY uid')) } catch (e) { rs = [] }
+        const out = {}; for (const r of rs) if (+r.uid > 0 && +r.p > 0) out[String(r.uid)] = +r.p; return json(req, out) }
       if (path === '/rating/bankpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env);
         const out = {}; for (const r of ((await env.DB.prepare('SELECT uid, SUM(COALESCE(rub, amount)) c FROM bank_tx WHERE conf=1 AND del_at IS NULL GROUP BY uid').all()).results || [])) { const p = bPts(r.c); if (p > 0 && !isStaffUid(env, r.uid)) out[r.uid] = p }
         return json(req, out, 200, { 'Cache-Control': 'no-store' }) }
