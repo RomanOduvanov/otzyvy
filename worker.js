@@ -2405,6 +2405,7 @@ async function neuroAdmin(env, s, path, req, u, ajson) { if (s.role !== 'admin')
    Всё в эфире пишется с секундой от начала: чат efir_msg.sec, события efir_ev.sec (кнопка заявки, баннер, опрос) — из этого «Собрать из эфира» делает сценарий efir_scen.
    Баллы — в отдельной таблице efir_pts (gamify подключит позже): 10 за 30 мин в эфире, 5 за досмотренную запись (90%), 2 за вопрос (до 3 в эфир), 15 за выход на сцену. */
 const EFIR_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS efir_cover (id INTEGER PRIMARY KEY AUTOINCREMENT, mime TEXT, data TEXT, by_uid INTEGER, at INTEGER)',
   'CREATE TABLE IF NOT EXISTS efir (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, about TEXT, host_cid TEXT, host_uid INTEGER, host_name TEXT, start INTEGER, dur INTEGER, kind TEXT, tariff TEXT, status TEXT, video TEXT, rec TEXT, cover TEXT, chapters TEXT, cfg TEXT, at_live INTEGER, at_end INTEGER, created INTEGER, upd INTEGER, del INTEGER DEFAULT 0)',
   'CREATE INDEX IF NOT EXISTS efir_start ON efir (start)',
   "CREATE TABLE IF NOT EXISTS efir_reg (efir_id INTEGER NOT NULL, k TEXT NOT NULL, uid INTEGER, chat TEXT, name TEXT, sess INTEGER DEFAULT 0, src TEXT, at INTEGER, rem TEXT DEFAULT '', PRIMARY KEY (efir_id, k))",
@@ -2500,6 +2501,9 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
   if (path === '/efir/open') { const e = await efGet(env, u.searchParams.get('id')); if (!e || e.tariff !== 'open' || e.status === 'draft') return json(req, { ok: false, err: 'Эфир не найден' }, 404);
     const n = await env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(e.id).first(), p = efPub(e, now); delete p.chapters;
     return json(req, { ok: true, efir: p, regs: n ? n.n : 0, bot: 'https://t.me/' + BOT(env) + '?start=e' + e.id }) }
+  /* 31.10: обложки эфиров, загруженные в пульте (JPEG 1280×720) — открыто, как картинки на сайте */
+  if (path === '/efir/cover') { const r = await env.DB.prepare('SELECT mime, data FROM efir_cover WHERE id=?').bind(+u.searchParams.get('id') || 0).first().catch(() => null); if (!r) return new Response('not found', { status: 404 });
+    const bin = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)); return new Response(bin, { headers: { 'Content-Type': r.mime || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } }) }
   const W = await efirWho(env, req, u, o); if (!W) return deny(req);
   if (env.KINESCOPE_KEY) try { await kinAutoLive(env, now) } catch (x) {}
   if (path.startsWith('/efir/host/') || path.startsWith('/efir/kin/')) return efirHostApi(env, req, path, u, o, W, now);
@@ -2675,6 +2679,10 @@ async function kinRecJob(env, B) { if (!env.KINESCOPE_KEY) return { skip: 'nokey
     await env.DB.prepare('UPDATE efir SET rec=?, upd=? WHERE id=?').bind(JSON.stringify(rv), now, e.id).run(); await logIt(env, 'efir-rec-kin', 0, e.id + ' ' + v.id); n++ }
   return { n } }
 async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json(req, { ok: false, err: 'Только для команды школы' }, 403);
+  if (path === '/efir/host/cover' && req.method === 'POST') { const m = String(o.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/); if (!m) return json(req, { ok: false, err: 'Нужна картинка JPG, PNG или WebP' }, 400);
+    if (m[2].length > 1400000) return json(req, { ok: false, err: 'Картинка слишком большая — до 1 МБ' }, 400);
+    const r = await env.DB.prepare('INSERT INTO efir_cover (mime, data, by_uid, at) VALUES (?,?,?,?) RETURNING id').bind(m[1], m[2], W.uid || 0, now).first();
+    return json(req, { ok: true, id: r.id, url: new URL(req.url).origin + '/efir/cover?id=' + r.id }) }
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
   if (path === '/efir/kin/videos') { if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1, err: 'Ключ Kinescope не подключён — вставь ID или ссылку видео из Kinescope' });
     const q = bStr(u.searchParams.get('q'), 60).toLowerCase(), r = await fetch('https://api.kinescope.io/v1/videos?per_page=100&page=' + Math.max(1, +u.searchParams.get('page') || 1), { headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY } });
