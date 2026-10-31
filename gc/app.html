@@ -555,7 +555,7 @@ var ESP=(function(){var RK='maSrRecent',L=null,LP=null,W=null,NB=' ';
    api('/srch/ask',{method:'POST',body:JSON.stringify({q:v})}).then(function(j){if(my!==seq||!W)return;
     if(!j||!j.ok){bd.innerHTML='<div class="es-m">'+esc(j&&j.err||'Поиск сейчас недоступен'+NB+'— попробуй через минуту')+'</div>';last='';return}
     var H=j.hits||[],PGs=H.filter(function(x){return x.kind==='page'}),LSs=H.filter(function(x){return x.kind!=='page'});
-    bd.innerHTML='<div class="es-ans"><img src="ma/neuro.jpg" alt=""><div><b>'+SPARK+'Нейро-Одуванов</b><p>'+esc(j.answer||'')+'</p><span class="es-mr">Показать полностью ▾</span>'+(j.fact?'<div class="es-fact"><b>'+esc(j.fact.big)+'</b>'+(j.fact.small?'<span>'+esc(j.fact.small)+'</span>':'')+'</div>':'')+'</div></div>'
+    bd.innerHTML='<div class="es-ans"><img src="ma/neuro.jpg" alt=""><div><b>'+SPARK+'Нейро-Одуванов</b><p>'+esc(j.answer||'')+'</p><span class="es-mr">Показать полностью ▾</span>'+(j.fact?'<div class="es-fact"><b>'+esc(j.fact.big).replace(/ (\d{4})$/,NB+'$1')+'</b>'+(j.fact.small?'<span>'+esc(j.fact.small)+'</span>':'')+'</div>':'')+'</div></div>'
      +(PGs.length?'<div class="es-lb">Платформа <s>'+PGs.length+'</s></div>'+PGs.map(prow).join(''):'')+(LSs.length?'<div class="es-lb">'+(PGs.length?'Обучение':'Где это в'+NB+'курсе')+' <s>'+LSs.length+'</s></div>'+LSs.map(hit).join(''):'');setFt(true);var ap=bd.querySelector('.es-ans p');if(ap&&ap.scrollHeight<=ap.clientHeight+2)ap.parentNode.parentNode.classList.add('op')})
    .catch(function(){if(my===seq&&W){bd.innerHTML='<div class="es-m">Нет связи'+NB+'— попробуй ещё раз</div>';last=''}})};
   q.oninput=function(){last='';clearTimeout(t0);t0=setTimeout(function(){loadL().then(function(){if(W&&!last)quick()})},120)};
