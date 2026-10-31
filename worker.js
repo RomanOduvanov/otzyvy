@@ -2572,6 +2572,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
       out.poll = { id: pid, q: A.poll.q || '', opts: A.poll.opts || [], my: (mv.results || [])[0] ? mv.results[0].opt : null, res: (mv.results || [])[0] ? (res.results || []) : null } }
     const H = hd.results || [], mine = H.findIndex(h => h.k === W.k && h.st === 'wait');
     out.hand = H.find(h => h.k === W.k) ? { st: H.find(h => h.k === W.k).st, pos: mine >= 0 ? H.filter(h => h.st === 'wait').findIndex(h => h.k === W.k) + 1 : 0 } : null;
+    if (out.hand && out.hand.st === 'stage') out.hand.url = await efStageUrl(env, e, cfg);
     out.stage = H.filter(h => h.st === 'stage').map(h => h.name); out.hands = H.filter(h => h.st === 'wait').length; out.stage_on = !!cfg.stage;
     out.viewers = ((vr.results || [])[0] || {}).n || 0; return json(req, out) }
   if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
@@ -2769,7 +2770,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     let poll = null; if (A.poll) { const r = await qAll(env.DB.prepare('SELECT opt, COUNT(*) n FROM efir_pollv WHERE ev=? GROUP BY opt').bind('e' + A.poll.id)); poll = Object.assign({}, A.poll, { res: r }) }
     return json(req, { ok: true, now, sec, state: S.st, status: e.status, sess, efir: efPub(e, now, { full: true }), msgs: (ms.results || []).reverse().map(m => Object.assign(efMsgPub(m), { k: m.k })), qs: (qs.results || []).map(m => Object.assign(efMsgPub(m), { k: m.k })),
       hands: (hd.results || []).map(h => ({ k: h.k, name: h.name, st: h.st, at: h.at })), works: (wk.results || []).map(w => ({ id: w.id, name: w.name, text: w.text || '', file: w.file_id, mime: w.mime || null, at: w.at, ans: w.ans })), leads: ld.results || [], viewers: n, regs: ((rg.results || [])[0] || {}).n || 0,
-      lead: A.lead || null, banner: A.banner || null, poll, screen: A.screen || null, no_sales: efNoSales(e) }) }
+      lead: A.lead || null, banner: A.banner || null, poll, screen: A.screen || null, no_sales: efNoSales(e), stage_url: cfg.stage ? await efStageUrl(env, e, cfg) : null }) }
   /* сообщение ведущего/модератора: всем (в автовебинаре — всем зрителям сеанса) или лично (to — id сообщения зрителя) */
   if (path === '/efir/host/msg' && req.method === 'POST') { const text = bStr(o.text, 1000); if (!text) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
     const to = +o.to ? await env.DB.prepare('SELECT id, k, sess, sec FROM efir_msg WHERE id=? AND efir_id=?').bind(+o.to, e.id).first() : null, ss = to ? to.sess : sess, personal = !!(to && !o.all);
@@ -2788,7 +2789,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const st = { invite: 'stage', decline: 'no', done: 'done' }[o.act]; if (!st) return json(req, { ok: false, err: 'Неизвестное действие' }, 400);
     await env.DB.prepare('UPDATE efir_hand SET st=?, at=? WHERE efir_id=? AND k=?').bind(st, now, e.id, h.k).run(); let sent = 0;
     if (st === 'stage') { if (h.uid) await efPts(env, { uid: h.uid, k: h.k }, e.id, 'stage', 0); const chat = h.k[0] === 't' ? h.k.slice(1) : h.uid ? ((await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(h.uid).first()) || {}).tg_chat : null;
-      if (chat) { await tgSend(env, chat, '🎤 <b>' + nbt('Тебя зовут на сцену!') + '</b>\n' + nbt('Эфир «' + th(e.title) + '». ' + (cfg.stage_url ? 'Подключайся по кнопке — включи микрофон, камеру или покажи экран.' : 'Ведущий сейчас даст слово — включи звук в эфире.')), cfg.stage_url ? [[{ text: 'Выйти на сцену', url: cfg.stage_url }]] : null); sent = 1 } }
+      if (chat) { await tgSend(env, chat, '🎤 <b>' + nbt('Тебя зовут на сцену!') + '</b>\n' + nbt('Эфир «' + th(e.title) + '». ' + 'Подключайся по кнопке — включи микрофон, камеру или покажи экран. Эфир держи на паузе, чтобы не было эха.'), [[{ text: 'Выйти на сцену', url: await efStageUrl(env, e, cfg) }]]); sent = 1 } }
     return json(req, { ok: true, st, sent }) }
   if (path === '/efir/host/work' && req.method === 'POST') { await env.DB.prepare("UPDATE efir_msg SET ans=? WHERE id=? AND efir_id=? AND kind='work'").bind(o.ans === 0 ? 0 : 1, +o.mid, e.id).run(); return json(req, { ok: true }) }
   if (path === '/efir/host/file') { const m = await env.DB.prepare("SELECT file_id FROM efir_msg WHERE id=? AND efir_id=? AND kind='work'").bind(+u.searchParams.get('mid'), e.id).first(); const f = m && await env.DB.prepare('SELECT mime, name, data FROM bank_file WHERE id=?').bind(m.file_id).first();
@@ -2823,6 +2824,8 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const r = await env.DB.prepare('INSERT INTO efir_scen (src_id, ver, title, items, vc, note, by, at) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(e.id, ver + 1, e.title, JSON.stringify(items), JSON.stringify(vc.map(x => x || 0)), JSON.stringify({ junk, cut, msgs: items.filter(x => x.t === 'msg').length }), W.me, now).first();
     return json(req, { ok: true, scen: { id: r.id, ver: ver + 1, items: items.length, junk, msgs: items.filter(x => x.t === 'msg').length, events: items.filter(x => x.t !== 'msg').length } }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
+/* 31.10 (Роман: «на эфире невозможно подключиться, говорить, включить камеру/демку»): Kinescope — трансляция в одну сторону, поэтому сцена — отдельная комната. Если ссылку не вставили, сервер сам даёт комнату Jitsi на эфир (имя с подписью, чтобы не угадали). */
+const efStageUrl = async (env, e, cfg) => cfg.stage_url || ('https://meet.jit.si/OduvanovSchool-efir' + e.id + '-' + (await hmacHex(env, 'stage|' + e.id)).slice(0, 10));
 const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null } };
 async function efScenAdd(env, sid, item) { const r = await env.DB.prepare('SELECT items FROM efir_scen WHERE id=?').bind(sid).first(); if (!r) return 0; const L = efJ(r.items, []); L.push(item); L.sort((a, b) => a.sec - b.sec);
   await env.DB.prepare('UPDATE efir_scen SET items=? WHERE id=?').bind(JSON.stringify(L), sid).run(); EFSC.delete(sid); return 1 }
