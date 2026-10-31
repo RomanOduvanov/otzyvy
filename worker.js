@@ -1008,7 +1008,7 @@ function aiSystem() {
 - Блок «Ученик сейчас» — справка для тебя, а не тема ответа. Место, баллы, звание, время учёбы, банк и заказы упоминай, только если вопрос про них или это прямо нужно для решения. my_bank вызывай, только когда спрашивают про свои деньги, доход, оплаты или заказы.
 - Факты о модулях, датах, баллах, правилах и школе — только из этой инструкции, блока «Ученик сейчас» и инструментов. Не выдумывай функции, кнопки, цены и условия. Чего нет — скажи одной фразой и подскажи, где посмотреть или кому написать.
 - Контакт куратора (Telegram, часы) бери из call_curator — это проверенные данные школы. Если ссылка на куратора уже была в диалоге из call_curator, она верная: не отказывайся от неё и не называй её выдуманной; при сомнении вызови call_curator ещё раз.
-- Не обсуждай свои прошлые ответы и то, как получаешь данные (никаких «я проверил», «инструмент», «в моих данных нет»). Если раньше ошибся — просто дай верную цифру.
+- Не обсуждай свои прошлые ответы и то, как получаешь данные (никаких «я проверил», «инструмент», «в моих данных нет»). Если раньше ошибся — просто дай верную цифру. Никогда не пиши поправок и оговорок к прошлым сообщениям («я должен исправить…», «я не вызывал…», «не опирайся на…»): отвечай только на новый вопрос.
 - Время на учёбе: «на сайте» — активное время во вкладке кабинета, «видео» — просмотр уроков; в часах и минутах.
 
 Как устроена платформа:
@@ -1196,9 +1196,15 @@ async function modCheck(env, uid, text, img) { const C = MOD_CFG(env), now = Dat
   await kvPut(env, k, S); return { reply, mod } }
 async function modOk(env, uid) { const S = await kvGet(env, 'mod:' + uid); if (S) { S.lastOk = Date.now(); await kvPut(env, 'mod:' + uid, S) } }
 /* один ход диалога: history — [{role, content}], user — content текущего сообщения (строка или блоки) */
+/* 31.10 (Роман): Нейро в каждом ответе дописывал поправки к старым ответам («Я должен исправить свои прошлые ответы…») — абзацы о самом себе убираем из ответа и из истории диалога (иначе модель повторяет их по образцу) */
+const AI_META = /(^|\n)\s*(я\s+должен\s+(исправить|поправить|уточнить)|поправка\b|уточнение к (прошл|предыдущ)|в (прошл|предыдущ)\S* (ответ|сообщени)|ранее я (назвал|написал|ошиб|говорил)|я (не вызывал|не сверял|не проверял|ошибся|назвал .{0,40}без проверки))/i;
+function aiClean(t) { if (!t || typeof t !== 'string') return t;
+  const bad = x => AI_META.test('\n' + x.trim()) || /не\s+опирайся\s+на\s+(них|это|мои)|(прошл|предыдущ)\S*\s+(ответ|сообщени)|инструмент\S*\s+(новостей|не вызывал)|назвал\S*\s.{0,60}без\s+проверки|хотя\s+писал\s+обратное/i.test(x);
+  const P = t.split(/\n{2,}/).map(p => { if (/^\s*([-•*]|\d+[.)])\s/m.test(p) || /\[\[/.test(p)) return bad(p.split('\n')[0]) && p.split('\n').length === 1 ? '' : p; const S = p.match(/[^.!?…]+[.!?…]+[»")]?\s*|[^.!?…]+$/g) || [p]; return S.filter(x => !bad(x)).join('').trim() }).filter(Boolean);
+  return (P.length ? P.join('\n\n').trim() : t).replace(/\s*,?\s*по моим данным,?/gi, '') }
 async function aiTurn(env, { uid, history, user, cf }) {
   if (!env.ANTHROPIC_API_KEY) return { err: 'no-key', text: '', usage: { in: 0, out: 0, cache: 0 } };
-  const msgs = [...history, { role: 'user', content: user }], ctx = {}, use = { in: 0, out: 0, cache: 0 }, t0 = Date.now(); const facts = await aiFacts(env, uid, ctx);
+  const msgs = [...history.map(m => m && m.role === 'assistant' && typeof m.content === 'string' ? Object.assign({}, m, { content: aiClean(m.content) }) : m), { role: 'user', content: user }], ctx = {}, use = { in: 0, out: 0, cache: 0 }, t0 = Date.now(); const facts = await aiFacts(env, uid, ctx);
   for (let i = 0; i < 5; i++) {
     /* Haiku 5.5 думает по умолчанию, и мысли входят в max_tokens: при 1200 часть ответов обрывалась на полуслове (ночь 27.10).
        Поэтому запас 4000 и effort (AI_EFFORT, по умолчанию low — рекомендовано для чата). Если API не примет effort — повтор без него. */
@@ -1213,6 +1219,7 @@ async function aiTurn(env, { uid, history, user, cf }) {
     if (j.stop_reason !== 'tool_use' || !calls.length) {
       let text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
       if (j.stop_reason === 'max_tokens') { await logIt(env, 'ai-cut', uid, String(use.out)); if (text) text = text.replace(/[^.!?…\n]*$/, '').trim() || text }
+      { const tc = aiClean(text); if (tc !== text) await logIt(env, 'ai-meta-cut', uid, String(text.length - tc.length)); text = tc }
       return { text: text || 'Не получилось ответить, попробуй спросить короче.', usage: use, ms: Date.now() - t0, tools: ctx.used || [], curator: ctx.curator };
     }
     msgs.push({ role: 'assistant', content: j.content }); const res = [];
