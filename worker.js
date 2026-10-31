@@ -1364,7 +1364,7 @@ async function appApi(env, req, path) {
   if (path === '/app/api/hours' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
     if (cc === 'all' || !(o.from >= 0 && o.to <= 24 && o.from < o.to)) return ajson({ ok: false }, 400);
     await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]);
-    if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).filter(x => x >= 0 && x <= 6))]; if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
+    if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).map(x => x === 7 ? 0 : x).filter(x => x >= 0 && x <= 6))]; /* пульт шлёт Вс=7 */ if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
   if (path === '/app/api/bclog') return ajson({ ok: true, log: (await kvGet(env, 'bclog:' + c)) || [] });
   if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
     const text = String(o.text || '').trim().slice(0, 3000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
@@ -1796,7 +1796,7 @@ const NOTIF_DEF = { cur: 1, hw: 1, efir: 1, lessons: 1, rating: 0, bank: 1 };
 async function notifGet(env, uid) { const n = Object.assign({}, NOTIF_DEF, { quiet: null }, (await kvGet(env, 'notif:' + uid)) || {}); n.cur = 1; return n }
 async function notifOn(env, uid, k) { return k === 'cur' || !!(await notifGet(env, uid))[k] }
 /* рабочие дни куратора (0 — вс … 6 — сб), по умолчанию будни; часы — curHours */
-async function curDays(env, cid) { const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [1, 2, 3, 4, 5] }
+async function curDays(env, cid) { const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [0, 1, 2, 3, 4, 5, 6] }
 const daysTxt = d => d.length === 7 ? 'каждый день' : d.join() === '1,2,3,4,5' ? 'по будням' : d.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(x => WD[x]).join(', ');
 const medOf = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null;
 /* 1.11 (Роман: «некорректно в сети куратор или нет»): «в сети» учитывает и дни, и часы; когда не в сети — пишем, когда ответит */
