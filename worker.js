@@ -1607,10 +1607,10 @@ async function bankWho(env, req, u) { const t = (req.headers.get('Authorization'
   if (s.role === 'curator') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(target).first(); if (!st || !s.cid || st.curator !== s.cid) return { uid: 0, staff: s, forbidden: true } }
   return { uid: target, ro: true, staff: s } }
 async function bankUid(env, req, u) { return (await bankWho(env, req, u)).uid }
-async function bankFile(env, uid, kind, ref, f) { if (!f || typeof f.data !== 'string') return null;
+async function bankFile(env, uid, kind, ref, f, maxB64) { if (!f || typeof f.data !== 'string') return null;
   const m = f.data.match(/^data:([\w.+-]+\/[\w.+-]+);base64,([A-Za-z0-9+/=]+)$/); if (!m) return null;
   if (!/^(image\/(jpeg|png|webp|heic|heif|gif)|application\/pdf)$/.test(m[1])) throw new Error('Можно картинку или PDF');
-  if (m[2].length > 900000) throw new Error('Файл больше 650 КБ — сожми или сделай скрин');
+  if (m[2].length > (maxB64 || 900000)) throw new Error(maxB64 ? 'Файл больше 1,3 МБ — отправь его ведущему в Telegram' : 'Файл больше 650 КБ — сожми или сделай скрин');
   const r = await env.DB.prepare('INSERT INTO bank_file (uid, kind, ref, name, mime, size, data, at) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(uid, kind, ref, bStr(f.name, 120) || 'файл', m[1], Math.round(m[2].length * 0.75), m[2], new Date().toISOString()).first();
   return r && r.id }
 /* Список учеников для команды: имя, тариф, куратор, поток — из данных рейтинга и таблицы student; доход в рублях. Куратор — только свои. */
@@ -2510,10 +2510,16 @@ async function efName(env, W) { if (W.nm) return W.nm; if (W.me === 'admin') ret
   EFN.set(W.k, n); return (W.nm = n) }
 /* может ли смотреть: команда — всё; ученик — по доступу эфира; гость — только открытые */
 async function efCan(env, e, W) { if (!e || e.del) return false; if (W.staff) return true; const acc = e.tariff || 'all'; if (acc === 'open') return true; if (W.me === 'guest') return false;
+  /* 1.11 (Роман): ученик видит эфиры своего куратора + общие эфиры Романа. Эфир куратора — только его ученикам, даже если отмечен «всем» */
+  if (CURATORS.some(c => c.id === e.host_cid) && acc !== 'amz') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
   if (acc === 'all') return true;
   if (acc === 'cur') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
   if (acc === 'amz') { try { const r = await rowFor(await loadData(env), W.uid); return !!(r && r.tar === 'Премиум Амазон') } catch (e2) { return false } } return false }
 /* может ли вести/менять: админ — любой, куратор — только свой */
+/* Telegram ведущего: куратор — cur_tg; Роман — админ с юзернеймом */
+async function efHostTg(env, e) { const c = CURATORS.find(x => x.id === e.host_cid);
+  if (c) { const r = await env.DB.prepare('SELECT username, tg_id FROM cur_tg WHERE cid=? AND enabled=1').bind(c.id).first(); return { user: r && r.username || null, chats: r && r.tg_id ? [r.tg_id] : [] } }
+  const a = await env.DB.prepare("SELECT a.chat, u.username FROM tg_admin a LEFT JOIN tg_user u ON u.chat=a.chat WHERE a.name LIKE 'Роман%' AND u.username IS NOT NULL LIMIT 1").first(); return { user: a && a.username || null, chats: a ? [a.chat] : [] } }
 const efOwn = (W, e) => !!(W && W.s && (W.adm || (e && e.host_cid && e.host_cid === W.cid)));
 function efHost(e) { const c = CURATORS.find(x => x.id === e.host_cid); return c ? { cid: c.id, name: c.full, short: c.name, photo: 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + c.id + '.jpg' } : { cid: 'admin', name: e.host_name || 'Роман Одуванов', short: (e.host_name || 'Роман').split(' ')[0], photo: null } }
 /* публичная карточка эфира (без чужих данных) */
@@ -2567,7 +2573,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
   if (path === '/efir/one') { const p = efPub(e, now, { reg, full: true }), [sn, hd, pt, wk] = await env.DB.batch([env.DB.prepare('SELECT * FROM efir_seen WHERE efir_id=? AND k=? ORDER BY last DESC LIMIT 1').bind(e.id, W.k), env.DB.prepare('SELECT st FROM efir_hand WHERE efir_id=? AND k=?').bind(e.id, W.k), env.DB.prepare('SELECT COALESCE(SUM(pts),0) p FROM efir_pts WHERE efir_id=? AND k=?').bind(e.id, W.k), env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND k=? AND kind='work' AND del=0").bind(e.id, W.k)]);
     const s0 = (sn.results || [])[0] || null, wq = (wk.results || [])[0];
     if (e.kind === 'auto') { const L = efSessions(e, now, now + 8 * 864e5).slice(0, 6), cfg = efJ(e.cfg, {}); p.sessions = L; p.after = cfg.sched && +cfg.sched.after || 0 }
-    return json(req, { ok: true, now, efir: p, me: { role: W.me, ro: !!W.ro, reg: reg ? 1 : 0, sess: reg ? reg.sess : 0, hand: (hd.results || [])[0] ? hd.results[0].st : null, pts: ((pt.results || [])[0] || {}).p || 0, works: wq ? wq.n : 0, seen: s0 ? { pos: s0.rec_pos, max: s0.rec_max, done: s0.rec_done, min: s0.min } : null, can_host: efOwn(W, e) } }) }
+    return json(req, { ok: true, now, efir: p, me: { role: W.me, ro: !!W.ro, reg: reg ? 1 : 0, sess: reg ? reg.sess : 0, hand: (hd.results || [])[0] ? hd.results[0].st : null, pts: ((pt.results || [])[0] || {}).p || 0, works: wq ? wq.n : 0, host_tg: e.kind !== 'auto' && efJ(e.cfg, {}).work !== 0 ? (await efHostTg(env, e)).user : null, seen: s0 ? { pos: s0.rec_pos, max: s0.rec_max, done: s0.rec_done, min: s0.min } : null, can_host: efOwn(W, e) } }) }
   /* «Напомнить» / отписаться. Автовебинар — запись на сеанс (sess) или «сразу после регистрации» */
   if (path === '/efir/reg' && req.method === 'POST') { if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
     if (o.on === 0 || o.on === '0') { await env.DB.prepare('DELETE FROM efir_reg WHERE efir_id=? AND k=?').bind(e.id, W.k).run(); return json(req, { ok: true, reg: 0 }) }
@@ -2636,10 +2642,20 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     else await env.DB.prepare("INSERT INTO efir_hand (efir_id, k, uid, name, st, at) VALUES (?,?,?,?, 'wait', ?) ON CONFLICT(efir_id, k) DO UPDATE SET st=CASE WHEN efir_hand.st='stage' THEN 'stage' ELSE 'wait' END, at=excluded.at").bind(e.id, W.k, W.uid || null, await efName(env, W), now).run();
     return json(req, { ok: true }) }
   /* «Прислать работу» на разбор: картинка/PDF (как в чате, до 650 КБ) + подпись; видит ведущий */
+  /* 1.11 (Роман: «большие файлы — кнопкой в личку ведущему»): ученик жмёт «Отправить в Telegram» → работа в очереди с пометкой «в Telegram», ведущему — сообщение в бот */
+  if (path === '/efir/work/tg' && req.method === 'POST') { if (W.me === 'guest' || !W.uid) return json(req, { ok: false, err: 'Работы на разбор присылают ученики' }, 403); if (efJ(e.cfg, {}).work === 0) return json(req, { ok: false, err: 'В этом эфире работы не разбирают' }, 400);
+    const ht = await efHostTg(env, e); if (!ht.user) return json(req, { ok: false, err: 'У ведущего не подключён Telegram — загрузи работу сюда' }, 400);
+    const had = await env.DB.prepare("SELECT id FROM efir_msg WHERE efir_id=? AND k=? AND kind='work' AND file_id IS NULL AND del=0 AND at>?").bind(e.id, W.k, now - 6 * 36e5).first();
+    if (!had) { const n = await env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND k=? AND kind='work' AND del=0").bind(e.id, W.k).first(); if (n && n.n >= 3) return json(req, { ok: false, err: 'На один эфир — до 3 работ' }, 400);
+      const st = await env.DB.prepare('SELECT s.tg_chat, u.username FROM student s LEFT JOIN tg_user u ON u.chat=s.tg_chat WHERE s.uid=?').bind(W.uid).first() || {}, nm = await efName(env, W);
+      await env.DB.prepare("INSERT INTO efir_msg (efir_id, sess, k, uid, name, role, kind, text, file_id, sec, at, vis) VALUES (?,0,?,?,?,'stu','work',?,NULL,NULL,?,'mod')").bind(e.id, W.k, W.uid, nm, 'tg:' + (st.username || ''), now).run();
+      for (const c of ht.chats) await tgSend(env, c, '📨 <b>' + th(nm) + '</b> ' + nbt('пришлёт работу тебе в личку на разбор') + '\n' + nbt('Эфир «' + th(e.title) + '». Она уже в очереди «Работы на разбор» в пульте.'), st.username ? [[{ text: 'Открыть чат с учеником', url: 'https://t.me/' + st.username }]] : null);
+      await logIt(env, 'efir-work-tg', W.uid, String(e.id)) }
+    return json(req, { ok: true, url: 'https://t.me/' + ht.user }) }
   if (path === '/efir/work' && req.method === 'POST') { if (W.me === 'guest') return json(req, { ok: false, err: 'Работы на разбор присылают ученики' }, 403); if (efJ(e.cfg, {}).work === 0) return json(req, { ok: false, err: 'В этом эфире работы не разбирают' }, 400);
     if (S.st === 'done') return json(req, { ok: false, err: 'Эфир уже прошёл' }, 400);
     const n = await env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND k=? AND kind='work' AND del=0").bind(e.id, W.k).first(); if (n && n.n >= 3) return json(req, { ok: false, err: 'На один эфир — до 3 работ' }, 400);
-    let fid = null; try { fid = await bankFile(env, W.uid, 'efir', e.id, o.file) } catch (x) { return json(req, { ok: false, err: x.message }, 400) } if (!fid) return json(req, { ok: false, err: 'Прикрепи картинку или PDF' }, 400);
+    let fid = null; try { fid = await bankFile(env, W.uid, 'efir', e.id, o.file, 1800000) } catch (x) { return json(req, { ok: false, err: x.message }, 400) } if (!fid) return json(req, { ok: false, err: 'Прикрепи картинку или PDF' }, 400);
     const r = await env.DB.prepare("INSERT INTO efir_msg (efir_id, sess, k, uid, name, role, kind, text, file_id, sec, at, vis) VALUES (?,?,?,?,?,'stu','work',?,?,?,?,'mod') RETURNING id").bind(e.id, sessOf(), W.k, W.uid, await efName(env, W), bStr(o.text, 500), fid, S.st === 'live' ? await secOf() : null, now).first();
     const q = await env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='work' AND del=0 AND ans=0 AND id<=?").bind(e.id, r.id).first(); await logIt(env, 'efir-work', W.uid, e.id + ' ' + fid);
     return json(req, { ok: true, id: r.id, place: q ? q.n : 1 }) }
@@ -2764,7 +2780,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   if (path === '/efir/host/save' && req.method === 'POST') { const old = id ? await efGet(env, id) : null; if (id && !old) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (old && !efOwn(W, old)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
     const title = bStr(o.title, 140); if (!title) return json(req, { ok: false, err: 'Напиши тему эфира' }, 400);
     let kind = EF_KINDS.includes(o.kind) ? o.kind : 'live', acc = EF_ACC.includes(o.access) ? o.access : 'all';
-    if (!W.adm) { if (kind !== 'live') return json(req, { ok: false, err: 'Открытые эфиры и автовебинары создаёт Роман' }, 403); if (!['all', 'cur'].includes(acc)) acc = 'cur' }
+    if (!W.adm) { if (kind !== 'live') return json(req, { ok: false, err: 'Открытые эфиры и автовебинары создаёт Роман' }, 403); acc = 'cur' }
     if (kind === 'open') acc = 'open';
     let start = +o.start || 0; if (!start && /^\d{4}-\d{2}-\d{2}$/.test(o.day || '') && /^\d{1,2}:\d{2}$/.test(o.time || '')) start = Date.parse(o.day + 'T' + o.time.padStart(5, '0') + ':00+03:00');
     if (kind !== 'auto' && !(start > 0)) return json(req, { ok: false, err: 'Укажи дату и время (МСК)' }, 400);
