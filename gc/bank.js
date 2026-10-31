@@ -922,9 +922,12 @@
       var m = el.querySelector('#stM'); if (m) m.onclick = function () { N += 50; show() };
       var pa = el.querySelector('#stPdA'); if (pa) pa.onclick = function () { PD.all = 1; show() };
       el.querySelectorAll('[data-sf]').forEach(function (b) { b.onclick = function () { var p = b.getAttribute('data-sf').split(':'); O.open(sfile(+p[0], +p[1])) } });
-      el.querySelectorAll('[data-pc]').forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-pc').split(':'), p = PD.filter(function (z) { return z.uid === +k[0] && z.id === +k[1] })[0]; if (!p) return; var ok = p.ok ? 0 : 1; b.disabled = true;
-        post('/bank/tx/conf', { u: p.uid, id: p.id, ok: ok }).then(function (j) { b.disabled = false; if (!j || !j.ok) { toast((j && j.err) || 'Не' + NB + 'получилось, попробуй ещё' + NB + 'раз'); return } p.ok = ok; var s = L.students.filter(function (z) { return z.uid === p.uid })[0]; if (s && s.pending != null) s.pending = Math.max(0, s.pending + (ok ? -1 : 1)); hap('ok'); show(); if (ok) toast('Оплата подтверждена', 'Отменить', function () { var b2 = el.querySelector('[data-pc="' + p.uid + ':' + p.id + '"]'); if (b2) b2.onclick() }) })
-          .catch(function () { b.disabled = false; toast('Нет связи, попробуй ещё' + NB + 'раз') }) } });
+      el.querySelectorAll('[data-pc]').forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-pc').split(':'), p = PD.filter(function (z) { return z.uid === +k[0] && z.id === +k[1] })[0]; if (!p) return; var ok = p.ok ? 0 : 1;
+        /* 31.10: галочка ставится сразу (раньше ждала ответа сервера несколько секунд); не получилось — возвращаем как было */
+        var s = L.students.filter(function (z) { return z.uid === p.uid })[0], set = function (v) { p.ok = v; if (s && s.pending != null) s.pending = Math.max(0, s.pending + (v ? -1 : 1)) };
+        set(ok); hap('ok'); show(); if (ok) toast('Оплата подтверждена', 'Отменить', function () { var b2 = el.querySelector('[data-pc="' + p.uid + ':' + p.id + '"]'); if (b2) b2.onclick() });
+        post('/bank/tx/conf', { u: p.uid, id: p.id, ok: ok }).then(function (j) { if (!j || !j.ok) { if (p.ok === ok) { set(ok ? 0 : 1); show() } toast((j && j.err) || 'Не' + NB + 'получилось, попробуй ещё' + NB + 'раз') } })
+          .catch(function () { if (p.ok === ok) { set(ok ? 0 : 1); show() } toast('Нет связи, попробуй ещё' + NB + 'раз') }) } });
       var rp = el.querySelector('#stRep'); if (rp) rp.onclick = rep; var ex = el.querySelector('#stExp'); if (ex) ex.onclick = exp }
     /* «Отчёт для соцсетей» (12.6): картинка с итогами потока, без имён и клиентов */
     function rep() { var B = base(), hasM = B.some(function (x) { return x.month != null }), mk = today().slice(0, 7), P = hasM ? 'm' : 'all', stream = (L.students[0] || {}).stream || 'AI-креатор 2.0', cur = null;
