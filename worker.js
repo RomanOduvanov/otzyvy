@@ -2779,7 +2779,11 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     let added = 0; if (o.scen && W.adm && cfg.scen && to) { added = await efScenAdd(env, cfg.scen, { sec: (to.sec || 0) + 20, t: 'msg', role: 'mod', name: 'Модератор', text }) }
     return json(req, { ok: true, msg: efMsgPub(r), scen: added }) }
   if (path === '/efir/host/q' && req.method === 'POST') { const m = await env.DB.prepare('SELECT * FROM efir_msg WHERE id=? AND efir_id=?').bind(+o.mid, e.id).first(); if (!m) return json(req, { ok: false, err: 'Сообщение не найдено' }, 404);
-    if (o.act === 'del') await env.DB.prepare('UPDATE efir_msg SET del=1 WHERE id=?').bind(m.id).run();
+    /* 31.10 (Роман: «вопрос на экране не уходит после Ответил/Удалить»): снимаем с экрана, если там этот вопрос */
+    if (o.act === 'del' || o.act === 'unscreen' || (o.act === 'ans' && o.on !== 0)) { const sc = await env.DB.prepare("SELECT kind, data FROM efir_ev WHERE efir_id=? AND sess=? AND kind IN ('screen','screen_off') ORDER BY id DESC LIMIT 1").bind(e.id, m.sess || 0).first();
+      if (sc && sc.kind === 'screen' && +(efJ(sc.data, {}).mid) === m.id) await env.DB.prepare("INSERT INTO efir_ev (efir_id, sess, sec, kind, data, at) VALUES (?,?,?,'screen_off','{}',?)").bind(e.id, m.sess || 0, sec, now).run() }
+    if (o.act === 'unscreen') {}
+    else if (o.act === 'del') await env.DB.prepare('UPDATE efir_msg SET del=1 WHERE id=?').bind(m.id).run();
     else if (o.act === 'ans') await env.DB.prepare('UPDATE efir_msg SET ans=? WHERE id=?').bind(o.on === 0 ? 0 : 1, m.id).run();
     else if (o.act === 'show') await env.DB.prepare("UPDATE efir_msg SET vis='all' WHERE id=?").bind(m.id).run();
     else if (o.act === 'screen') await env.DB.batch([env.DB.prepare('INSERT INTO efir_ev (efir_id, sess, sec, kind, data, at) VALUES (?,?,?,?,?,?)').bind(e.id, m.sess || 0, sec, 'screen', JSON.stringify({ mid: m.id, text: m.text, name: m.name }), now), env.DB.prepare('UPDATE efir_msg SET ans=1 WHERE id=?').bind(m.id)]);
