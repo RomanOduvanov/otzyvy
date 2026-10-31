@@ -2722,6 +2722,12 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const r = await env.DB.prepare('INSERT INTO efir_cover (mime, data, by_uid, at) VALUES (?,?,?,?) RETURNING id').bind(m[1], m[2], W.uid || 0, now).first();
     return json(req, { ok: true, id: r.id, url: new URL(req.url).origin + '/efir/cover?id=' + r.id }) }
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
+  /* 1.11: разбор, почему запись не подтянулась (только админ; ключей не отдаём) */
+  if (path === '/efir/kin/recdbg') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const e = await env.DB.prepare('SELECT * FROM efir WHERE id=?').bind(+u.searchParams.get('id')).first(); if (!e) return json(req, { ok: false, err: 'нет эфира' });
+    const K = await kinGet(env, kinHost(e.host_cid)), r = K && K.id ? await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos') : null;
+    const raw = r && r.ok ? (Array.isArray(r.data) ? r.data : (r.data && (r.data.items || r.data.videos)) || []) : null;
+    return json(req, { ok: true, has_k: !!(K && K.id), mine: kinIsMine(K, e), rec_db: e.rec || null, at_live: e.at_live, at_end: e.at_end, api: r ? (r.ok ? 'ok' : r.st + ' ' + r.err) : null, raw_keys: r && r.data && !Array.isArray(r.data) ? Object.keys(r.data).slice(0, 12) : null,
+      videos: raw ? raw.slice(0, 10).map(v => ({ id: v.id, created_at: v.created_at, started_at: v.started_at, status: v.status, duration: v.duration, keys: Object.keys(v).slice(0, 20) })) : null }) }
   if (path === '/efir/kin/videos') { if (!env.KINESCOPE_KEY) return json(req, { ok: false, nokey: 1, err: 'Ключ Kinescope не подключён — вставь ID или ссылку видео из Kinescope' });
     const q = bStr(u.searchParams.get('q'), 60).toLowerCase(), r = await fetch('https://api.kinescope.io/v1/videos?per_page=100&page=' + Math.max(1, +u.searchParams.get('page') || 1), { headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY } });
     if (!r.ok) { await logIt(env, 'kin-err', 0, 'videos ' + r.status); return json(req, { ok: false, err: 'Kinescope ответил ' + r.status + (r.status === 401 ? ' — проверь ключ' : '') }) }
