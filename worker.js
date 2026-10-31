@@ -720,6 +720,7 @@ export default {
       if (path.startsWith('/ma/')) return maApi(env, req, path);
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
+      if (path.startsWith('/srch/')) return srchApi(env, req, path);
       if (CUR_API.includes(path)) return curApi(env, req, path);
       if (EFIR_SCEN_API.includes(path)) return efirScenApi(env, req, path); /* 30.10 эфиры: сценарии, модерация, заявки */
       if (path.startsWith('/efir/')) return efirApi(env, req, path);
@@ -1884,6 +1885,43 @@ async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.sli
     const who = o.who || 'Куратор', j = await tgSend(env, st.tg_chat, '💬 <b>' + th(who) + (o.mass ? ' написал' : ' ответил') + fem(who) + '</b>\n' + quote + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat') }], [{ text: 'Ответить здесь', callback_data: 'chs:' + o.uid }]].concat(o.mass || !o.cid ? [] : [crStars(msg.id, 0)]));
     return frAdd(env, st.tg_chat, j, { uid: o.uid, as: 'in' }) } }
 /* кто открыл чат: ученик (свой), куратор (свой ученик ?u=), админ (любой ?u=); токен просмотра «смотреть как» — только чтение */
+/* ---------- умный поиск по курсу (1.11, макет «Умный поиск») ----------
+   Корпус: уроки из расписания (loadData: модуль, часть, урок) + содержимое уроков из kv 'srchidx' {id: {a: «В этом уроке»[], tc: [[сек, подпись]], m: материалы[]}}
+   (собирает админ скриптом в браузере → POST /srch/index) + записи эфиров с главами. Вопрос своими словами → ИИ: короткий ответ + 3–5 мест (урок/эфир + секунда).
+   Ответы кэшируются по нормализованному вопросу на 7 дней; лимит 40 вопросов в сутки на ученика. */
+const SRCH_DAY = 40;
+async function srchCorpus(env) { const D = await loadData(env), X = (await kvGet(env, 'srchidx')) || {}, L = [], ref = {};
+  for (const m of D.modules || []) for (const p of m.parts || []) for (const l of p.lessons || []) { const x = X[l.id] || {}, k = 'L' + l.id;
+    ref[k] = { kind: 'lesson', id: l.id, module: m.name, part: p.name, title: l.t, tc: x.tc || [] };
+    L.push(k + ' | ' + m.name + ' / ' + p.name + ' | ' + l.t + (x.a && x.a.length ? ' | о чём: ' + x.a.join('; ') : '') + (x.tc && x.tc.length ? ' | тайм-коды: ' + x.tc.map(t => hms0(t[0]) + ' ' + t[1]).join('; ') : '') + (x.m && x.m.length ? ' | материалы: ' + x.m.join(', ') : '')) }
+  try { const E = await qAll(env.DB.prepare("SELECT id, title, about, chapters, start FROM efir WHERE del=0 AND status IN ('done','rec') AND kind!='auto' ORDER BY start DESC LIMIT 40"));
+    for (const e of E) { const ch = efJ(e.chapters, []), k = 'E' + e.id; ref[k] = { kind: 'efir', id: e.id, module: 'Эфир · ' + dayStr(new Date(e.start || Date.now())), title: e.title, tc: ch.map(c => [c.t | 0, c.title]) };
+      L.push(k + ' | Эфир | ' + e.title + (e.about ? ' | ' + String(e.about).slice(0, 200) : '') + (ch.length ? ' | главы: ' + ch.map(c => hms0(c.t) + ' ' + c.title).join('; ') : '')) } } catch (x) {}
+  return { text: L.join('\n'), ref } }
+const hms0 = s => { s = s | 0; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0') };
+async function srchApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
+  const W = await chatWho(env, req, u, o); if (!W) return json(req, { ok: false, err: 'Нужно войти', st: 401 }, 401);
+  if (path === '/srch/index' && req.method === 'POST') { if (W.me !== 'admin') return json(req, { ok: false, err: 'Только админ' }, 403);
+    const X = (await kvGet(env, 'srchidx')) || {}, it = o.items || {}; let n = 0;
+    for (const id of Object.keys(it).slice(0, 400)) { if (!/^\d{5,12}$/.test(id)) continue; const v = it[id] || {};
+      X[id] = { a: (Array.isArray(v.a) ? v.a : []).map(x => bStr(x, 160)).filter(Boolean).slice(0, 12), tc: (Array.isArray(v.tc) ? v.tc : []).map(t => [Math.max(0, +t[0] | 0), bStr(t[1], 120)]).filter(t => t[1]).slice(0, 30), m: (Array.isArray(v.m) ? v.m : []).map(x => bStr(x, 80)).filter(Boolean).slice(0, 10) }; n++ }
+    await kvPut(env, 'srchidx', X); await kvPut(env, 'srchcache', {}); return json(req, { ok: true, n, total: Object.keys(X).length }) }
+  if (path === '/srch/ask' && req.method === 'POST') { const q = String(o.q || '').replace(/\s+/g, ' ').trim().slice(0, 200); if (q.length < 3) return json(req, { ok: false, err: 'Напиши вопрос подлиннее' }, 400);
+    const key = q.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim(), C = (await kvGet(env, 'srchcache')) || {};
+    if (C[key] && msNow() - C[key].at < 7 * 864e5) return json(req, Object.assign({ ok: true, cached: 1 }, C[key].r));
+    const dk = 'srchn:' + (W.uid || W.me) + ':' + dayStr(), dn = +((await kvGet(env, dk)) || 0); if (W.me === 'student' && dn >= SRCH_DAY) return json(req, { ok: false, err: 'На сегодня вопросов хватит — спроси Нейро в чате' }, 429);
+    const { text, ref } = await srchCorpus(env);
+    const sys = 'Ты поиск по курсу онлайн-школы дизайна OduvanovSchool (дизайн карточек маркетплейсов с ИИ). Тебе дают список мест курса: строки «КОД | модуль | урок | о чём | тайм-коды | материалы». Ученик пишет вопрос своими словами. Найди 1–5 самых подходящих мест (уроки или эфиры) и, если по тайм-кодам видно нужный момент, — секунду начала. Ответь ТОЛЬКО JSON без пояснений: {"answer":"2–3 коротких предложения по-русски, на «ты», без воды: прямой ответ на вопрос по смыслу курса и где смотреть","hits":[{"ref":"КОД","sec":число или null,"why":"до 60 символов: что там"}]}. Не выдумывай уроки, коды бери только из списка. Если в курсе этого нет — hits пустой, а в answer честно скажи, что в курсе такого урока нет, и предложи спросить Нейро или куратора.';
+    const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: 700, system: [{ type: 'text', text: sys }, { type: 'text', text: text, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: q }] }));
+    if (!r || !r.ok) return json(req, { ok: false, err: 'Поиск сейчас недоступен — попробуй через минуту' }, 502);
+    let out = null; try { const t = ((j.content || []).find(c => c.type === 'text') || {}).text || ''; out = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)) } catch (e) { out = null }
+    if (!out) return json(req, { ok: false, err: 'Не получилось разобрать ответ — попробуй переформулировать' }, 502);
+    const hits = (Array.isArray(out.hits) ? out.hits : []).map(h => { const R = ref[h && h.ref]; if (!R) return null; let sec = h.sec != null && isFinite(+h.sec) ? Math.max(0, +h.sec | 0) : null;
+      return { kind: R.kind, id: R.id, module: R.kind === 'lesson' ? R.module + (R.part && R.part !== R.module ? ' · ' + R.part : '') : R.module, title: R.title, sec, why: bStr(h.why, 90) } }).filter(Boolean).slice(0, 5);
+    const res = { answer: bStr(out.answer, 600), hits }; C[key] = { at: msNow(), r: res }; const ks = Object.keys(C); if (ks.length > 300) for (const k of ks.sort((a, b) => C[a].at - C[b].at).slice(0, ks.length - 300)) delete C[k];
+    await kvPut(env, 'srchcache', C); await kvPut(env, dk, dn + 1); await logIt(env, 'srch', W.uid || 0, q.slice(0, 120));
+    return json(req, Object.assign({ ok: true }, res)) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
 async function chatWho(env, req, u, o) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, '') || u.searchParams.get('t') || (o && o.t) || '';
   if (/^\d+\.[0-9a-z]+\.[av]\.[0-9a-f]{32}$/.test(t)) { const uid = await authUid(env, t, 'a'); return uid ? { me: 'student', uid } : null }
   if (/\.w\./.test(t)) { const w = await viewTok(env, t); return w ? { me: 'student', uid: w.uid, ro: true } : null }
