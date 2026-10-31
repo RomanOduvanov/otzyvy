@@ -882,7 +882,7 @@ export default {
         if (!c) return json(req, { ok: true, auth: !!w.uid, cur: null, curators: CURATORS.map(curPub) });
         const h = await curHours(env, c.id), hr = msk().getUTCHours(), st = (await curStats(env, 14)).curators.find(x => x.id === c.id) || {};
         const log = (await kvGet(env, 'bclog:' + c.id)) || [];
-        const out = { ok: true, auth: !!w.uid, cur: Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h }), online: hr >= h[0] && hr < h[1], median: st.median == null ? null : st.median, in2h: st.in2h == null ? null : st.in2h, answered: st.answered || 0 };
+        const out = { ok: true, auth: !!w.uid, cur: Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h }), online: curOn(h, await curDays(env, c.id)), median: st.median == null ? null : st.median, in2h: st.in2h == null ? null : st.in2h, answered: st.answered || 0 };
         if (w.uid) { out.feed = log.filter(x => x.all !== false).slice(0, 10).map(x => ({ at: x.at, who: x.who, text: x.text, btn: x.btn || null, link: x.link || null })); out.tg_ok = !!(s && s.tg_chat) }
         return json(req, out) }
       if (path === '/me' && req.method === 'GET') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return json(req, { ok: false }, 400);
@@ -1484,7 +1484,7 @@ async function maApi(env, req, path) {
     const pts = r.pts | 0, rk = rankOf(pts);
     const mods = (D.modules || []).map(m => ({ id: m.id, name: m.name, desc: m.desc, at: m.at, open: m.at ? Date.parse(m.at) <= now : false, amazon: !!m.amazon,
       lessons: (m.parts || []).reduce((a, p) => a + (p.lessons || []).length, 0), first: ((m.parts || []).find(p => (p.lessons || []).length) || { lessons: [{}] }).lessons[0].id || null }));
-    let cur = null; if (c) { const h = await curHours(env, c.id), hr = msk().getUTCHours(); cur = Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h, online: hr >= h[0] && hr < h[1] }) }
+    let cur = null; if (c) { const h = await curHours(env, c.id), dd = await curDays(env, c.id); cur = Object.assign(curPub(c), { tg: await curTg(env, c.id), hours: h, days: dd, online: curOn(h, dd), next: curNext(h, dd) }) }
     const flags = (await kvGet(env, 'flags:' + uid)) || {}, mod = VW ? null : await modState(env, uid);
     return json(req, { ok: true, view: VW ? { staff: VW.staff } : null, flags, mod: mod && (mod.until > Date.now() || mod.banned) ? { until: mod.until, banned: !!mod.banned, left: Math.max(0, MOD_CFG(env).steps.length - mod.step) } : null, me: { uid, name: r.name || s.name || '', tar: r.tar || null, acc: r.acc || null, place: r.place || null, n: D.n, pts, week: r.week | 0, lessons: r.lessons | 0, total: D.total_lessons, hw: r.hw | 0, ontime: r.ontime == null ? null : r.ontime, rank: rk.rank, rankFrom: rk.from, next: rk.next, t7: t7.site + t7.video, tAll: tAll.site + tAll.video },
       x2: D.x2 || null, modules: mods, cur, updated: D.updated || null }, 200, { 'Cache-Control': 'no-store' }) }
@@ -1799,12 +1799,17 @@ async function notifOn(env, uid, k) { return k === 'cur' || !!(await notifGet(en
 async function curDays(env, cid) { const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [1, 2, 3, 4, 5] }
 const daysTxt = d => d.length === 7 ? 'каждый день' : d.join() === '1,2,3,4,5' ? 'по будням' : d.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(x => WD[x]).join(', ');
 const medOf = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null;
+/* 1.11 (Роман: «некорректно в сети куратор или нет»): «в сети» учитывает и дни, и часы; когда не в сети — пишем, когда ответит */
+const WDF = ['в воскресенье', 'в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу'];
+function curOn(h, days, now = msk()) { return days.includes(now.getUTCDay()) && now.getUTCHours() >= h[0] && now.getUTCHours() < h[1] }
+function curNext(h, days, now = msk()) { if (curOn(h, days, now)) return null; const d0 = now.getUTCDay(), hr = now.getUTCHours();
+  for (let i = 0; i < 8; i++) { const d = (d0 + i) % 7; if (!days.includes(d)) continue; if (i === 0 && hr >= h[0]) continue; return 'ответит ' + (i === 0 ? 'сегодня' : i === 1 ? 'завтра' : WDF[d]) + ' с ' + h[0] + ':00 МСК' } return null }
 async function curCard(env, cid) { const c = CURATORS.find(x => x.id === cid); if (!c) return null; const now = msk(), from = (msNow() / 1000 | 0) - 30 * 86400;
   const [h, days, photo, tgu] = [await curHours(env, cid), await curDays(env, cid), await kvGet(env, 'curphoto:' + cid), await curTg(env, cid)];
   const [rs, st] = await env.DB.batch([env.DB.prepare('SELECT wsec FROM cresp WHERE cid=? AND answered>=?').bind(cid, from), env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate WHERE cid=?').bind(cid)]);
   const med = medOf((rs.results || []).map(r => r.wsec).filter(x => x > 0)), sr = (st.results || [])[0] || {};
-  return { cid, name: c.full, short: c.name, about: c.about, photo: photo || 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + cid + '.jpg', tg: tgu, hours: { from: h[0], to: h[1], days },
-    online: days.includes(now.getUTCDay()) && now.getUTCHours() >= h[0] && now.getUTCHours() < h[1], avg_reply_min: med == null ? null : Math.max(1, Math.round(med / 60)), stars: sr.n ? Math.round(sr.a * 10) / 10 : null, stars_n: sr.n | 0 } }
+  return { cid, name: c.full, short: c.name, about: c.about, photo: photo || 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + cid + '.jpg', tg: tgu, hours: { from: h[0], to: h[1], days, txt: daysTxt(days), next: curNext(h, days, now) },
+    online: curOn(h, days, now), avg_reply_min: med == null ? null : Math.max(1, Math.round(med / 60)), stars: sr.n ? Math.round(sr.a * 10) / 10 : null, stars_n: sr.n | 0 } }
 /* «Ответить здесь»: бот помнит, на какие свои сообщения ответ уходит в чат (последние 20 на чат Telegram) */
 async function frAdd(env, chat, j, rec) { const mid = j && j.ok && j.result && j.result.message_id; if (!mid) return; const k = 'fr:' + chat, L = (await kvGet(env, k)) || [];
   L.unshift(Object.assign({ m: mid }, rec)); await kvPut(env, k, L.slice(0, 20)) }
