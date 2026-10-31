@@ -471,7 +471,7 @@ function chSend(){var t=$('chT'),a=CHS.att,x=t.value.trim();if(!x&&!a)return;var
 function chPost(p){var u=CHS.u,b={u:u,text:p.text};if(p.file)b.file={name:p.file.name,mime:p.file.mime,data:p.file.data};
   new Promise(function(res,rej){var x=new XMLHttpRequest();x.open('POST',BA+'/chat/send');x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('Authorization','Bearer '+T);x.timeout=60000;
     if(x.upload)x.upload.onprogress=function(e){if(e.lengthComputable&&p.file&&u===CHS.u){p.pc=e.loaded/e.total;chDraw()}};x.onload=function(){var j=null;try{j=JSON.parse(x.responseText)}catch(e){}res(j||{ok:false})};x.onerror=x.ontimeout=function(){rej(0)};x.send(JSON.stringify(b))})
-  .then(function(j){if(u!==CHS.u)return;if(j&&j.ok){CHS.pend.splice(CHS.pend.indexOf(p),1);if(j.msg&&CHS.j)(CHS.j.msgs=CHS.j.msgs||[]).push(j.msg);chDraw(1);chDlg()}else{p.st='err';chDraw(1)}}).catch(function(){if(u===CHS.u){p.st='err';chDraw(1)}})}
+  .then(function(j){if(u!==CHS.u)return;if(j&&j.ok){CHS.pend.splice(CHS.pend.indexOf(p),1);if(j.msg&&CHS.j){CHS.j.msgs=CHS.j.msgs||[];if(!CHS.j.msgs.some(function(m){return m.id===j.msg.id}))CHS.j.msgs.push(j.msg)}chDraw(1);chDlg()}else{p.st='err';chDraw(1)}}).catch(function(){if(u===CHS.u){p.st='err';chDraw(1)}})}
 /* ---- «Кураторы» (8.2, только админ) ---- */
 function cuLoad(){var B=$('cuBox');B.innerHTML='<div class="card muted">Загружаю…</div>';rapi('/cur/admin').then(function(a){if(a&&!a.nf&&a.ok!==false)XK.adm=a;cuDraw(a&&a.nf)}).catch(function(){cuDraw(1)})}
 function cuDraw(nf){var B=$('cuBox'),a=XK.adm||{},st=(STALL&&STALL.curators)||[],rows=curList().map(function(c){var r=admRow(c.id)||{},s=st.filter(function(x){return x.id===c.id})[0]||{};
