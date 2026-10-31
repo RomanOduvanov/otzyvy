@@ -357,7 +357,8 @@ html.fs .k-chs.k-so{display:none}html.fs .k-chs .k-cst{display:none}html.fs .k-c
 .k-qh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 4px 52px}
 .k-qh select{height:40px;border-radius:99px;background:#fff;color:#111;border:0;font:500 16px var(--F);padding:0 14px;-webkit-appearance:none;appearance:none}
 .k-qh select:disabled{opacity:.5}
-</style></head><body>
+.lsr{display:flex;align-items:center;gap:10px;height:52px;padding:0 16px;border-radius:20px;background:#16161b;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:16px;text-decoration:none;margin:-1px 0 0}.lsr svg{color:#c38bff;flex:none}.lsr span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lsr i{font-style:normal;font-size:12px;font-weight:600;color:#d6b8ff;background:rgba(166,107,255,.18);padding:4px 9px;border-radius:10px}.lsr.busy{opacity:.6}
+.lsr.busy i{visibility:hidden}</style></head><body>
 <div id="scr">
 <div id="v-load" class="v"><div class="sk" style="height:60px"></div><div class="sk" style="height:230px"></div><div class="sk"></div><div class="sk"></div></div>
 <div id="v-msg" class="center hid"></div>
@@ -467,7 +468,7 @@ function rLearnOld(){var H=HOME,m=H.me,x=H.x2,mods=H.modules||[],now=Date.now(),
   var soon=mods.filter(function(y){return !y.open});if(soon.length){h+='<div class="h2">Скоро откроется</div>';soon.slice(0,3).forEach(function(y){var s=dshort(y.at);h+='<div class="ev"><span class="dt"><b>'+s.d+'</b><small>'+s.m+'</small></span><span style="flex:1"><b>'+esc(y.name)+'</b><span class="mut3">'+s.wd+' · '+s.t+' · x2 первые 48 ч</span></span></div>'})}
   h+='<div class="h2">Модули <span><a href="#" data-go="/teach/control/stream/view/id/935917158">все ›</a></span></div><div class="mods">'+mods.map(function(y){var s=dshort(y.at);return '<a class="mod" href="#" data-go="/teach/control/stream/view/id/'+y.id+'"><span class="im" style="background-image:url('+cov(y)+')">'+(y.open?'':'<span class="lk">откроется<br>'+s.d+' '+s.m+'</span>')+'</span><b>'+esc(y.name.replace(/^Модуль /,'М'))+'</b><span class="mut3">'+y.lessons+' '+plr(y.lessons,'урок','урока','уроков')+'</span></a>'}).join('')+'</div>';
   $('v-learn').innerHTML=h;if(T&&T.staff&&!VW){var hi0=$('v-learn').querySelector('.hi');if(hi0)hi0.insertAdjacentHTML('afterend',kStaffCard());kStaffBind()}
-  var put=function(){var hi=$('v-learn').querySelector('.hi'),c=hsCard();if(c&&hi&&!$('hsC')){hi.insertAdjacentHTML('afterend',c);hsBind()}};hsRead(function(){if(HSS)put();else hsCheck(put)})}
+  var put=function(){var hi=$('v-learn').querySelector('.lsr')||$('v-learn').querySelector('.hi'),c=hsCard();if(c&&hi&&!$('hsC')){hi.insertAdjacentHTML('afterend',c);hsBind()}};hsRead(function(){if(HSS)put();else hsCheck(put)})}
 /* ---------- 28.10: «Учёба» в приложении, этап 1 — свои экраны по макету «Уроки в приложении» v2 (L1–L3, L9) ----------
    Данные — GET /ma/learn (CONTRACT.md). Сервер ещё без /ma/learn (404) — показываем прежнюю «Учёбу» (rLearnOld).
    Экраны: L1 вкладка · L2 «Все курсы» (+ Бонусы / Записи эфиров) · L2c повышение тарифа · L2e тренинг · L2f нет доступа · L2g доступ закончился
@@ -523,6 +524,8 @@ function xAfter(a){var L=a.p.lessons;return L.slice(L.indexOf(a)+1).filter(funct
 function mCur(m){var c=LRN.cur;if(c&&+c.module===m.id){var f=m.ls.filter(function(x){return x.id===+c.lesson})[0];if(f&&!f.done)return f}return m.ls.filter(function(x){return !x.done&&!xLock(x)})[0]||null}
 function pts0(){return HOME&&HOME.me&&HOME.me.pts||0}
 /* ---- общие куски ---- */
+/* 1.11 (макет «Умный поиск»): поле «Найти в курсе · ИИ» под приветствием — открывает умный поиск сайта в окне Telegram */
+function lSrch(){return '<a class="lsr" href="#" data-go="/teach/control/stream?fs=search" aria-label="Найти в курсе"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><span>Найти в&nbsp;курсе</span><i>ИИ</i></a>'}
 function lHi(){var m=HOME&&HOME.me||{},d=msk(Date.now()),wd=WD[d.wd],p=pts0();return '<div class="hi"><span><small>'+wd.charAt(0).toUpperCase()+wd.slice(1)+', '+d.d+' '+MON[d.mo]+'</small><b>Привет, '+esc((m.name||'').split(' ')[0]||'друг')+'</b></span><span class="pill">'+n0(p)+' '+plr(p,'балл','балла','баллов')+'</span></div>'}
 function lOffBar(){return LOFF?'<button class="info" data-l="retry">'+ic('wifi',18)+(LOFF===1?'Нет интернета&nbsp;— показываем сохранённое':'Не&nbsp;получилось обновить&nbsp;— показываем сохранённое')+'</button>':''}
 function lUpd(){var u=LRN&&LRN.updated;if(!u)return '';var d=msk(u);return '<span class="mut3 upd">Прогресс обновлён '+(lToday(u)?'':d.d+' '+MS[d.mo]+' ')+'в&nbsp;'+d.t+'&nbsp;МСК</span>'}
@@ -540,7 +543,7 @@ function lToast(t){var d=$('ltoast');if(d)d.remove();d=document.createElement('d
 function lPage(t,sub,hash,h,o){o=o||{};o.ln=1;o.sub=sub;o.hash=hash;h=lOffBar()+h;var top=PG[PG.length-1];if(o.rep&&top&&top.o&&top.o.ln){PG[PG.length-1]={t:t,h:h,a:o.a,o:o};showPage(o.keep)}else page(t,h,o.a,o)}
 /* ---- L1: вкладка «Учёба» ---- */
 function lStaffHs(v){if(T&&T.staff&&!VW){var hi0=v.querySelector('.hi');if(hi0)hi0.insertAdjacentHTML('afterend',kStaffCard());kStaffBind()}
-  var put=function(){var hi=v.querySelector('.warnb')||v.querySelector('.hi'),c=hsCard();if(c&&hi&&!$('hsC')){hi.insertAdjacentHTML('afterend',c);hsBind()}};hsRead(function(){if(HSS)put();else hsCheck(put)})}
+  var put=function(){var hi=v.querySelector('.warnb')||v.querySelector('.lsr')||v.querySelector('.hi'),c=hsCard();if(c&&hi&&!$('hsC')){hi.insertAdjacentHTML('afterend',c);hsBind()}};hsRead(function(){if(HSS)put();else hsCheck(put)})}
 function lNext(x){var m=x.m,p=x.p,np=m.parts.length,an=x.kind==='anketa',hw=x.kind==='hw',nx=an&&x.stop?xAfter(x):0;
   var l1='Модуль '+esc(m.n)+(np>1?' · Часть '+p.n+'&nbsp;из&nbsp;'+np+' · '+nbt(p.title):' · '+nbt(m.title)),t=an&&x.about?'Анкета '+nbt(x.about):nbt(x.t);
   var l3=an?'2&nbsp;минуты · +15&nbsp;баллов'+(nx?' · откроет '+nx+'&nbsp;'+plr(nx,'урок','урока','уроков'):''):hw?'Домашка · до&nbsp;'+(x.hwMax||70)+'&nbsp;баллов':'Урок '+x.num+'&nbsp;из&nbsp;'+p.cnt+' · +10&nbsp;баллов';
@@ -556,7 +559,7 @@ function rLearn(){var v=$('v-learn');lBand('OduvanovSchool','мини-прило
     lGet().then(function(){if(CUR==='learn'&&!PG.length)rLearn()});return}
   if(LST==='legacy'){v.className='v';lBand('','');lBody(0);return rLearnOld()}
   if(LST!=='ok'){v.className='v L lc lcs';v.innerHTML=lState(LST);return}
-  var L=LRN,c=L.course,h=lHi()+lOffBar();
+  var L=LRN,c=L.course,h=lHi()+lSrch()+lOffBar();
   if(c){if(L.acc==='dead')h+='<div class="card"><span class="cap2" style="color:#ffb48c">Доступ закончился</span><b style="font-size:17px;font-weight:500;line-height:1.25">Прогресс и&nbsp;баллы сохранены</b><span class="mut">Напиши в&nbsp;службу заботы&nbsp;— поможем продлить и&nbsp;вернуться к&nbsp;урокам.</span><button class="btn" data-l="exp">Подробнее</button></div>';
     else{var cx=null;if(L.cur){var cm=mFind(L.cur.module);if(cm&&mAcc(cm)&&mOpen(cm))cx=mCur(cm)}h+=pSoon();if(cx)h+=lNext(cx)}
     var xm=c.modules.filter(function(m){return mAcc(m)&&mX2(m)})[0];if(xm&&L.acc!=='dead')h+=lX2(xm);
