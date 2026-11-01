@@ -765,6 +765,10 @@ export default {
       if (path === '/rating/efirpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403);
         let rs = []; try { rs = await qAll(env.DB.prepare('SELECT uid, SUM(pts) p FROM efir_pts WHERE uid IS NOT NULL GROUP BY uid')) } catch (e) { rs = [] }
         const out = {}; for (const r of rs) if (+r.uid > 0 && +r.p > 0) out[String(r.uid)] = +r.p; return json(req, out) }
+      /* 02.11: баллы за ДЗ, поставленные куратором (лента ответов / кабинет) — для рейтинга вместо расчёта по уровню: [{aid, uid, lid, pts, x2}] */
+      if (path === '/rating/hwpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env); await curHwEnsure(env);
+        const last = {}; for (const x of ((await env.DB.prepare('SELECT answer_id, uid, lesson_id, status, pts, x2 FROM cur_hw WHERE answer_id IS NOT NULL ORDER BY id').all()).results || [])) last[x.answer_id] = x;
+        return json(req, { ok: true, list: Object.values(last).filter(x => x.status === 'accept' && !isStaffUid(env, x.uid)).map(x => ({ aid: x.answer_id, uid: x.uid, lid: x.lesson_id, pts: x.pts | 0, x2: x.x2 ? 1 : 0 })) }, 200, { 'Cache-Control': 'no-store' }) }
       if (path === '/rating/bankpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env);
         const out = {}; for (const r of ((await env.DB.prepare('SELECT uid, SUM(COALESCE(rub, amount)) c FROM bank_tx WHERE conf=1 AND del_at IS NULL GROUP BY uid').all()).results || [])) { const p = bPts(r.c); if (p > 0 && !isStaffUid(env, r.uid)) out[r.uid] = p }
         return json(req, out, 200, { 'Cache-Control': 'no-store' }) }
@@ -2219,7 +2223,7 @@ async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, 
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
-const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
+const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hwpts', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
 /* 30.10 (QA №7, №13): очередь ДЗ. Её знает только GetCourse (лента ответов входа куратора), поэтому кабинет «Проверка ДЗ» на сайте (?fs=cur)
    после загрузки ленты и после каждого «Принять / Вернуть» присылает POST /cur/queue {n, old48, oldest, by?:{<cid>|none:{n, old48, oldest}}} (by — только у Романа:
    его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
@@ -2233,7 +2237,11 @@ async function hwQueues(env) { const fresh = x => x && x.at > msNow() - 7 * 864e
   Q.all = adm ? adm : cs.length ? { n: cs.reduce((t, x) => t + x.n, 0), old48: cs.reduce((t, x) => t + (x.old48 || 0), 0), oldest: olds.length ? Math.min(...olds) : null, at: Math.min(...cs.map(x => x.at)), part: cs.length < CURATORS.length } : null;
   return Q }
 const hwqOut = q => q ? { hw_q: q.n, hw_old: q.old48 || 0, hw_oldest: q.oldest || null, hw_q_at: q.at } : { hw_q: null, hw_old: null, hw_oldest: null, hw_q_at: null };
-async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(env); const s = await staffSess(env, req, u); if (!s) return deny(req);
+/* 02.11: баллы за ДЗ из ленты ответов — base (до ×2), x2 (1 — двойные), fix (1 — только правка баллов у уже принятой работы, без «Проверено») */
+let CURHW_OK = false;
+async function curHwEnsure(env) { if (CURHW_OK) return; const has = ((await env.DB.prepare("SELECT name FROM pragma_table_info('cur_hw')").all()).results || []).map(r => r.name);
+  for (const c of ['x2 INTEGER DEFAULT 0', 'base INTEGER', 'fix INTEGER DEFAULT 0']) if (!has.includes(c.split(' ')[0])) { try { await env.DB.prepare('ALTER TABLE cur_hw ADD COLUMN ' + c).run() } catch (e) {} } CURHW_OK = true }
+async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(env); await curHwEnsure(env); const s = await staffSess(env, req, u); if (!s) return deny(req);
   const adm = s.role === 'admin', o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, okCid = v => CURATORS.some(c => c.id === v), now = msNow();
   if (path === '/cur/queue') { if (req.method === 'POST') { const q = hwqClean(o); if (!q) return json(req, { ok: false, err: 'n — число работ в очереди' }, 400); if (!adm && !s.cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400);
       const rec = Object.assign(q, { at: now }); if (adm && o.by && typeof o.by === 'object') { rec.by = {}; for (const k of Object.keys(o.by).slice(0, 20)) if (okCid(k) || k === 'none') { const x = hwqClean(o.by[k]); if (x) rec.by[k] = x } }
@@ -2258,17 +2266,25 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     const cid = adm ? (st.curator || null) : s.cid, pts = Math.max(0, Math.min(1000, Math.round(+o.pts || 0))), lesson = bStr(hwName(o.lesson), 200), comment = bStr(o.comment, 2000), lid = okUid(o.lesson_id) ? +o.lesson_id : null, aid = okUid(o.answer_id) ? +o.answer_id : null;
     const sent = typeof o.sent_at === 'number' ? o.sent_at : o.sent_at ? Date.parse(o.sent_at) : NaN;
     const dup = aid && await env.DB.prepare('SELECT id FROM cur_hw WHERE answer_id=? AND status=? AND at>?').bind(aid, status, now - 10 * 60e3).first();
-    const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now).first();
+    const x2 = o.x2 ? 1 : 0, base = o.base != null ? Math.max(0, Math.min(1000, Math.round(+o.base || 0))) : (x2 ? Math.round(pts / 2) : pts), fix = o.fix && status === 'accept' ? 1 : 0;
+    const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at, x2, base, fix) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now, x2, base, fix).first();
+    if (fix) { let notified = false; if (st.tg_chat && pts && await notifOn(env, st.uid, 'hw')) { await tgSend(env, st.tg_chat, '🎯 <b>Баллы за ДЗ' + (lesson ? ' «' + th(lesson) + '»' : '') + ' обновлены</b>\n' + nbt('+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) + (x2 ? ' · ×2 за сдачу вовремя' : '')) + '\nВ рейтинге — после ближайшего обновления', null); notified = true }
+      await logIt(env, 'cur-hw-fix', st.uid, (cid || 'admin') + ' ' + pts + (x2 ? ' x2' : '')); return json(req, { ok: true, id: r.id, notified, fix: 1 }) }
     await logIt(env, 'cur-hw', st.uid, (cid || 'admin') + ' ' + status + ' ' + pts);
     let notified = false; if (!dup && st.tg_chat && await notifOn(env, st.uid, 'hw')) { const who = staffWho(s), L = lesson ? ' «' + th(lesson) + '»' : '', btn = lid ? [[{ text: status === 'accept' ? 'Посмотреть работу' : 'Открыть замечания', url: maLink(env, 'l' + lid) }]] : null;
       if (status === 'accept') { let place = null; try { const D = await loadData(env), rr = await rowFor(D, st.uid); place = rr && rr.place || null } catch (e) {}
-        await tgSend(env, st.tg_chat, '✅ <b>ДЗ' + L + ' принято</b>\n' + nbt((pts ? '+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) : 'Проверил' + fem(who) + ' ' + th(who)) + (place ? ' · ты на ' + place + ' месте' : '')) + (comment ? '\n\n«' + th(comment) + '» — ' + th(who) : ''), btn) }
+        await tgSend(env, st.tg_chat, '✅ <b>ДЗ' + L + ' принято</b>\n' + nbt((pts ? '+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) + (x2 ? ' · ×2 за сдачу вовремя' : '') : 'Проверил' + fem(who) + ' ' + th(who)) + (place ? ' · ты на ' + place + ' месте' : '')) + (comment ? '\n\n«' + th(comment) + '» — ' + th(who) : ''), btn) }
       else { const notes = (Array.isArray(o.notes) && o.notes.length ? o.notes : comment.split(/\n+/)).map(x => bStr(x, 300)).filter(Boolean).slice(0, 10), due = /^\d{4}-\d{2}-\d{2}$/.test(o.due || '') ? o.due : null;
         await tgSend(env, st.tg_chat, '✏️ <b>ДЗ' + L + NB + '— нужно доработать</b>\n' + (notes.length ? notes.map((x, i) => (i + 1) + '. ' + th(x)).join('\n') : nbt('Посмотри замечания ' + th(who) + ' на странице урока.')) + (due ? '\n\n' + nbt('Пересдай до ' + human(due) + ', чтобы не потерять ×2') : ''), btn) }
       notified = true }
     return json(req, { ok: true, id: r.id, notified, dup: !!dup }) }
+  /* 02.11: баллы, поставленные в ленте/кабинете, по id ответов (последняя запись «принято» на ответ) */
+  if (path === '/cur/hwpts') { const ids = String(u.searchParams.get('ids') || '').split(',').map(Number).filter(okUid).slice(0, 300); if (!ids.length) return json(req, { ok: true, pts: {} });
+    const rs = await qAll(env.DB.prepare('SELECT answer_id, status, pts, x2, base, at FROM cur_hw WHERE answer_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').bind(...ids)), out = {};
+    for (const x of rs) out[x.answer_id] = x.status === 'accept' ? { pts: x.pts | 0, x2: x.x2 ? 1 : 0, base: x.base == null ? x.pts | 0 : x.base | 0, at: x.at } : null;
+    for (const k of Object.keys(out)) if (!out[k]) delete out[k]; return json(req, { ok: true, pts: out }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/cur/hwstat') { const days = Math.max(1, Math.min(90, +u.searchParams.get('days') || 30)), cq = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : 'all') : s.cid;
-    const rs = await qAll(cq === 'all' ? env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE at>=?').bind(now - days * 864e5) : env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE cid=? AND at>=?').bind(cq, now - days * 864e5));
+    const rs = await qAll(cq === 'all' ? env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE at>=? AND COALESCE(fix,0)=0').bind(now - days * 864e5) : env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE cid=? AND at>=? AND COALESCE(fix,0)=0').bind(cq, now - days * 864e5));
     const agg = L => { const t = L.filter(x => x.sent_at && x.at > x.sent_at).map(x => (x.at - x.sent_at) / 60e3), m = medOf(t); return { checked: L.length, accept: L.filter(x => x.status === 'accept').length, rework: L.filter(x => x.status === 'rework').length, median_min: m == null ? null : Math.round(m), timed: t.length } };
     const by = {}; for (const x of rs) (by[x.cid || 'admin'] = by[x.cid || 'admin'] || []).push(x);
     return json(req, Object.assign({ ok: true, cid: cq, days }, agg(rs), { by_cid: cq === 'all' ? Object.keys(by).map(k => Object.assign({ cid: k }, agg(by[k]))) : undefined }), 200, { 'Cache-Control': 'no-store' }) }
