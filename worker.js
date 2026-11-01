@@ -767,7 +767,7 @@ export default {
         const out = {}; for (const r of rs) if (+r.uid > 0 && +r.p > 0) out[String(r.uid)] = +r.p; return json(req, out) }
       /* 02.11: баллы за ДЗ, поставленные куратором (лента ответов / кабинет) — для рейтинга вместо расчёта по уровню: [{aid, uid, lid, pts, x2}] */
       if (path === '/rating/hwpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env); await curHwEnsure(env);
-        const last = {}; for (const x of ((await env.DB.prepare('SELECT answer_id, uid, lesson_id, status, pts, x2 FROM cur_hw WHERE answer_id IS NOT NULL AND (base IS NOT NULL OR status <> 'accept') ORDER BY id').all()).results || [])) last[x.answer_id] = x;
+        const last = {}; for (const x of ((await env.DB.prepare('SELECT answer_id, uid, lesson_id, status, pts, x2 FROM cur_hw WHERE answer_id IS NOT NULL AND (base IS NOT NULL OR status <> \'accept\') ORDER BY id').all()).results || [])) last[x.answer_id] = x;
         return json(req, { ok: true, list: Object.values(last).filter(x => x.status === 'accept' && !isStaffUid(env, x.uid)).map(x => ({ aid: x.answer_id, uid: x.uid, lid: x.lesson_id, pts: x.pts | 0, x2: x.x2 ? 1 : 0 })) }, 200, { 'Cache-Control': 'no-store' }) }
       if (path === '/rating/bankpts') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await bankEnsure(env);
         const out = {}; for (const r of ((await env.DB.prepare('SELECT uid, SUM(COALESCE(rub, amount)) c FROM bank_tx WHERE conf=1 AND del_at IS NULL GROUP BY uid').all()).results || [])) { const p = bPts(r.c); if (p > 0 && !isStaffUid(env, r.uid)) out[r.uid] = p }
