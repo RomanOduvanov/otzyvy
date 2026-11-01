@@ -1412,11 +1412,17 @@ async function appApi(env, req, path) {
     const who = s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор');
     const btn = o.link && /^https:\/\//.test(o.link) ? [[{ text: String(o.btn || 'Открыть').slice(0, 40), url: o.link }]] : undefined;
     let sent = 0, fail = 0;
-    for (const x of to) { const j = await tgSend(env, x.tgid, '<b>' + th(who) + '</b>\n' + th(text), btn); if (j && j.ok) sent++; else fail++ }
+    for (const x of to) { const j = await tgSend(env, x.tgid, '<b>' + th(who) + '</b>\n' + th(text.replace(/\{имя\}/g, firstName(x.name) || 'привет')), btn); if (j && j.ok) sent++; else fail++ }
     const log = (await kvGet(env, 'bclog:' + cc)) || []; const bid = String(o.bid || '').slice(0, 40);
     if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail } else log.unshift({ bid, at: new Date().toISOString(), who, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, noTg: o.noTg | 0 });
     await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
     await logIt(env, 'broadcast', 0, cc + ' ' + sent + '/' + to.length); return ajson({ ok: true, sent, fail }) }
+  if (path === '/app/api/ai/recs') { const r = await aiRecs(env, c, u.searchParams.get('fresh') === '1'); return ajson(Object.assign({ ok: true }, r)) }
+  if (path === '/app/api/ai/bc' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), A = await curAlerts(env, cc), D = await loadData(env);
+    const goal = String(o.goal || '').trim().slice(0, 600), draft = String(o.draft || '').trim().slice(0, 3000);
+    const user = (draft ? 'Улучши черновик куратора: сделай живее, короче и понятнее, сохрани смысл и все факты. Черновик:\n' + draft : 'Напиши сообщение-рассылку.') + (goal ? '\nЗадача куратора: ' + goal : draft ? '' : '\nЗадачи нет — напиши мягкое сообщение, чтобы вернуть учеников к урокам и ДЗ.')
+      + '\n\n' + audInfo(A, o.aud, o.uids, D.total_lessons) + '\n\nВерни только текст сообщения.';
+    const r = await aiText(env, AI_BC_SYS, user, 700); if (r.err) return ajson({ ok: false, err: r.err }); await logIt(env, 'ai-bc', 0, cc + ' ' + (o.aud || 'all')); return ajson({ ok: true, text: cleanAi(r.text) }) }
   return ajson({ ok: false, err: 'not found' }, 404);
 }
 
@@ -2224,7 +2230,7 @@ async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, 
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
-const CUR_API = ['/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hwpts', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
+const CUR_API = ['/cur/alerts', '/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hwpts', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
 /* 30.10 (QA №7, №13): очередь ДЗ. Её знает только GetCourse (лента ответов входа куратора), поэтому кабинет «Проверка ДЗ» на сайте (?fs=cur)
    после загрузки ленты и после каждого «Принять / Вернуть» присылает POST /cur/queue {n, old48, oldest, by?:{<cid>|none:{n, old48, oldest}}} (by — только у Романа:
    его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
@@ -2237,6 +2243,42 @@ async function hwQueues(env) { const fresh = x => x && x.at > msNow() - 7 * 864e
   const cs = CURATORS.map(c => Q[c.id]).filter(Boolean), olds = cs.map(x => x.oldest).filter(Boolean);
   Q.all = adm ? adm : cs.length ? { n: cs.reduce((t, x) => t + x.n, 0), old48: cs.reduce((t, x) => t + (x.old48 || 0), 0), oldest: olds.length ? Math.min(...olds) : null, at: Math.min(...cs.map(x => x.at)), part: cs.length < CURATORS.length } : null;
   return Q }
+/* 02.11 (Роман): тревоги куратора — плашка вверху всех страниц сайта (/cur/alerts) и ИИ в «Рассылках» пульта (/app/api/ai/bc, /app/api/ai/recs).
+   Пропали — не заходили 5+ дней (как в пульте); не продвигаются — заходят, но за 7 дней ноль баллов рейтинга; ждут ответа — cwait; ДЗ — очередь /cur/queue. */
+const firstName = n => String(n || '').trim().split(/\s+/)[0] || '';
+async function curAlerts(env, cid) { const st = (await appStudents(env, cid)).students || [], today = Date.parse(dayStr() + 'T00:00:00Z');
+  const idle = [], stall = [], wait = [];
+  for (const x of st) { const d = x.last ? Math.round((today - Date.parse(x.last + 'T00:00:00Z')) / 864e5) : null, it = { uid: x.uid, name: x.name, days: d, tg: !!x.tgid, place: x.place, pts: x.pts, week: x.week, lessons: x.lessons, hw: x.hw };
+    if (d == null || d >= 5) idle.push(it); else if (x.week === 0) stall.push(it);
+    if (x.wait) wait.push({ uid: x.uid, name: x.name, since: x.wait }) }
+  idle.sort((a, b) => (b.days == null ? 1e4 : b.days) - (a.days == null ? 1e4 : a.days)); wait.sort((a, b) => a.since - b.since);
+  const q = (await hwQueues(env))[cid] || null;
+  return { n: st.length, idle, stall, wait, hw: q ? { n: q.n, old: q.old48 || 0, at: q.at } : null } }
+const AI_BC_SYS = 'Ты помогаешь куратору онлайн-школы OduvanovSchool (поток «AI-креатор 2.0»: дизайн карточек для маркетплейсов с помощью нейросетей) писать сообщения ученикам в Telegram от имени куратора. '
+  + 'Пиши по-русски, на «ты», тепло и по делу, как живой человек: без канцелярита, без давления и чувства вины, без воды. 2–6 коротких предложений, можно 1–2 уместных эмодзи. Без markdown, хэштегов и кавычек вокруг текста. '
+  + 'Можно обратиться по имени через {имя} — при отправке туда подставится имя каждого ученика. Не выдумывай факты: даты, эфиры, скидки, ссылки, призы — только если они есть в задаче куратора. В конце — один простой шаг, который можно сделать прямо сейчас.';
+async function aiText(env, sys, user, max) { if (!env.ANTHROPIC_API_KEY) return { err: 'ИИ не подключён' };
+  const { r, j } = await aiFetch(env, JSON.stringify({ model: AI_MODEL(env), max_tokens: max || 600, system: sys, messages: [{ role: 'user', content: user }] }));
+  if (!r || !r.ok) return { err: 'Нейросеть не ответила — попробуй ещё раз' }; return { text: (((j && j.content) || []).find(x => x.type === 'text') || {}).text || '' } }
+const audInfo = (A, aud, uids, total) => { const L = x => x.slice(0, 12).map(s => '— ' + firstName(s.name) + (s.days != null ? ', не заходил ' + s.days + ' дн.' : ', ни разу не заходил') + (s.lessons != null ? ', уроков ' + s.lessons + (total ? ' из ' + total : '') : '') + (s.hw != null ? ', ДЗ ' + s.hw : '')).join('\n');
+  if (aud === 'idle') return 'Кому: ученики, которые не заходили в кабинет 5+ дней (' + A.idle.length + ' чел.):\n' + L(A.idle);
+  if (aud === 'stall') return 'Кому: ученики, которые заходят, но за неделю не сдали ни одного ДЗ и не набрали баллов в рейтинге (' + A.stall.length + ' чел.):\n' + L(A.stall);
+  if (aud === 'sel') { const S = new Set((uids || []).map(Number)), X = A.idle.concat(A.stall).filter(s => S.has(+s.uid)); return 'Кому: выбранные куратором ученики (' + S.size + ' чел.)' + (X.length ? ':\n' + L(X) : '') }
+  return 'Кому: все ученики потока (' + A.n + ' чел.). Сейчас ' + A.idle.length + ' не заходили 5+ дней, ' + A.stall.length + ' не продвигаются неделю.' };
+const cleanAi = t => String(t || '').trim().replace(/^["«“]([\s\S]*)["»”]$/, '$1').replace(/\*\*/g, '').trim().slice(0, 3000);
+async function aiRecs(env, cid, fresh) { const k = 'airecs:' + cid, c = await kvGet(env, k); if (c && !fresh && msNow() - c.at < 3 * 36e5) return c;
+  const A = await curAlerts(env, cid), D = await loadData(env), tot = D.total_lessons || null, R = [];
+  /* основа — правила (работают и без ИИ); ИИ пишет текст рекомендации и черновик */
+  if (A.hw && A.hw.n) R.push({ kind: 'hw', aud: null, n: A.hw.n, title: 'Проверь ДЗ: ' + A.hw.n + (A.hw.old ? ', из них ' + A.hw.old + ' ждут дольше 48 ч' : ''), why: 'Пока работа не проверена, ученик не получает баллы и теряет темп.' });
+  if (A.wait.length) R.push({ kind: 'dm', aud: 'wait', n: A.wait.length, title: 'Ответь ' + A.wait.length + ' ' + (A.wait.length === 1 ? 'ученику' : 'ученикам'), why: 'Ждут ответа: ' + A.wait.slice(0, 4).map(x => firstName(x.name)).join(', ') + '.' });
+  if (A.idle.length) R.push({ kind: A.idle.length > 2 ? 'bc' : 'dm', aud: 'idle', n: A.idle.length, title: (A.idle.length > 2 ? 'Рассылка тем, кто пропал: ' : 'Напиши лично: ') + A.idle.length + ' не заходили 5+ дней', why: A.idle.slice(0, 5).map(x => firstName(x.name) + (x.days != null ? ' — ' + x.days + ' дн.' : ' — не заходил')).join(', ') + '.' });
+  if (A.stall.length) R.push({ kind: 'bc', aud: 'stall', n: A.stall.length, title: 'Подтолкни ' + A.stall.length + ': заходят, но неделю без ДЗ', why: A.stall.slice(0, 5).map(x => firstName(x.name)).join(', ') + '.' });
+  const need = R.filter(x => x.kind === 'bc' || x.kind === 'dm' && x.aud === 'idle');
+  if (need.length && env.ANTHROPIC_API_KEY) { const user = 'Для каждой группы напиши черновик сообщения. Верни ТОЛЬКО JSON: {"g":[{"aud":"idle|stall","tip":"одна фраза совета куратору, зачем и как написать этой группе","text":"черновик сообщения"}]}\n\n'
+      + need.map(x => audInfo(A, x.aud, null, tot)).join('\n\n');
+    const o = await aiText(env, AI_BC_SYS, user, 1200); const m = String(o.text || '').match(/\{[\s\S]*\}/);
+    if (m) try { (JSON.parse(m[0]).g || []).forEach(g => { const x = R.find(y => y.aud === g.aud); if (x) { if (g.tip) x.tip = String(g.tip).slice(0, 300); if (g.text) x.draft = cleanAi(g.text) } }) } catch (e) {} }
+  const out = { at: msNow(), recs: R }; await kvPut(env, k, out); return out }
 const hwqOut = q => q ? { hw_q: q.n, hw_old: q.old48 || 0, hw_oldest: q.oldest || null, hw_q_at: q.at } : { hw_q: null, hw_old: null, hw_oldest: null, hw_q_at: null };
 /* 02.11: баллы за ДЗ из ленты ответов — base (до ×2), x2 (1 — двойные), fix (1 — только правка баллов у уже принятой работы, без «Проверено») */
 let CURHW_OK = false;
@@ -2248,6 +2290,8 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
       const rec = Object.assign(q, { at: now }); if (adm && o.by && typeof o.by === 'object') { rec.by = {}; for (const k of Object.keys(o.by).slice(0, 20)) if (okCid(k) || k === 'none') { const x = hwqClean(o.by[k]); if (x) rec.by[k] = x } }
       await kvPut(env, 'hwq:' + (adm ? 'admin' : s.cid), rec); return json(req, { ok: true, at: now }) }
     const Q = await hwQueues(env), cq = u.searchParams.get('cid'); return json(req, Object.assign({ ok: true }, hwqOut(Q[adm ? (okCid(cq) ? cq : 'all') : s.cid])), 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/cur/alerts') { const cid = adm ? 'all' : s.cid; if (!cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400); const A = await curAlerts(env, cid), cut = x => x.slice(0, 6).map(y => ({ uid: y.uid, name: firstName(y.name), days: y.days }));
+    return json(req, { ok: true, cid, n: A.n, idle: A.idle.length, stall: A.stall.length, wait: A.wait.length, wait_old: A.wait.length ? A.wait[0].since : null, hw: A.hw, idleL: cut(A.idle), stallL: cut(A.stall) }, 200, { 'Cache-Control': 'no-store' }) }
   /* /cur/me: куратор — свои цифры; Роман — выбранного куратора (?cid=) или всей школы (без cid; раньше был отказ «Выбери куратора», QA №7) */
   if (path === '/cur/me') { const cq = u.searchParams.get('cid'), cid = adm ? (okCid(cq) ? cq : 'all') : s.cid; if (!cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400);
     const all = cid === 'all', from = now - 30 * 864e5;
