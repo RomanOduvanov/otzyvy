@@ -722,6 +722,12 @@ export default {
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
       if (path.startsWith('/srch/')) return srchApi(env, req, path);
+      /* 01.11: запасная раздача файлов сайта (eco/layout/theme), пока GitHub Pages не принимает выкладки. Залить: POST /gc/put?name=… с X-GH-Token (право push в репозиторий) */
+      if (path === '/gc/put' && req.method === 'POST') { if (!(await ghOk(env, req))) return deny(req); const nm = u.searchParams.get('name') || ''; if (!/^(eco|layout|theme|appskin)-[0-9a-f]{8}\.(js|css)$/.test(nm)) return json(req, { ok: false, err: 'name' }, 400);
+        const body = await req.text(); if (!body || body.length > 1800000) return json(req, { ok: false, err: 'size' }, 400); await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('gcf:' + nm, body).run(); return json(req, { ok: true, name: nm, bytes: body.length }) }
+      if (path.startsWith('/gc/') && req.method === 'GET') { const nm = path.slice(4); if (!/^(eco|layout|theme|appskin)-[0-9a-f]{8}\.(js|css)$/.test(nm)) return new Response('not found', { status: 404 });
+        const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('gcf:' + nm).first(); if (!r) return new Response('not found', { status: 404, headers: { 'Access-Control-Allow-Origin': '*' } });
+        return new Response(r.v, { headers: { 'Content-Type': nm.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } }) }
   if (path === '/admin/ptest') return ptestApi(env, req);
       if (CUR_API.includes(path)) return curApi(env, req, path);
       if (EFIR_SCEN_API.includes(path)) return efirScenApi(env, req, path); /* 30.10 эфиры: сценарии, модерация, заявки */
