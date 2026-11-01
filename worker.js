@@ -1639,7 +1639,7 @@ async function bankFile(env, uid, kind, ref, f, maxB64) { if (!f || typeof f.dat
   return r && r.id }
 /* Список учеников для команды: имя, тариф, куратор, поток — из данных рейтинга и таблицы student; доход в рублях. Куратор — только свои. */
 async function bankStaffList(env, st) {
-  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {}, GN = {};
+  const D = await loadData(env), studs = ((await env.DB.prepare('SELECT s.uid, s.name, s.curator, t.name tgname, t.username tgu, (SELECT username FROM stu_tg WHERE uid=s.uid) stu, s.tg_chat tgc FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat').all()).results || []), byU = {}, GN = {};
   try { for (const r of ((await env.DB.prepare('SELECT uid, name FROM gc_name').all()).results || [])) GN[r.uid] = r.name } catch (e) {}
   for (const s of studs) byU[s.uid] = s;
   const sums = {}; for (const r of ((await env.DB.prepare('SELECT uid, COALESCE(SUM(COALESCE(rub, amount)),0) total, COALESCE(SUM(CASE WHEN conf=1 THEN COALESCE(rub, amount) ELSE 0 END),0) conf, SUM(CASE WHEN COALESCE(conf,0)=0 THEN 1 ELSE 0 END) pend, COUNT(id) n, MAX(day) last FROM bank_tx WHERE del_at IS NULL GROUP BY uid').all()).results || [])) sums[r.uid] = r;
@@ -1651,7 +1651,8 @@ async function bankStaffList(env, st) {
   const seen = {}, out = [], CN = {}, GS = await gcStaffSet(env); for (const c of CURATORS) CN[c.id] = c.full;
   const add = (uid, name, tar, place, strm) => { if (!uid || seen[uid] || isStaffUid(env, uid) || GS.has(+uid)) return; const s = byU[uid] || {}, cid = s.curator || null; if (st.role === 'curator' && cid !== st.cid) return; seen[uid] = 1;
     const m = sums[uid] || {}, o = ords[uid] || {}, tot = Math.round(m.total || 0), cf = Math.round(m.conf || 0), bs = bStatus(tot);
-    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: strm || D.stream || 'AI-креатор 2.0', place: place || null, outside: strm ? 1 : 0, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
+    const tgn = String(s.tgu || s.stu || '').replace(/^@+/, '').replace(/[^\w]/g, '').slice(0, 40); /* 02.11: Telegram ученика для ленты ответов — куратор пишет ему напрямую */
+    out.push({ uid, name: name || s.name || GN[uid] || s.tgname || null, tg: tgn || null, tg_bot: s.tgc ? 1 : 0, tar: tar || null, cur: cid, curName: cid ? (CN[cid] || cid) : null, stream: strm || D.stream || 'AI-креатор 2.0', place: place || null, outside: strm ? 1 : 0, total: tot, n: m.n || 0, last: m.last || null, orders: o.n || 0, active: o.act || 0,
       conf: cf, pending: m.pend || 0, pending_rub: tot - cf, pts: bPts(cf), status: bs.key, status_name: bs.name, goal: goals[uid] || null,
       m6: M6.map(k => Math.round(((mon[uid] || {})[k] || {}).s || 0)), c6: M6.map(k => ((mon[uid] || {})[k] || {}).n || 0) }) };
   for (const r of (D.rows || [])) if (r.uid != null) add(+r.uid, r.name, r.tar, r.place);
