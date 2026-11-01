@@ -722,6 +722,7 @@ export default {
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
       if (path.startsWith('/srch/')) return srchApi(env, req, path);
+  if (path === '/admin/ptest') return ptestApi(env, req);
       if (CUR_API.includes(path)) return curApi(env, req, path);
       if (EFIR_SCEN_API.includes(path)) return efirScenApi(env, req, path); /* 30.10 эфиры: сценарии, модерация, заявки */
       if (path.startsWith('/efir/')) return efirApi(env, req, path);
@@ -1930,6 +1931,19 @@ function srchParse(t) { t = String(t || '').replace(/```(?:json)?/g, ''); const 
   if (hp >= 0) for (const seg of t.slice(hp).split('{').slice(1)) { const r = seg.match(/"ref"\s*:\s*"?([\w-]+)/); if (!r) continue; const sc = seg.match(/"sec"\s*:\s*(\d+)/), w = seg.match(new RegExp('"why"\\s*:\\s*' + S));
     hits.push({ ref: r[1], sec: sc ? +sc[1] : null, why: w ? uq(w[1]) : '' }) }
   if (!am && !hits.length) return null; const ans = am ? uq(am[1]) : ''; return { answer: ans, hits } }
+/* 01.11 (Роман: «тестовый отчёт как родителю в телегу»): только админ. Шлёт отчёт родителя по ученику uid в Telegram-чат по @username (чат должен был писать боту).
+   Настройки настоящих родителей не меняет: если строки parent нет — создаётся выключенная (active=0, только ради токена для картинки /card). */
+async function ptestApi(env, req) { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
+  const u = new URL(req.url), W = await chatWho(env, req, u, o); if (!W || W.me !== 'admin') return json(req, { ok: false, err: 'Только админ' }, 403);
+  const uid = +o.uid || 522348613, un = String(o.username || 'romanoduvanov').replace(/^@/, '').toLowerCase();
+  const tu = await env.DB.prepare('SELECT chat, name FROM tg_user WHERE lower(username)=?').bind(un).first();
+  if (!tu) return json(req, { ok: false, err: 'Бот не знает @' + un + ' — напиши боту /start и повтори' }, 404);
+  let p = await env.DB.prepare('SELECT * FROM parent WHERE uid=?').bind(uid).first();
+  if (!p) { const tk = rnd(), now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO parent (uid, student, name, freq, hour, channel, active, token, created, updated) VALUES (?,?,?,?,?,?,0,?,?,?)").bind(uid, 'Тестовый ученик', 'Роман', 7, 19, 'tg', tk, now, now).run();
+    p = await env.DB.prepare('SELECT * FROM parent WHERE uid=?').bind(uid).first() }
+  const q = Object.assign({}, p, { tg_chat: tu.chat, name: o.name || p.name || 'Роман' }), j = await tgSendReport(env, q);
+  await logIt(env, 'ptest', uid, un); return json(req, { ok: !!(j && j.ok), err: j && !j.ok ? (j.description || 'не отправилось') : null }) }
 async function srchApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
   const W = await chatWho(env, req, u, o); if (!W) return json(req, { ok: false, err: 'Нужно войти', st: 401 }, 401);
   if (path === '/srch/index' && req.method === 'POST') { if (W.me !== 'admin') return json(req, { ok: false, err: 'Только админ' }, 403);
