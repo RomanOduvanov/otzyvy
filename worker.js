@@ -144,7 +144,7 @@ async function ratingFor(env, me, forU) {
   if (cc && priv) for (const s of ((await env.DB.prepare('SELECT uid FROM student WHERE curator=?').bind(cc.id).all()).results || [])) mine[String(s.uid)] = 1;
   for (const x of D.rows) { const o = Object.assign({}, x), xu = String(x.uid == null ? '' : x.uid); delete o.uid; delete o.k;
     if (priv) o.h = await pubH(env, xu);
-    if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc; delete o.done; delete o.hwa; delete o.oth; /* учёба (/ma/learn) — только в своём ответе /ma/learn, в рейтинг не попадает даже своя */
+    if (priv ? xu !== String(me) : x.h !== oldMe) delete o.acc; delete o.done; delete o.hwa; delete o.oth; delete o.otha; /* учёба (/ma/learn) — только в своём ответе /ma/learn, в рейтинг не попадает даже своя */
     if (T[xu]) hours[o.h] = T[xu]; if ((adm || mine[xu]) && xu) ids[o.h] = +xu; rows.push(o) }
   const hOf = async v => priv ? pubH(env, String(v)) : hashUid(v);
   const out = Object.assign({}, D, { ok: true, rows, hours, me: await hOf(me), fh: okUid(forU) ? await hOf(forU) : null }); delete out.ah; delete out.hw_multi; if (adm || cc) { out.ids = ids; out.staff = adm ? 'admin' : 'curator' } return out }
@@ -1454,8 +1454,8 @@ function learnOf(D, r, now, lv) { const done = new Set((r.done || []).map(Number
   const seq = [], opn = l => !l.at || Date.parse(l.at) <= now; for (const m of modules) if (m.access) for (const p of m.parts) p.lessons.forEach((l, i) => seq.push({ m, p, l, i }));
   let last = -1; seq.forEach((x, i) => { if (x.l.done) last = i }); const pick = x => { if (!x) return null; const s0 = x.p.lessons.slice(0, x.i).find(l => l.stop && !l.done && opn(l)); return { module: x.m.id, part: x.p.id, lesson: (s0 || x.l).id } };
   const cur = pick(last >= 0 ? seq.slice(last + 1).find(x => opn(x.l) && !x.l.done) : seq.find(x => opn(x.l) && !x.l.done)); /* 28.10: впереди всё пройдено — не отправляем назад к пропущенным урокам Модуля 00, «Дальше по курсу» не показываем */
-  const oth = r.oth || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null).map(o => { const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) || LV.has(+i.id) })); /* цен нет — не отдаём */
-    return { id: o.id, title: o.title, key: o.key || null, kind: o.kind || 'bonus', rec: o.kind === 'rec', lessons: o.lessons | 0 || it.length, done: it.length ? it.filter(i => i.done).length : Math.min(oth[String(o.id)] | 0, o.lessons | 0 || 1e9), acc: null, items: it } });
+  const oth = r.oth || {}, otha = r.otha || {}, other = (D.other || []).filter(o => oth[String(o.id)] != null || otha[String(o.id)] != null).map(o => { /* 01.11: otha — срок доступа к тренингу (сборщик): дата | 'inf' | 'dead' */ const it = (o.items || []).map(i => ({ id: i.id, t: i.t, done: done.has(+i.id) || LV.has(+i.id) })); /* цен нет — не отдаём */
+    return { id: o.id, title: o.title, key: o.key || null, kind: o.kind || 'bonus', rec: o.kind === 'rec', lessons: o.lessons | 0 || it.length, done: it.length ? it.filter(i => i.done).length : Math.min(oth[String(o.id)] | 0, o.lessons | 0 || 1e9), acc: (v => v === 'inf' ? 'inf' : v === 'dead' ? 'dead' : v ? accOf(v, now) : null)(otha[String(o.id)]), items: it } });
   return { ok: true, now: isoZ(now), tar, amazon, acc: accOf(r.acc, now), course: Object.assign({}, LEARN_COURSE, D.course || {}, { modules }), other, cur, updated: updAt(D) } }
 async function maApi(env, req, path) {
   const u = new URL(req.url);
