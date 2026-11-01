@@ -2241,7 +2241,7 @@ const hwqOut = q => q ? { hw_q: q.n, hw_old: q.old48 || 0, hw_oldest: q.oldest |
 /* 02.11: баллы за ДЗ из ленты ответов — base (до ×2), x2 (1 — двойные), fix (1 — только правка баллов у уже принятой работы, без «Проверено») */
 let CURHW_OK = false;
 async function curHwEnsure(env) { if (CURHW_OK) return; const has = ((await env.DB.prepare("SELECT name FROM pragma_table_info('cur_hw')").all()).results || []).map(r => r.name);
-  for (const c of ['x2 INTEGER DEFAULT 0', 'base INTEGER', 'fix INTEGER DEFAULT 0']) if (!has.includes(c.split(' ')[0])) { try { await env.DB.prepare('ALTER TABLE cur_hw ADD COLUMN ' + c).run() } catch (e) {} } CURHW_OK = true }
+  for (const c of ['x2 INTEGER DEFAULT 0', 'base INTEGER', 'fix INTEGER DEFAULT 0', 'who TEXT']) if (!has.includes(c.split(' ')[0])) { try { await env.DB.prepare('ALTER TABLE cur_hw ADD COLUMN ' + c).run() } catch (e) {} } CURHW_OK = true }
 async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(env); await curHwEnsure(env); const s = await staffSess(env, req, u); if (!s) return deny(req);
   const adm = s.role === 'admin', o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, okCid = v => CURATORS.some(c => c.id === v), now = msNow();
   if (path === '/cur/queue') { if (req.method === 'POST') { const q = hwqClean(o); if (!q) return json(req, { ok: false, err: 'n — число работ в очереди' }, 400); if (!adm && !s.cid) return json(req, { ok: false, err: 'Нет куратора в сессии' }, 400);
@@ -2268,7 +2268,7 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     const sent = typeof o.sent_at === 'number' ? o.sent_at : o.sent_at ? Date.parse(o.sent_at) : NaN;
     const dup = aid && await env.DB.prepare('SELECT id FROM cur_hw WHERE answer_id=? AND status=? AND at>?').bind(aid, status, now - 10 * 60e3).first();
     const x2 = o.x2 ? 1 : 0, base = o.base != null ? Math.max(0, Math.min(1000, Math.round(+o.base || 0))) : null, /* 02.11: base есть только у ленты ответов — по нему рейтинг берёт баллы куратора; «Проверка ДЗ» без ×2 — рейтинг считает сам */ fix = o.fix && status === 'accept' ? 1 : 0;
-    const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at, x2, base, fix) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now, x2, base, fix).first();
+    const r = await env.DB.prepare('INSERT INTO cur_hw (cid, uid, answer_id, lesson_id, lesson, status, pts, comment, sent_at, at, x2, base, fix, who) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(cid, st.uid, aid, lid, lesson, status, pts, comment, isNaN(sent) ? null : sent, now, x2, base, fix, bStr(staffWho(s), 60) || null).first();
     if (fix) { let notified = false; if (st.tg_chat && pts && await notifOn(env, st.uid, 'hw')) { await tgSend(env, st.tg_chat, '🎯 <b>Баллы за ДЗ' + (lesson ? ' «' + th(lesson) + '»' : '') + ' обновлены</b>\n' + nbt('+' + pts + ' ' + pl(pts, ['балл', 'балла', 'баллов']) + (x2 ? ' · ×2 за сдачу вовремя' : '')) + '\nВ рейтинге — после ближайшего обновления', null); notified = true }
       await logIt(env, 'cur-hw-fix', st.uid, (cid || 'admin') + ' ' + pts + (x2 ? ' x2' : '')); return json(req, { ok: true, id: r.id, notified, fix: 1 }) }
     await logIt(env, 'cur-hw', st.uid, (cid || 'admin') + ' ' + status + ' ' + pts);
@@ -2281,9 +2281,9 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     return json(req, { ok: true, id: r.id, notified, dup: !!dup }) }
   /* 02.11: баллы, поставленные в ленте/кабинете, по id ответов (последняя запись «принято» на ответ) */
   if (path === '/cur/hwpts') { const ids = String(u.searchParams.get('ids') || '').split(',').map(Number).filter(okUid).slice(0, 300); if (!ids.length) return json(req, { ok: true, pts: {} });
-    const rs = await qAll(env.DB.prepare('SELECT answer_id, status, pts, x2, base, at, cid FROM cur_hw WHERE answer_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').bind(...ids)), out = {};
+    const rs = await qAll(env.DB.prepare('SELECT answer_id, status, pts, x2, base, at, cid, who FROM cur_hw WHERE answer_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').bind(...ids)), out = {};
     const fst = {}; for (const x of rs) if (x.status === 'accept' && fst[x.answer_id] == null) fst[x.answer_id] = x; /* кто принял — первая запись «принято»; баллы — последняя */
-    for (const x of rs) out[x.answer_id] = x.status === 'accept' ? { pts: x.pts | 0, x2: x.x2 ? 1 : 0, base: x.base == null ? x.pts | 0 : x.base | 0, at: x.at, by: (c => c ? (CURATORS.find(k => k.id === c) || {}).full || c : 'Роман')((fst[x.answer_id] || x).cid), acc_at: (fst[x.answer_id] || x).at } : null;
+    for (const x of rs) out[x.answer_id] = x.status === 'accept' ? { pts: x.pts | 0, x2: x.x2 ? 1 : 0, base: x.base == null ? x.pts | 0 : x.base | 0, at: x.at, by: (fst[x.answer_id] || x).who || (c => c ? (CURATORS.find(k => k.id === c) || {}).full || c : 'Роман')((fst[x.answer_id] || x).cid), acc_at: (fst[x.answer_id] || x).at } : null;
     for (const k of Object.keys(out)) if (!out[k]) delete out[k]; return json(req, { ok: true, pts: out }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/cur/hwstat') { const days = Math.max(1, Math.min(90, +u.searchParams.get('days') || 30)), cq = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : 'all') : s.cid;
     const rs = await qAll(cq === 'all' ? env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE at>=? AND COALESCE(fix,0)=0').bind(now - days * 864e5) : env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE cid=? AND at>=? AND COALESCE(fix,0)=0').bind(cq, now - days * 864e5));
