@@ -478,15 +478,26 @@
       if (staffChat()) h += '<div class="' + (D.total > 0 ? 'ebgrid2' : '') + '">' + (D.total > 0 ? '<button type="button" class="ebb2" id="ebPraise">' + svg(IC.chat, 20) + 'Похвалить' + (WI ? ' в' + NB + 'чате' : '') + '</button>' : '') + '<button type="button" class="ebb2" id="ebWrite">' + svg(IC.send, 20) + 'Написать</button></div>';
       if (!RO) h += '<button type="button" class="ebc eblock" id="ebWho">' + svg(IC.lock, 20) + '<span class="mut" style="flex:1">Суммы видят твой куратор и' + NB + 'команда школы. Клиентов, ТЗ и' + NB + 'файлы' + NB + '— только ты. Другие ученики твой банк не' + NB + 'видят.</span>' + (WI ? '<span class="v">Подробнее →</span>' : '') + '</button>';
       b.innerHTML = h; bindBank(b) }
+    /* 01.11 (Роман: «при переключении «Все / Ждут подтверждения» обновляется вся страница»): фильтры истории и «Показать ещё»
+       перерисовывают только блок «История» — без анимации появления карточек и без прыжка прокрутки */
+    function updHist() { var o = el.querySelector('#ebHist'); if (!o) { rBank(); return } var t = document.createElement('div'); t.innerHTML = hist().replace('class="ebc ebL rise" id="ebHist"', 'class="ebc ebL" id="ebHist"');
+      var n = t.firstChild; o.parentNode.replaceChild(n, o); bindHist(n, true) }
+    function bindHist(b, own) { var hs = own ? b : b.querySelector('#ebHist'); if (!hs) return;
+      hs.querySelectorAll('#ebHF button').forEach(function (x) { x.onclick = function () { var f = x.getAttribute('data-f'); if (f === HF) return; HF = f; HL = 12; hap('sel'); updHist() } });
+      var mo = hs.querySelector('#ebMore'); if (mo) mo.onclick = function () { HL += 30; updHist() };
+      if (!own) return;
+      hs.querySelectorAll('[data-tx]').forEach(function (r) { r.onclick = function () { txDetail(+r.getAttribute('data-tx')) } });
+      hs.querySelectorAll('[data-paid]').forEach(function (r) { r.onclick = function (e) { e.stopPropagation(); var s = D.SOON.filter(function (z) { return z.id === +r.getAttribute('data-paid') })[0]; if (s) paidSheet(s, true) } });
+      hs.querySelectorAll('[data-cf]').forEach(function (r) { r.onclick = function () { confTx(+r.getAttribute('data-cf'), r) } }) }
     function bindBank(b) { var tot = D.total, rd = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
       (function () { var t0 = null; function f(t) { if (!t0) t0 = t; var k = rd ? 1 : Math.min(1, (t - t0) / 1200), e = 1 - Math.pow(1 - k, 3); ['#ebTot', '#ebTot2'].forEach(function (s) { var x = el.querySelector(s); if (x) x.textContent = sp(tot * e) }); if (k < 1 && el.querySelector('#ebTot2')) requestAnimationFrame(f) } requestAnimationFrame(f) })();
       var ce = b.querySelector('#ebChart'); if (ce) barChart(ce, series(BP), { h: WI ? 230 : 170, sm: !WI, onTap: WI ? null : function (i) { earned(i) } });
       var q = function (s, f) { var x = b.querySelector(s); if (x) x.onclick = f };
       q('#ebAdd', function () { addTx() }); q('#ebGoal', goalOpen); q('#ebGoalT', RO ? null : goalOpen); q('#ebNewO', function () { editOrder({}) }); q('#ebRep', report); q('#ebOrdT', function () { VIEW = 'orders'; hap('sel'); render() });
-      q('#ebStB', statusSheet); q('#ebStC', statusSheet); q('#ebCard', statusSheet); q('#ebWho', whoSees); q('#ebMore', function () { HL += 30; rBank() });
+      q('#ebStB', statusSheet); q('#ebStC', statusSheet); q('#ebCard', statusSheet); q('#ebWho', whoSees); 
       q('#ebPraise', function () { chatGo(O, wUid(), 'Видел твой банк' + NB + '— ' + rub(D.total) + ' на' + NB + 'дизайне, это сильно! Так держать 💜') }); q('#ebWrite', function () { hap('sel'); chatGo(O, wUid()) });
       b.querySelectorAll('#ebPer button').forEach(function (x) { x.onclick = function () { BP = x.getAttribute('data-p'); hap('sel'); rBank() } });
-      b.querySelectorAll('#ebHF button').forEach(function (x) { x.onclick = function () { HF = x.getAttribute('data-f'); HL = 12; hap('sel'); var y = window.scrollY; rBank(); try { window.scrollTo(0, y) } catch (e) {} } });
+      bindHist(b);
       b.querySelectorAll('[data-tx]').forEach(function (r) { r.onclick = function () { txDetail(+r.getAttribute('data-tx')) } });
       b.querySelectorAll('[data-paid]').forEach(function (r) { r.onclick = function (e) { e.stopPropagation(); var s = D.SOON.filter(function (z) { return z.id === +r.getAttribute('data-paid') })[0]; if (s) paidSheet(s, true) } });
       b.querySelectorAll('[data-cf]').forEach(function (r) { r.onclick = function () { confTx(+r.getAttribute('data-cf'), r) } });
