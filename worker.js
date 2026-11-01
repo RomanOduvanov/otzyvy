@@ -2281,8 +2281,9 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     return json(req, { ok: true, id: r.id, notified, dup: !!dup }) }
   /* 02.11: баллы, поставленные в ленте/кабинете, по id ответов (последняя запись «принято» на ответ) */
   if (path === '/cur/hwpts') { const ids = String(u.searchParams.get('ids') || '').split(',').map(Number).filter(okUid).slice(0, 300); if (!ids.length) return json(req, { ok: true, pts: {} });
-    const rs = await qAll(env.DB.prepare('SELECT answer_id, status, pts, x2, base, at FROM cur_hw WHERE answer_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').bind(...ids)), out = {};
-    for (const x of rs) out[x.answer_id] = x.status === 'accept' ? { pts: x.pts | 0, x2: x.x2 ? 1 : 0, base: x.base == null ? x.pts | 0 : x.base | 0, at: x.at } : null;
+    const rs = await qAll(env.DB.prepare('SELECT answer_id, status, pts, x2, base, at, cid FROM cur_hw WHERE answer_id IN (' + ids.map(() => '?').join(',') + ') ORDER BY id').bind(...ids)), out = {};
+    const fst = {}; for (const x of rs) if (x.status === 'accept' && fst[x.answer_id] == null) fst[x.answer_id] = x; /* кто принял — первая запись «принято»; баллы — последняя */
+    for (const x of rs) out[x.answer_id] = x.status === 'accept' ? { pts: x.pts | 0, x2: x.x2 ? 1 : 0, base: x.base == null ? x.pts | 0 : x.base | 0, at: x.at, by: (c => c ? (CURATORS.find(k => k.id === c) || {}).full || c : 'Роман')((fst[x.answer_id] || x).cid), acc_at: (fst[x.answer_id] || x).at } : null;
     for (const k of Object.keys(out)) if (!out[k]) delete out[k]; return json(req, { ok: true, pts: out }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/cur/hwstat') { const days = Math.max(1, Math.min(90, +u.searchParams.get('days') || 30)), cq = adm ? (okCid(u.searchParams.get('cid')) ? u.searchParams.get('cid') : 'all') : s.cid;
     const rs = await qAll(cq === 'all' ? env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE at>=? AND COALESCE(fix,0)=0').bind(now - days * 864e5) : env.DB.prepare('SELECT cid, status, sent_at, at FROM cur_hw WHERE cid=? AND at>=? AND COALESCE(fix,0)=0').bind(cq, now - days * 864e5));
