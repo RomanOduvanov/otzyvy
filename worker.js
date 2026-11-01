@@ -1681,9 +1681,24 @@ async function bankApi(env, req, path) {
   if (path === '/bank/ref' && req.method === 'POST') { const o = await body(), h = String(o.h || '').replace(/^c/, ''); if (!/^[0-9a-f]{10}$/.test(h)) return json(req, { ok: false, err: 'Ссылка неверная' }, 400);
     await ensure(env); const c = await refCard(env, h); if (!c) return json(req, { ok: false, err: 'Ссылка устарела' }, 404); const tu = o.init ? await tgInitCheck(env, String(o.init)) : null;
     if (tu && tu.id) await refSave(env, h, String(tu.id), c); return json(req, { ok: true, card: { name: c.name, sum: c.sum, status: c.status }, links: c.links, text: refText(c) }) }
+  /* 01.11: картинка «Поделиться картой» по ссылке — для сторис и сообщения с фото в чат (Telegram забирает её сам). Хранится 3 дня */
+  const shm = path.match(/^\/bank\/share\/f\/([0-9a-f]{20})\.jpg$/);
+  if (shm) { const r = await env.DB.prepare('SELECT data FROM share_img WHERE id=?').bind(shm[1]).first(); if (!r) return new Response('not found', { status: 404 });
+    const b = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)); return new Response(b, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=259200' } }) }
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
   const uid = W.uid; if (!uid) return deny(req);
   if (W.ro && path !== '/bank/summary') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения, без контактов клиентов и файлов' }, 403);
+  /* 01.11: «В чат» — только картинка: сообщение-фото (подпись и кнопка «Хочу так же» внутри него) через savePreparedInlineMessage, в приложении tg.shareMessage(id) */
+  if ((path === '/bank/share/img' || path === '/bank/share/msg') && req.method === 'POST') { const o = await body(), m = String(o.data || '').match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+    if (!m || m[1].length > 1.8e6) return json(req, { ok: false, err: 'Картинка не подошла' }, 400);
+    const id = rnd().replace(/[^0-9a-f]/g, '').padEnd(20, '0').slice(0, 20), now = Date.now();
+    await env.DB.batch([env.DB.prepare('DELETE FROM share_img WHERE at < ?').bind(now - 3 * 864e5), env.DB.prepare('INSERT OR REPLACE INTO share_img (id, uid, data, at) VALUES (?,?,?,?)').bind(id, uid, m[1], now)]);
+    const img = u.origin + '/bank/share/f/' + id + '.jpg'; if (path === '/bank/share/img') return json(req, { ok: true, url: img });
+    const tu = await tgInitCheck(env, String(o.init || '')); if (!tu || !tu.id) return json(req, { ok: false, err: 'init', url: img }, 401);
+    const link = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
+    const j = await tg(env, 'savePreparedInlineMessage', { user_id: tu.id, allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
+      result: { type: 'photo', id: id, photo_url: img, thumbnail_url: img, caption: String(o.caption || '').slice(0, 900), reply_markup: { inline_keyboard: [[{ text: 'Хочу так же', url: link }]] } } });
+    return json(req, j && j.ok && j.result ? { ok: true, id: j.result.id, url: img } : { ok: false, err: (j && j.description) || 'tg', url: img }) }
   if (path === '/bank/summary') {
     const [tx, od, fl, gl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id, conf, conf_by, conf_at FROM bank_tx WHERE uid=? AND del_at IS NULL ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
       env.DB.prepare('SELECT id, client, tg, product, price, cur, deadline, dl_tz, status, brief, src, at, upd, pay_at, chk, prepay FROM bank_order WHERE uid=? ORDER BY CASE status WHEN \'done\' THEN 2 WHEN \'cancel\' THEN 3 ELSE 1 END, COALESCE(deadline, \'9999\'), id DESC LIMIT 500').bind(uid),
@@ -1779,6 +1794,7 @@ async function bankApi(env, req, path) {
 const BKS_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS bank_goal (uid INTEGER PRIMARY KEY, sum INTEGER, until TEXT, show INTEGER DEFAULT 1, at TEXT)',
   'CREATE TABLE IF NOT EXISTS bank_share (h TEXT PRIMARY KEY, uid INTEGER NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS share_img (id TEXT PRIMARY KEY, uid INTEGER, data TEXT, at INTEGER)',
   'CREATE TABLE IF NOT EXISTS bank_ref (h TEXT NOT NULL, chat TEXT NOT NULL, at TEXT, PRIMARY KEY (h, chat))',
   'CREATE TABLE IF NOT EXISTS chat_msg (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, cid TEXT, dir TEXT NOT NULL, text TEXT, file_id INTEGER, reply_to INTEGER, via TEXT, who TEXT, at INTEGER NOT NULL, read_at INTEGER, del INTEGER DEFAULT 0)',
   'CREATE INDEX IF NOT EXISTS chat_msg_uid ON chat_msg (uid, id)',
