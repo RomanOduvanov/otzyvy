@@ -1702,8 +1702,14 @@ async function bankApi(env, req, path) {
       return json(req, j && j.ok ? { ok: true } : { ok: false, err: (j && j.description) || 'tg', url: img }) }
     const tu = await tgInitCheck(env, String(o.init || '')); if (!tu || !tu.id) return json(req, { ok: false, err: 'init', url: img }, 401);
     const link = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
+    /* 02.11: по ссылке (photo_url) Telegram сохранял картинку не целиком — в чате половина серая. Теперь сначала загружаем файл в Telegram сами
+       (тихо в личку ученику с ботом, сообщение сразу удаляем) и отдаём готовый file_id; не вышло — как раньше, по ссылке */
+    let fid = null; try { const bytes = Uint8Array.from(atob(m[1]), c => c.charCodeAt(0)), fd = new FormData(); fd.append('chat_id', String(tu.id)); fd.append('disable_notification', 'true'); fd.append('photo', new Blob([bytes], { type: 'image/jpeg' }), 'card.jpg');
+      const r0 = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/sendPhoto', { method: 'POST', body: fd }), j0 = await r0.json().catch(() => ({ ok: false }));
+      if (j0.ok && j0.result) { const ph = j0.result.photo || []; fid = ph.length ? ph[ph.length - 1].file_id : null; await tg(env, 'deleteMessage', { chat_id: tu.id, message_id: j0.result.message_id }) } else await logIt(env, 'tg-err', uid, 'share sendPhoto ' + (j0.description || r0.status)) } catch (e) {}
+    const kb = { inline_keyboard: [[{ text: 'Хочу так же', url: link }]] }, cap = String(o.caption || '').slice(0, 900);
     const j = await tg(env, 'savePreparedInlineMessage', { user_id: tu.id, allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
-      result: { type: 'photo', id: id, photo_url: img, thumbnail_url: img, caption: String(o.caption || '').slice(0, 900), reply_markup: { inline_keyboard: [[{ text: 'Хочу так же', url: link }]] } } });
+      result: fid ? { type: 'photo', id: id, photo_file_id: fid, caption: cap, reply_markup: kb } : { type: 'photo', id: id, photo_url: img, thumbnail_url: img, caption: cap, reply_markup: kb } });
     return json(req, j && j.ok && j.result ? { ok: true, id: j.result.id, url: img } : { ok: false, err: (j && j.description) || 'tg', url: img }) }
   if (path === '/bank/summary') {
     const [tx, od, fl, gl] = await env.DB.batch([env.DB.prepare('SELECT id, amount, cur, rub, rate, day, what, src, client, order_id, file_id, conf, conf_by, conf_at FROM bank_tx WHERE uid=? AND del_at IS NULL ORDER BY day DESC, id DESC LIMIT 1000').bind(uid),
