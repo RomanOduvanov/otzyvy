@@ -1698,7 +1698,10 @@ async function bankApi(env, req, path) {
     if (path === '/bank/share/tg') { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(uid).first();
       if (!st || !st.tg_chat) return json(req, { ok: false, err: 'nolink', url: img });
       const lk = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
-      const j = await tg(env, 'sendPhoto', { chat_id: st.tg_chat, photo: img, caption: String(o.caption || '').slice(0, 900), reply_markup: { inline_keyboard: [[{ text: 'Хочу так же', url: lk }]] } });
+      const fd = new FormData(); fd.append('chat_id', String(st.tg_chat)); fd.append('caption', String(o.caption || '').slice(0, 900)); fd.append('reply_markup', JSON.stringify({ inline_keyboard: [[{ text: 'Хочу так же', url: lk }]] }));
+      fd.append('photo', new Blob([Uint8Array.from(atob(m[1]), c => c.charCodeAt(0))], { type: 'image/jpeg' }), 'card.jpg'); /* файлом, а не ссылкой — Telegram получает картинку целиком */
+      const r1 = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/sendPhoto', { method: 'POST', body: fd }), j = await r1.json().catch(() => ({ ok: false }));
+      if (!j.ok) await logIt(env, 'tg-err', uid, 'share/tg ' + (j.description || r1.status));
       return json(req, j && j.ok ? { ok: true } : { ok: false, err: (j && j.description) || 'tg', url: img }) }
     const tu = await tgInitCheck(env, String(o.init || '')); if (!tu || !tu.id) return json(req, { ok: false, err: 'init', url: img }, 401);
     const link = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
