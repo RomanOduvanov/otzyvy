@@ -1689,11 +1689,17 @@ async function bankApi(env, req, path) {
   const uid = W.uid; if (!uid) return deny(req);
   if (W.ro && path !== '/bank/summary') return json(req, { ok: false, err: 'Команда школы видит банк ученика только для чтения, без контактов клиентов и файлов' }, 403);
   /* 01.11: «В чат» — только картинка: сообщение-фото (подпись и кнопка «Хочу так же» внутри него) через savePreparedInlineMessage, в приложении tg.shareMessage(id) */
-  if ((path === '/bank/share/img' || path === '/bank/share/msg') && req.method === 'POST') { const o = await body(), m = String(o.data || '').match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+  if ((path === '/bank/share/img' || path === '/bank/share/msg' || path === '/bank/share/tg') && req.method === 'POST') { const o = await body(), m = String(o.data || '').match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
     if (!m || m[1].length > 1.8e6) return json(req, { ok: false, err: 'Картинка не подошла' }, 400);
     const id = rnd().replace(/[^0-9a-f]/g, '').padEnd(20, '0').slice(0, 20), now = Date.now();
     await env.DB.batch([env.DB.prepare('DELETE FROM share_img WHERE at < ?').bind(now - 3 * 864e5), env.DB.prepare('INSERT OR REPLACE INTO share_img (id, uid, data, at) VALUES (?,?,?,?)').bind(id, uid, m[1], now)]);
     const img = u.origin + '/bank/share/f/' + id + '.jpg'; if (path === '/bank/share/img') return json(req, { ok: true, url: img });
+    /* 01.11: сайт (нет Telegram WebApp) — бот присылает картинку ученику в личку, оттуда он пересылает её в любой чат */
+    if (path === '/bank/share/tg') { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(uid).first();
+      if (!st || !st.tg_chat) return json(req, { ok: false, err: 'nolink', url: img });
+      const lk = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
+      const j = await tg(env, 'sendPhoto', { chat_id: st.tg_chat, photo: img, caption: String(o.caption || '').slice(0, 900), reply_markup: { inline_keyboard: [[{ text: 'Хочу так же', url: lk }]] } });
+      return json(req, j && j.ok ? { ok: true } : { ok: false, err: (j && j.description) || 'tg', url: img }) }
     const tu = await tgInitCheck(env, String(o.init || '')); if (!tu || !tu.id) return json(req, { ok: false, err: 'init', url: img }, 401);
     const link = /^https:\/\/t\.me\/oduvanov_school_bot(\?start=c[0-9a-f]{10})?$/.test(String(o.link || '')) ? String(o.link) : 'https://t.me/oduvanov_school_bot';
     const j = await tg(env, 'savePreparedInlineMessage', { user_id: tu.id, allow_user_chats: true, allow_bot_chats: true, allow_group_chats: true, allow_channel_chats: true,
