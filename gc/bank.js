@@ -496,7 +496,10 @@
       q('#ebAdd', function () { addTx() }); q('#ebGoal', goalOpen); q('#ebGoalT', RO ? null : goalOpen); q('#ebNewO', function () { editOrder({}) }); q('#ebRep', report); q('#ebOrdT', function () { VIEW = 'orders'; hap('sel'); render() });
       q('#ebStB', statusSheet); q('#ebStC', statusSheet); q('#ebCard', statusSheet); q('#ebWho', whoSees); 
       q('#ebPraise', function () { chatGo(O, wUid(), 'Видел твой банк' + NB + '— ' + rub(D.total) + ' на' + NB + 'дизайне, это сильно! Так держать 💜') }); q('#ebWrite', function () { hap('sel'); chatGo(O, wUid()) });
-      b.querySelectorAll('#ebPer button').forEach(function (x) { x.onclick = function () { BP = x.getAttribute('data-p'); hap('sel'); rBank() } });
+      /* 01.11 (Роман: «По месяцам / По неделям» обновляет всю страницу): переключаем только график */
+      b.querySelectorAll('#ebPer button').forEach(function (x) { x.onclick = function () { var p = x.getAttribute('data-p'); if (p === BP) return; BP = p; hap('sel');
+        b.querySelectorAll('#ebPer button').forEach(function (y) { y.classList.toggle('on', y === x) });
+        var c2 = b.querySelector('#ebChart'); if (!c2) { rBank(); return } c2.innerHTML = ''; barChart(c2, series(BP), { h: WI ? 230 : 170, sm: !WI, onTap: WI ? null : function (i) { earned(i) } }) } });
       bindHist(b);
       b.querySelectorAll('[data-tx]').forEach(function (r) { r.onclick = function () { txDetail(+r.getAttribute('data-tx')) } });
       b.querySelectorAll('[data-paid]').forEach(function (r) { r.onclick = function (e) { e.stopPropagation(); var s = D.SOON.filter(function (z) { return z.id === +r.getAttribute('data-paid') })[0]; if (s) paidSheet(s, true) } });
