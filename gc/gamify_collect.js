@@ -116,11 +116,14 @@ window.__gm = {done: false, step: 'start', err: []};
   console.log('other:', other.map(o => o.title + ' — ' + o.lessons + ' ур., учеников ' + Object.keys(o.users).length));
   // 3) домашки: все ответы с уровнем и статусом
   G.step = 'access';
-  const access = {}; const aq = Object.keys(students);
+  const access = {}, taccess = {}; const aq = Object.keys(students);
   async function aw() { while (aq.length) { const id = aq.shift(); try {
     const t = dp(await get('/pl/user/user/get-user-product-data?id=' + id)).body.innerText.replace(/\s+/g, ' ');
     const m = t.match(/#\d+\. AI-дизайнер с 0 до PRO 2\.0 (\S+)(.{0,80}?)Открывает/);
     access[id] = m ? (m[1] + ' ' + m[2].trim()) : '';
+    /* 01.11: доступ к остальным тренингам (Спринт, Практикум…) — для «Мои покупки» в приложении: {«название тренинга»: «Активна с … до …» | «Активна Период не ограничен»} */
+    const ta = {}; for (const x of t.matchAll(/#\d+\. .{1,120}? (Активна|Завершена|Приостановлена|Не активна|Отменена)(.{0,60}?)Открывает доступ к тренингу «([^»]+)»/g)) { const k = x[3].trim(), v = x[1] + ' ' + x[2].trim(); if (!ta[k] || /^Активна/.test(v)) ta[k] = v }
+    taccess[id] = ta;
   } catch (e) { access[id] = ''; } } }
   await Promise.all([1,2,3,4,5].map(aw));
   // тариф: лучший оплаченный (Завершен / Частично оплачен) заказ «AI-дизайнер с 0 до PRO 2.0 - <тариф>»
@@ -200,18 +203,18 @@ window.__gm = {done: false, step: 'start', err: []};
   console.log('анкеты → опросы:', Object.keys(anketaSurvey).length);
   // 6) 29.10: кто из сотрудников видит «Статистику» без ключа — право «Может видеть статистику» и нет запрета «НЕ видит списка заказов» (список сотрудников — из поля «ответственный» любого заказа)
   G.step = 'staff';
-  const statUids = [];
+  const statUids = [], staffAll = [];
   try { const dl = await get('/pl/sales/deal/index'); let sel = null;
     for (const d of [...new Set([...dl.matchAll(/deal\/update\/id\/(\d+)/g)].map(m => m[1]))].slice(0, 10)) {
       const up = ((await get('/sales/control/deal/update/id/' + d)).match(/userProduct\/update\/id\/(\d+)/) || [])[1]; if (!up) continue;
       sel = dp(await get('/sales/control/userProduct/update/id/' + up)).querySelector('select[name="UserProduct[response_teacher_id]"]'); if (sel) break }
-    for (const o of sel ? [...sel.options] : []) { const id = +o.value; if (!id) continue;
+    for (const o of sel ? [...sel.options] : []) { const id = +o.value; if (!id) continue; staffAll.push(id);
       const a = dp(await get('/user/control/user/assignments/id/' + id)), ck = n => { const e = a.querySelector('input[type=checkbox][name="assignments[' + n + ']"]'); return !!(e && e.checked) };
       if (ck('can:user_statistic') && !ck('deal:disabled_list')) statUids.push(id) }
   } catch (e) { G.err.push('staff ' + e) }
   console.log('видят статистику:', statUids.length);
   G.step = 'ship';
-  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, anketaSurvey, statUids, access, tariff, amz, passed, stops: [...stops], other});
+  const out = JSON.stringify({at: new Date().toISOString(), students, subs, hw, surveys, surveyTitles: S, anketaSurvey, statUids, staffAll, access, taccess, tariff, amz, passed, stops: [...stops], other});
   const s = {uploadScript: 'x'}; getUploadifySecretLink([], s);
   const fd = new FormData(); fd.append('fullAnswer', 'true'); fd.append('Filedata', new File([out], 'gm.txt', {type: 'text/plain'}));
   G.url = await new Promise(res => { const x = new XMLHttpRequest(); x.open('POST', s.uploadScript); x.onload = () => { try { res(JSON.parse(x.responseText).download_url); } catch (e) { res('ERR'); } }; x.onerror = () => res('xhrerr'); x.send(fd); });
