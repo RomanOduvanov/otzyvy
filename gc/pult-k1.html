@@ -227,6 +227,7 @@ html.kk #kNav{display:flex}
 #t-mo .more{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 #t-mo .panel{background:var(--s1);border:1px solid var(--hair);border-radius:22px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0;text-align:left;color:#fff;cursor:pointer;min-height:110px}
 #t-mo .panel:hover{border-color:rgba(195,139,255,.45)}#t-mo .panel h4{margin:0;font-weight:500;font-size:15px;display:flex;align-items:center;gap:8px}#t-mo .panel .ex{font-size:13px;color:var(--ink3)}#t-mo .mOnly{display:none}
+@media (min-width:768px){html.kk .kMain>.ctl{display:none}}
 @media (max-width:1180px){#t-td .cols{grid-template-columns:minmax(0,1fr)}#t-td .cnt{grid-template-columns:repeat(4,minmax(0,1fr))}#t-mo .more{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1100px){html.kk #app.wrap{grid-template-columns:200px minmax(0,1fr)}html.kk .kMain{padding:18px 20px 120px}}
 @media (max-width:767px){
@@ -240,7 +241,7 @@ html.kk #kNav{display:flex}
   #t-td .it .hd b{font-size:15px;width:100%}#t-td .it .hd .when{display:none}#t-td .it .ctx{font-size:12px}
   #t-td .why,#t-td .it .ac{grid-column:1/-1}#t-td .why{font-size:13.5px;margin-top:4px}
   #t-td .it .ac .sp{display:none}#t-td .it .ac .b1{flex:1}#t-td .it .ac .b2.sm{display:none}
-  #t-td .it .ac .b3{height:40px;border-radius:12px;padding:0 12px;background:var(--s2);border:1px solid var(--hair);color:#fff}#t-td .b3 .lg{display:none}#t-td .b3 .shr{display:inline}
+  #t-td .it .ac .b3{height:40px;border-radius:12px;padding:0 12px;background:var(--s2);border:1px solid var(--hair);color:#fff}#t-td .b3 .lgT{display:none}#t-td .b3 .shr{display:inline}
   #t-mo .more{grid-template-columns:minmax(0,1fr)}#t-mo .mOnly{display:flex}#t-mo .panel{min-height:0}}
 </style></head><body>
 <div id="login" class="login hid"><div class="lg">
@@ -787,7 +788,7 @@ function tdIt(x,dn){var A=dn?x.sig:tdAct(x),k=x.k,w=A.filter(function(s){return 
   var b1=chat?'<button class="b1" data-a="chat">'+(k==='wait'?'Ответить':'Написать в&nbsp;чат')+'</button>':'<button class="b1" data-a="ai">✨ Написать с&nbsp;ИИ</button>';
   var b2=k==='wait'&&x.tgu?'<a class="b2 sm" target="_blank" rel="noopener" href="https://t.me/'+esc(x.tgu)+'">Открыть в&nbsp;Telegram</a>':!chat?'<button class="b2 sm" data-a="chat">Чат</button>':'';
   var ac=dn?'<span class="sp"></span><span class="ex">'+(x.ack&&x.ack.until?'отложено до '+kWhen(x.ack.until)+(kDay(x.ack.until)==='Сегодня'?'':' '+kTm(x.ack.until)):'обработано'+(x.ack&&x.ack.at?' · '+kWhen(x.ack.at):''))+'</span><button class="b3" data-a="undo">Вернуть</button>'
-    :'<span class="sp"></span><button class="b3" data-a="done"><span class="lg">Обработано</span><span class="shr">Готово</span></button><button class="b3" data-a="snz" aria-haspopup="menu"><span class="lg">'+(k==='gone'?'Знаю, в&nbsp;отпуске до…':'Отложить')+' ▾</span><span class="shr" aria-label="Отложить">⏰</span></button>';
+    :'<span class="sp"></span><button class="b3" data-a="done"><span class="lgT">Обработано</span><span class="shr">Готово</span></button><button class="b3" data-a="snz" aria-haspopup="menu"><span class="lgT">'+(k==='gone'?'Знаю, в&nbsp;отпуске до…':'Отложить')+' ▾</span><span class="shr" aria-label="Отложить">⏰</span></button>';
   return '<article class="it'+(dn?' done kept':'')+'" data-u="'+x.uid+'" data-k="'+k+'">'+kAvH(x.name)+'<div><div class="hd"><b>'+esc(x.name)+'</b>'+A.map(function(s){return tdChip(s)}).join('')+when+'</div><div class="ctx">'+esc(ctx)+'</div></div>'
     +'<div class="why"><i>→</i><span>'+esc(x.why)+'</span></div><div class="ac">'+b1+b2+ac+'</div></article>'}
 function tdHwIt(q){return '<article class="it" data-hw="1"><span class="av" style="background:#ffc29a">ДЗ</span><div><div class="hd"><b>Очередь ДЗ</b><span class="sg w">'+q.n+'&nbsp;'+plr(q.n,'ждёт','ждут','ждут')+' проверки</span>'+(q.old?'<span class="sg w">'+q.old+' дольше 48&nbsp;ч</span>':'')+'<span class="when">посчитано '+kAgoS(q.at)+'</span></div><div class="ctx">Лента ответов на&nbsp;сайте школы</div></div>'
