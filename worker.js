@@ -2230,7 +2230,7 @@ async function bankStaffApi(env, req, path, u) { const s = await staffSess(env, 
   return json(req, { ok: false, err: 'not found' }, 404) }
 
 /* ---------- кабинет куратора: /cur/* (сессия команды; куратор — только свои ученики, админ — все) ---------- */
-const CUR_API = ['/cur/alerts', '/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hwpts', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data'];
+const CUR_API = ['/cur/alerts', '/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hwpts', '/cur/assign', '/cur/mass', '/cur/admin', '/cur/queue', '/rev/data', '/rev/hide'];
 /* 30.10 (QA №7, №13): очередь ДЗ. Её знает только GetCourse (лента ответов входа куратора), поэтому кабинет «Проверка ДЗ» на сайте (?fs=cur)
    после загрузки ленты и после каждого «Принять / Вернуть» присылает POST /cur/queue {n, old48, oldest, by?:{<cid>|none:{n, old48, oldest}}} (by — только у Романа:
    его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
@@ -2374,6 +2374,9 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     const qa = Q.all; return json(req, { ok: true, days: 30, curators, no_curator: none, no_curator_n: none.length, hw_wait: qa ? qa.n : null, hw_old: qa ? qa.old48 || 0 : null, hw_oldest: qa ? qa.oldest || null : null, hw_q_at: qa ? qa.at : null, hw_part: !!(qa && qa.part) }, 200, { 'Cache-Control': 'no-store' }) }
   /* 31.10 (Роман, задача 106): вкладка «Отзывы» пульта. Админ — всё: звёзды уроков и анкеты модулей (отчёт «Голос учеников»), Нейро 👍/👎, кураторы, лента.
      Куратор — только соревнование кураторов: звёзды ответам, время ответа (своё и других). Оценок уроков и анкет куратор не получает (сервер их не отдаёт). */
+  if (path === '/rev/hide' && req.method === 'POST') { if (!adm) return json(req, { ok: false, err: 'Только Роман' }, 403); const k = String(o.k || '').slice(0, 400); if (!k) return json(req, { ok: false, err: 'нет отзыва' }, 400);
+    const H = (await kvGet(env, 'revhide')) || {}; if (o.hide) H[k] = { why: String(o.why || 'Убрал Роман').slice(0, 200), by: 'Роман', at: now }; else { delete H[k]; const C = (await kvGet(env, 'revai')) || {}; C[k] = { v: 'ok', why: 'Вернул Роман', at: now }; await kvPut(env, 'revai', C) }
+    await kvPut(env, 'revhide', H); return json(req, { ok: true }) }
   if (path === '/rev/data') { const days = [7, 30].includes(+u.searchParams.get('days')) ? +u.searchParams.get('days') : 0, from = days ? now - days * 864e5 : 0;
     const cs = await curStats(env, days || 3650), [rt, rd] = await env.DB.batch([env.DB.prepare('SELECT cid, stars, COUNT(*) n FROM chat_rate WHERE at>=? GROUP BY cid, stars').bind(from),
       env.DB.prepare('SELECT cid, COUNT(DISTINCT uid) n FROM chat_rate WHERE at>=? GROUP BY cid').bind(from)]), dist = {}, who = {};
@@ -2382,16 +2385,17 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
       return { cid: c.id, name: c.full, short: c.name, photo: 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + c.id + '.jpg', me: !adm && s.cid === c.id, stars: n ? Math.round(d.reduce((a, b, i) => a + b * (i + 1), 0) / n * 100) / 100 : null, stars_n: n, students_n: who[c.id] || 0, dist: d,
         median_min: k.median == null ? null : Math.max(1, Math.round(k.median / 60)), in2h: k.in2h == null ? null : k.in2h, answered: k.answered || 0, efir: null } });
     const out = { ok: true, role: adm ? 'admin' : 'curator', days, curators }; if (!adm) return json(req, out, 200, { 'Cache-Control': 'no-store' });
-    const D = await revSchool(env); if (D) { const W = D.week || {}, A = D.all || {}, M = {}; for (const m of D.mods || []) M[m.id] = m;
+    const D0 = await revSchool(env); if (D0 && u.searchParams.get('ai') !== '0') await revAiCheck(env, D0, 15).catch(() => []); const H = (await kvGet(env, 'revhide')) || {}, D = revAdj(D0, H); if (D) { const W = D.week || {}, A = D.all || {}, M = {}; for (const m of D.mods || []) M[m.id] = m;
       const mods = (D.mods || []).map(m => { const g = (D.agg || {})[m.id] || {}, sum = (f, w) => Object.values(g).reduce((t, x) => t + (x[f] != null ? x[f] * x[w] : 0), 0), cnt = w => Object.values(g).reduce((t, x) => t + (x[w] || 0), 0), nr = cnt('n_r'), ns = cnt('n_s');
         const ws = w => Object.values(g).reduce((t, x) => t + (x.stars != null && w === 'n_r' ? x.n_r : 0), 0), wi = Object.values(g).reduce((t, x) => t + (x.interest != null ? x.n_s : 0), 0);
         return { id: m.id, name: m.name, group: m.group, stars: ws('n_r') ? Math.round(sum('stars', 'n_r') / ws('n_r') * 100) / 100 : null, n_r: nr, interest: wi ? Math.round(sum('interest', 'n_s') / wi * 100) / 100 : null, n_s: ns } }).filter(m => m.n_r || m.n_s);
       const dfrom = days ? new Date(from + 3 * 3600e3).toISOString().slice(0, 10) : '';
       const feed = [], FK = {}; for (const c of (D.comments || []).filter(c => !dfrom || c.d >= dfrom).slice(0, 800)) { const src = c.src === 'Оценка урока' ? 'lesson' : 'anketa', k = src === 'anketa' ? [c.who, c.d, c.m, c.s].join('|') : null; /* анкета: ответы на «почему» и «вопросы» — одна запись */
         if (k && FK[k]) { if (c.t && FK[k].t.indexOf(c.t) < 0) FK[k].t = (FK[k].t ? FK[k].t + ' · ' : '') + c.t; continue }
-        const x = { d: c.d, who: c.who, src, q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', low: revLow(c) }; if (k) FK[k] = x; feed.push(x) }
+        const x = { k: revKey(c), d: c.d, who: c.who, src, q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', low: revLow(c) }; if (k) FK[k] = x; feed.push(x) }
+      const hid = [], HK = {}; for (const c of D0.comments || []) { const hk = revKey(c), h = H[hk]; if (!h) continue; if (HK[hk]) { if (c.t && HK[hk].t.indexOf(c.t) < 0) HK[hk].t += ' · ' + c.t; continue } HK[hk] = { k: hk, d: c.d, who: c.who, src: c.src === 'Оценка урока' ? 'lesson' : 'anketa', q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', why: h.why, by: h.by, hat: h.at }; hid.push(HK[hk]) }
       const seen = new Set(), low = feed.filter(c => c.low && !seen.has(c.who + c.d + c.src + c.mod) && seen.add(c.who + c.d + c.src + c.mod));
-      out.school = { updated: D.updated, week: W.ratings != null ? { stars: W.stars, n_r: W.ratings, n_s: W.surveys, interest: W.interest } : null, all: { stars: A.stars, n_r: A.n_r, n_s: A.n_s, interest: A.interest, useful: A.useful, apply: A.apply, dist: A.dist || null }, mods, feed: feed.slice(0, 300), low: low.slice(0, 100), low_n: low.length } }
+      out.school = { updated: D.updated, week: W.ratings != null ? { stars: W.stars, n_r: W.ratings, n_s: W.surveys, interest: W.interest } : null, all: { stars: A.stars, n_r: A.n_r, n_s: A.n_s, interest: A.interest, useful: A.useful, apply: A.apply, dist: A.dist || null }, mods, feed: feed.slice(0, 300), low: low.slice(0, 100), low_n: low.length, hidden: hid.sort((a, b) => a.d < b.d ? 1 : -1).slice(0, 200) } }
     try { const f = await env.DB.prepare('SELECT SUM(CASE WHEN vote>0 THEN 1 ELSE 0 END) up, SUM(CASE WHEN vote<0 THEN 1 ELSE 0 END) down FROM ai_fb WHERE at>=?').bind(from).first(); const up = (f && f.up) || 0, dn = (f && f.down) || 0; out.neuro = { up, down: dn, share: up + dn ? Math.round(up / (up + dn) * 100) : null } } catch (e) { out.neuro = null }
     const fl = await qAll(env.DB.prepare('SELECT r.mid, r.uid, r.cid, r.stars, r.at, f.reasons, f.text, s.name FROM chat_rate r LEFT JOIN chat_fb f ON f.mid=r.mid LEFT JOIN student s ON s.uid=r.uid WHERE r.at>=? AND r.stars<=3 ORDER BY r.at DESC LIMIT 40').bind(from));
     out.chat_low = fl.filter(x => !isStaffUid(env, x.uid)).map(x => ({ mid: x.mid, uid: x.uid, name: x.name, cid: x.cid, stars: x.stars, at: x.at, reasons: x.reasons, text: x.text }));
@@ -2401,6 +2405,31 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
 /* ---------- Отзывы (31.10, задача 106): данные отчёта «Голос учеников» (otzyvy/index.html, сборщик) — кэш 6 ч в kv revsrc; бот админам ----------
    Сразу: анкета модуля ниже 5 из 10 или оценка урока ★1–2 (как только сборщик их принёс; уже отправленные — kv revsent).
    Понедельник 10:00 МСК: сводка за неделю (kv revweek — день последней отправки, revprev — прошлые цифры для «было»). */
+/* 02.11 (Роман): «мусорные» отзывы не портят статистику. revhide — убранные (Роман вручную или ИИ), revai — вердикты ИИ по низким оценкам.
+   Убранный отзыв не попадает в ленту, «Низкие», уведомления, а его оценка вычитается из средних (модуль, поток, неделя). Ничего не удаляется: «Вернуть» в «Убранных». */
+const revKey = c => [c.src === 'Оценка урока' || c.src === 'lesson' ? 'L' : 'A', c.who, c.d, c.m, c.s, c.src === 'Оценка урока' || c.src === 'lesson' ? c.q : ''].join('|');
+function revAdj(D, H) { if (!D || !H || !Object.keys(H).length) return D; const X = JSON.parse(JSON.stringify(D)), wfrom = addDays(X.updated || dayStr(), -6), done = new Set();
+  const sub = (o, f, nf, sc) => { if (!o || o[f] == null || !(o[nf] > 0)) return; const n = o[nf]; o[f] = n > 1 ? Math.round((o[f] * n - sc) / (n - 1) * 100) / 100 : null; o[nf] = n - 1 };
+  X.comments = (X.comments || []).filter(c => { const k = revKey(c); if (!H[k]) return true; if (done.has(k) || c.score == null) return false; done.add(k);
+    const g = X.agg && X.agg[c.m] && X.agg[c.m][c.s], wk = c.d >= wfrom && X.week;
+    if (c.src === 'Оценка урока') { sub(g, 'stars', 'n_r', c.score); sub(X.all, 'stars', 'n_r', c.score); if (X.all && X.all.dist && X.all.dist[c.score] > 0) { X.all.dist[c.score]--; if (X.all.n_r) X.all.five = Math.round((X.all.dist[5] || 0) / X.all.n_r * 100) } if (wk) sub(X.week, 'stars', 'ratings', c.score) }
+    else { sub(g, 'interest', 'n_s', c.score); sub(X.all, 'interest', 'n_s', c.score); if (wk) sub(X.week, 'interest', 'surveys', c.score) }
+    return false });
+  X.hidden_n = done.size; return X }
+/* ИИ: честная ли низкая оценка. ok — критика качества (остаётся); tech — накладка с материалом (не тот ролик, нет видео) — убираем из статистики, но Роману сообщаем; skip — к качеству не относится */
+async function revAiCheck(env, D, lim) { if (!env.ANTHROPIC_API_KEY || !D) return []; const H = (await kvGet(env, 'revhide')) || {}, C = (await kvGet(env, 'revai')) || {}, T = {}, ord = [];
+  for (const c of D.comments || []) { if (!revLow(c)) continue; const k = revKey(c); if (C[k] || H[k]) continue; if (!T[k]) { T[k] = { c, t: [] }; ord.push(k) } if (c.t && T[k].t.indexOf(c.t) < 0) T[k].t.push(c.t) }
+  const todo = ord.slice(0, lim || 15); if (!todo.length) return []; const M = {}; for (const m of D.mods || []) M[m.id] = m.name;
+  const L = todo.map((k, i) => { const c = T[k].c; return i + '. ' + (c.src === 'Оценка урока' ? 'Урок «' + c.q + '» (модуль «' + (M[c.m] || c.m) + '»), оценка ' + c.score + ' из 5' : 'Анкета модуля «' + (M[c.m] || c.m) + '», интерес ' + c.score + ' из 10') + '. Текст: ' + (T[k].t.join(' / ') || '(без текста)') }).join('\n');
+  const sys = 'Ты проверяешь низкие оценки уроков и анкет онлайн-школы дизайна карточек для маркетплейсов. Для каждой реши, отражает ли она качество урока или модуля. '
+    + 'ok — честная критика: содержание, подача, сложность, темп, нехватка практики или примеров, непонятно объяснено — даже резко. Без текста — тоже ok. '
+    + 'tech — техническая накладка с материалом: не тот ролик, нет видео, урок дублирует другой, битая ссылка, не открывается файл. Это чинят, а не учитывают в оценке. '
+    + 'skip — оценка не про качество: ученик не смотрел урок, уже знает тему и поэтому поставил низко, тема ему не нужна, перепутал шкалу (текст хвалит, а балл низкий), бессмыслица. '
+    + 'Если сомневаешься — ok. Верни ТОЛЬКО JSON: {"r":[{"i":0,"v":"ok|tech|skip","why":"коротко, до 12 слов"}]}';
+  const o = await aiText(env, sys, L, 900), m = String(o.text || '').match(/\{[\s\S]*\}/); if (!m) return []; let R = []; try { R = JSON.parse(m[0]).r || [] } catch (e) { return [] }
+  const now = msNow(), out = []; for (const x of R) { const k = todo[+x.i]; if (!k || !/^(ok|tech|skip)$/.test(x.v)) continue; C[k] = { v: x.v, why: String(x.why || '').slice(0, 160), at: now };
+    if (x.v !== 'ok') { H[k] = { why: (x.v === 'tech' ? 'Тех. накладка: ' : 'Не про качество: ') + C[k].why, by: 'ИИ', at: now, v: x.v }; out.push([k, x.v, C[k].why]) } }
+  await kvPut(env, 'revai', C); await kvPut(env, 'revhide', H); return out }
 const revLow = c => c.score != null && (c.scale === 10 ? c.score < 5 : c.score <= 2);
 let REV_MEM = null;
 async function revSchool(env) { const now = Date.now(); if (REV_MEM && now - REV_MEM.t < 1800e3) return REV_MEM.v; let c = await kvGet(env, 'revsrc');
@@ -2409,14 +2438,17 @@ async function revSchool(env) { const now = Date.now(); if (REV_MEM && now - REV
     c = v ? { t: now, v } : { t: now - 5 * 3600e3, v: (c && c.v) || null }; if (v || c.v) await kvPut(env, 'revsrc', c) }
   REV_MEM = { t: now, v: c.v }; return c.v }
 const PULT_URL = 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=pult';
-async function revJob(env, B) { const D = await revSchool(env); if (!D) return { skip: 'nodata' }; const out = { sent: 0 }, M = {}; for (const m of D.mods || []) M[m.id] = m.name;
+async function revJob(env, B) { const D0 = await revSchool(env); if (!D0) return { skip: 'nodata' }; const out = { sent: 0 }, M = {}; for (const m of D0.mods || []) M[m.id] = m.name;
+  out.ai = (await revAiCheck(env, D0, 15).catch(() => [])).length; const H = (await kvGet(env, 'revhide')) || {}, D = revAdj(D0, H), TECH = {}; for (const c of D0.comments || []) { const h = H[revKey(c)]; if (h && h.v === 'tech' && revLow(c)) TECH[[c.who, c.d, c.src, c.m].join('|')] = [c, h] }
   const key = c => [c.who, c.d, c.src, c.m].join('|'), lowNow = [], seen = new Set(); for (const c of D.comments || []) { if (!revLow(c)) continue; const k = key(c); if (seen.has(k)) continue; seen.add(k); lowNow.push([k, c]) }
   let sent = await kvGet(env, 'revsent'); const A = await admins(env);
   if (!Array.isArray(sent)) { await kvPut(env, 'revsent', lowNow.map(x => x[0])); out.seeded = lowNow.length } /* первый запуск: старые низкие оценки не шлём */
   else { const S = new Set(sent), fresh = lowNow.filter(x => !S.has(x[0])).slice(0, 8);
+    for (const [k, c0] of Object.entries(TECH)) { if (S.has(k)) continue; const [c, h] = c0, t = '🛠 <b>Тех. накладка в уроке</b> (в статистику не идёт)\n' + th(c.who) + ' — урок «' + th(c.q) + '», ★' + c.score + (c.t ? '\n«' + th(String(c.t).slice(0, 300)) + '»' : '') + '\n<i>ИИ: ' + th(h.why.replace(/^Тех\. накладка: /, '')) + '</i>';
+      for (const a of A) { if (!B.ok(1)) break; B.use(1); await tgSend(env, a, t, [[{ text: 'Все отзывы', url: PULT_URL }]]) } sent.push(k); S.add(k); out.sent++ }
     for (const [k, c] of fresh) { const t = (c.src === 'Анкета' ? '📝 <b>Анкета модуля ' + c.score + ' из 10</b>' : '⭐ <b>Низкая оценка ★' + c.score + '</b>') + '\n' + th(c.who) + ' — ' + (c.src === 'Анкета' ? 'модуль «' + th(M[c.m] || c.m) + '»' : 'урок «' + th(c.q) + '»') + (c.t ? '\n«' + th(String(c.t).slice(0, 300)) + '»' : '');
       for (const a of A) { if (!B.ok(1)) break; B.use(1); await tgSend(env, a, t, [[{ text: 'Все отзывы', url: PULT_URL }]]) } sent.push(k); out.sent++ }
-    if (fresh.length) await kvPut(env, 'revsent', sent.slice(-3000)) }
+    if (fresh.length || out.sent) await kvPut(env, 'revsent', sent.slice(-3000)) }
   const m = msk(), day = m.toISOString().slice(0, 10); /* понедельник, с 10:00 МСК — один раз */
   if (m.getUTCDay() === 1 && m.getUTCHours() >= 10 && (await kvGet(env, 'revweek')) !== day) { const W = D.week || {}, P = await kvGet(env, 'revprev') || {}, from = Date.now() - 7 * 864e5, dfrom = new Date(from + 3 * 3600e3).toISOString().slice(0, 10);
     const r = await env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate WHERE at>=?').bind(from).first(), wk = lowNow.filter(x => x[1].d >= dfrom).length;
