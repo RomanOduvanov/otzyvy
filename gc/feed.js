@@ -223,7 +223,7 @@
   /* 30.10 (QA №13) → 03.11: очередь «На проверке» — на сервер (POST /cur/queue {n, old48, oldest}; у Романа ещё by:{<cid>|none:{…}}), чтобы меню пульта, «Сегодня», плашка и бот показывали одно число.
      Считаем свежие (до 14 дней) домашки: у куратора — его ученики, у Романа — все. Шлём после полной загрузки «На проверке» и после «Принять / Вернуть», не чаще раза в минуту */
   var QSENT = 0, QTM = 0;
-  function qStat(A) { var now = Date.now(), o = { n: A.length, old48: 0, oldest: null }; A.forEach(function (x) { if (!x.at) return; if (now - x.at > 48 * 36e5) o.old48++; if (o.oldest == null || x.at < o.oldest) o.oldest = x.at }); return o }
+  function qStat(A) { var now = Date.now(), o = { n: A.length, old48: 0, old72: 0, oldest: null }; A.forEach(function (x) { if (!x.at) return; if (now - x.at > 48 * 36e5) o.old48++; if (now - x.at > 72 * 36e5) o.old72++; /* 03.11 этап 3: срочное «N работ ждут больше 3 дней» */ if (o.oldest == null || x.at < o.oldest) o.oldest = x.at }); return o }
   function qBody() { var H = L.q.filter(function (x) { return x.k === 'hw' && !isOld(x) && (ROLE === 'admin' || !MY || !!MY[x.uid]) }), body = qStat(H);
     if (ROLE === 'admin') { var G2 = {}; H.forEach(function (x) { var c = MY && MY[x.uid] && MY[x.uid].cid || 'none'; (G2[c] = G2[c] || []).push(x) }); body.by = {}; Object.keys(G2).forEach(function (c) { body.by[c] = qStat(G2[c]) }) } return body }
   function qPush() { if (!LOADED.q || !READY || (ROLE !== 'curator' && ROLE !== 'admin')) return; var body = qBody(); if (O.onQueue) try { O.onQueue(body) } catch (e) {}
