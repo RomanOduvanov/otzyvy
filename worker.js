@@ -2289,14 +2289,14 @@ async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() 
   const dd = s => s ? Math.round((d0 - Date.parse(String(s).slice(0, 10) + 'T00:00:00Z')) / 864e5) : null;
   const Q = [env.DB.prepare('SELECT uid, MAX(day) d FROM ev WHERE day>=? GROUP BY uid').bind(addDays(today, -60)),
     env.DB.prepare('SELECT uid, lesson, MAX(at) at FROM lv GROUP BY uid'),
-    env.DB.prepare('SELECT h, day, place FROM snap WHERE day>=? AND day<=?').bind(addDays(today, -8), addDays(today, -7)),
+    env.DB.prepare('SELECT h, day, place, pts FROM snap WHERE day>=? AND day<=?').bind(addDays(today, -8), addDays(today, -7)),
     env.DB.prepare('SELECT mid, uid, cid, stars, at FROM chat_rate WHERE at>=? AND stars<=2 ORDER BY at DESC').bind(now - 14 * 864e5)];
   let R; try { R = await env.DB.batch(Q) } catch (e) { R = []; for (const q of Q) { try { R.push(await q.all()) } catch (x) { R.push({ results: [] }) } } } /* ev / lv появляются с первым маяком */
   const EV = {}, LV = {}, P7 = {}, RT = {}; for (const x of R[0].results || []) EV[x.uid] = x.d; for (const x of R[1].results || []) LV[x.uid] = x;
-  const d7 = addDays(today, -7); for (const x of R[2].results || []) if (!P7[x.h] || x.day === d7) P7[x.h] = x.place | 0;
+  const d7 = addDays(today, -7); for (const x of R[2].results || []) if (!P7[x.h] || x.day === d7) P7[x.h] = { place: x.place | 0, pts: x.pts | 0 };
   for (const x of R[3].results || []) if (!RT[x.uid] && (cid === 'all' || x.cid === cid)) RT[x.uid] = x;
   const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}, byH = {}; for (const r of D.rows) { if (priv) byU[String(r.uid)] = r; byH[r.h] = r }
-  const LM = lessonMap(D), items = [];
+  const LM = lessonMap(D), items = [], DROPN = Math.max(8, Math.ceil(0.12 * (D.n || D.rows.length || 0)));
   for (const x of st) { const r = priv ? byU[String(x.uid)] : byH[await hashUid(x.uid)], h = r && r.h, S = [], K = [];
     const last = [x.last, EV[x.uid]].filter(Boolean).sort().pop() || null, d = dd(last), L = LV[x.uid], lm = L ? LM[+L.lesson] : null;
     if (x.wait) S.push({ k: 'wait', sv: String(x.wait), since: x.wait });
@@ -2307,7 +2307,9 @@ async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() 
     if (S.some(y => y.k === 'stuck' || y.k === 'stall')) K.push({ k: 'stuck', label: S.some(y => y.k === 'stuck') ? 'застрял на уроке' : 'не продвигается', pts: 20 });
     if ((d == null && !(x.week > 0)) || d >= 5) { S.push({ k: 'gone', sv: last || 'never', days: d }); /* нет данных о заходах, но за неделю есть баллы — значит, учится (например, из приложения GetCourse) */ K.push({ k: 'gone', label: 'пропал', pts: 30 }) }
     else if (d >= 3) { S.push({ k: 'cool', sv: last, days: d }); K.push({ k: 'cool', label: 'остывает', pts: 15 }) }
-    const p0 = h ? P7[h] : 0; if (p0 && x.place && x.place - p0 >= 8) { S.push({ k: 'drop', sv: String(x.place), from: p0, to: x.place }); K.push({ k: 'drop', label: 'падение места', pts: 10 }) }
+    /* 03.11 (после проверки: 45 из 70 «упали»): только у кого есть баллы; падение ≥8 мест, если за 7 дней баллы не выросли, иначе — ≥ max(8, 12% потока) */
+    const s7 = h ? P7[h] : null, p0 = s7 ? s7.place : 0, dp = p0 && x.place ? x.place - p0 : 0, grew = s7 ? (x.pts | 0) > s7.pts : true;
+    if (p0 && (x.pts | 0) > 0 && dp >= 8 && (!grew || dp >= DROPN)) { S.push({ k: 'drop', sv: String(x.place), from: p0, to: x.place }); K.push({ k: 'drop', label: 'падение места', pts: 10 }) }
     if (!S.length) continue; const risk = Math.min(100, K.reduce((t, y) => t + y.pts, 0));
     items.push({ uid: x.uid, name: x.name, cur: x.cur, tar: x.tar, tg: !!x.tgid, tgu: x.tgu, place: x.place, lessons: x.lessons, last, days: d, risk, lvl: risk >= 60 ? 'r' : risk >= 35 ? 'w' : '', rk: K, sig: S,
       ctx: lm ? [lm.mod, lm.t ? '«' + lm.t + '»' : '', L && L.at ? (dt => +dt.slice(8) + '\u00a0' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'нояб', 'дек'][+dt.slice(5, 7) - 1])(dayStr(new Date(L.at))) : ''].filter(Boolean).join(' · ') : null }) }
