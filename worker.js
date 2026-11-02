@@ -1463,7 +1463,7 @@ async function appApi(env, req, path) {
   if (path === '/app/api/ai/student' && req.method === 'POST') { const o = await req.json().catch(() => ({})), uid = +o.u; if (!okUid(uid)) return ajson({ ok: false, err: 'u' }, 400);
     const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first(); if (s.role !== 'admin' && (!st || st.curator !== s.cid)) return ajson({ ok: false, err: 'Это не твой ученик' }, 403);
     const cc = s.role === 'admin' ? (st && CURATORS.some(x => x.id === st.curator) ? st.curator : 'all') : s.cid;
-    const r = await stuAi(env, cc, uid, { fresh: !!o.fresh }); if (r.err) return ajson({ ok: false, err: r.err }); if (!r.cached) await logIt(env, 'ai-stu', uid, cc);
+    const r = await stuAi(env, cc, uid, { fresh: !!o.fresh }); if (r.err) { await logIt(env, 'ai-stu-err', uid, r.err + (r.raw ? ' · ' + r.raw.slice(0, 200) : '')); return ajson(Object.assign({ ok: false, err: r.err }, s.role === 'admin' && r.raw ? { raw: r.raw } : {})) } if (!r.cached) await logIt(env, 'ai-stu', uid, cc);
     return ajson({ ok: true, what: r.what, step: r.step, draft: r.draft, k: r.k, at: r.at, cached: !!r.cached }) }
   /* ВРЕМЕННО (проверка этапа 3): предпросмотр сводки для админа; sample=1 — один образец только в Telegram вошедшего админа */
   if (path === '/app/api/digest' && s.role === 'admin') { const cq = u.searchParams.get('c') || 'anton'; let d;
@@ -2417,6 +2417,10 @@ function sigFact(g) { const P = (n, a, b, c) => n + ' ' + pl(n, [a, b, c]);
     case 'cool': return P(g.days, 'день', 'дня', 'дней') + ' без заходов';
     case 'drop': return 'за неделю опустился(ась) в рейтинге потока с ' + g.from + '-го на ' + g.to + '-е место' }
   return '' }
+/* JSON из ответа модели: без ```-обёртки, с переводами строк внутри строк; в крайнем случае — поля по одному */
+function aiJson(t) { t = String(t || '').replace(/```(?:json)?/gi, ''); const m = t.match(/\{[\s\S]*\}/); if (!m) return null; const s = m[0];
+  try { return JSON.parse(s) } catch (e) {} try { return JSON.parse(s.replace(/\r?\n/g, ' ')) } catch (e) {}
+  const o = {}; for (const k of ['what', 'step', 'draft']) { const x = s.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"\\s*(?:,\\s*"|\\}\\s*$)')); if (x) o[k] = x[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') } return o.what ? o : null }
 const sigSign = it => it ? it.sig.map(g => g.k + ':' + g.sv).sort().join('|') : 'none';
 const sigPrim = it => it && it.sig.length ? it.sig.slice().sort((a, b) => SIG_ORD[a.k] - SIG_ORD[b.k])[0].k : null;
 async function stuAi(env, cid, uid, o = {}) { uid = +uid; const k = 'aistu:' + uid, c = await kvGet(env, k), base = o.base || await todayBase(env, cid), it = base.items.find(x => +x.uid === uid) || null, sg = sigSign(it), now = msNow();
@@ -2433,9 +2437,8 @@ async function stuAi(env, cid, uid, o = {}) { uid = +uid; const k = 'aistu:' + u
   const M = (R[1].results || []).reverse();
   D.push(M.length ? 'Последние сообщения в чате платформы (старые сверху):\n' + M.map(m => (m.dir === 'in' ? 'Ученик' : 'Куратор') + ' (' + dayStr(new Date(m.at)) + '): ' + String(m.text).replace(/\s+/g, ' ').slice(0, 300)).join('\n') : 'Переписки в чате платформы нет.');
   const H = R[2].results || []; if (H.length) D.push('Последние замечания куратора к ДЗ:\n' + H.map(h => '«' + String(h.lesson || 'ДЗ').slice(0, 80) + '» — ' + (h.status === 'rework' ? 'на доработку' : 'принято') + ': ' + String(h.comment).replace(/\s+/g, ' ').slice(0, 400)).join('\n'));
-  const r = await aiText(env, STU_AI_SYS, D.join('\n\n') + '\n\nИмя для обращения: ' + fn + '. Сегодня ' + dayStr() + '.', 700); if (r.err) return { err: r.err };
-  const m = String(r.text || '').match(/\{[\s\S]*\}/); let j = null; try { j = m && JSON.parse(m[0]) } catch (e) {}
-  if (!j || !j.what) return { err: 'ИИ ответил не по формату — попробуй ещё раз' };
+  const r = await aiText(env, STU_AI_SYS, D.join('\n\n') + '\n\nИмя для обращения: ' + fn + '. Сегодня ' + dayStr() + '.', 1000); if (r.err) return { err: r.err };
+  const j = aiJson(r.text); if (!j || !j.what) return { err: 'ИИ ответил не по формату — попробуй ещё раз', raw: String(r.text || '').slice(0, 400) };
   const out = { at: now, sig: sg, uid, cid: S.curator || null, name, k: sigPrim(it), what: cleanAi(j.what).slice(0, 500), step: cleanAi(j.step || '').slice(0, 300), draft: cleanAi(j.draft || '').slice(0, 1500) };
   await kvPut(env, k, out); return out }
 /* черновики дня для «Сегодня»: только по ученикам, у которых сигнал ещё активен */
