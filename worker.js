@@ -879,6 +879,10 @@ export default {
       if (path === '/fin/old/sync' && u.searchParams.get('k') === env.ADMIN_KEY) return json(req, await syncOld(env));
       if (path === '/fin/key' && u.searchParams.get('k') === env.ADMIN_KEY) return json(req, { link: SITE + '/pl/sales/dealstat#fsk=' + await statKey(env) });
       if (path === '/admin/log' && u.searchParams.get('k') === env.ADMIN_KEY) { const r = await env.DB.prepare('SELECT * FROM log ORDER BY at DESC LIMIT 200').all(); return json(req, r.results) }
+      /* 03.11 этап 3: предпросмотр утренней сводки (ничего не отправляет): ?cid=anton|kirill|admin */
+      if (path === '/admin/digest' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const cq = u.searchParams.get('cid') || 'anton';
+        if (cq === 'admin') { const R = {}; for (const c of CURATORS) R[c.id] = await digestFor(env, c.id); return json(req, Object.assign({ ok: true, dry: true }, await digestAdmin(env, R))) }
+        if (!CURATORS.some(c => c.id === cq)) return json(req, { ok: false, err: 'cid' }, 400); return json(req, Object.assign({ ok: true, dry: true }, await digestFor(env, cq))) }
       if (path === '/admin/run' && u.searchParams.get('k') === env.ADMIN_KEY) { const res = await runHourly(env, true); return json(req, res) }
       /* Telegram: вебхук и настройка */
       if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 });
@@ -944,11 +948,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'bank', 'care', 'insights', 'pay', 'report'] }; /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['prep', 'efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report'],
+  '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
-  const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'bank', 'care', 'insights', 'pay'], out = {};
+  const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1454,6 +1459,17 @@ async function appApi(env, req, path) {
     const until = Math.max(0, Math.min(Math.round(+o.until || 0), msNow() + 60 * 864e5)), at = msNow(), sv = k => { const g = it.sig.find(y => y.k === k); return g ? g.sv : '' };
     await env.DB.batch(ks.map(k => env.DB.prepare('INSERT INTO sig_ack (cid, uid, k, until, at, sv) VALUES (?,?,?,?,?,?) ON CONFLICT(cid, uid, k) DO UPDATE SET until=excluded.until, at=excluded.at, sv=excluded.sv').bind(cc, uid, k, until, at, sv(k))));
     await logIt(env, 'sig-ack', uid, cc + ' ' + ks.join(',') + (until ? ' до ' + new Date(until).toISOString().slice(0, 16) : '')); return ajson({ ok: true, at }) }
+  /* 03.11 этап 3: ИИ «Что происходит» в панели ученика — только по открытию закладки «Сводка»; куратор — только свой ученик */
+  if (path === '/app/api/ai/student' && req.method === 'POST') { const o = await req.json().catch(() => ({})), uid = +o.u; if (!okUid(uid)) return ajson({ ok: false, err: 'u' }, 400);
+    const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first(); if (s.role !== 'admin' && (!st || st.curator !== s.cid)) return ajson({ ok: false, err: 'Это не твой ученик' }, 403);
+    const cc = s.role === 'admin' ? (st && CURATORS.some(x => x.id === st.curator) ? st.curator : 'all') : s.cid;
+    const r = await stuAi(env, cc, uid, { fresh: !!o.fresh }); if (r.err) return ajson({ ok: false, err: r.err }); if (!r.cached) await logIt(env, 'ai-stu', uid, cc);
+    return ajson({ ok: true, what: r.what, step: r.step, draft: r.draft, k: r.k, at: r.at, cached: !!r.cached }) }
+  /* ВРЕМЕННО (проверка этапа 3): предпросмотр сводки для админа; sample=1 — один образец только в Telegram вошедшего админа */
+  if (path === '/app/api/digest' && s.role === 'admin') { const cq = u.searchParams.get('c') || 'anton'; let d;
+    if (cq === 'admin') { const R = {}; for (const x of CURATORS) R[x.id] = await digestFor(env, x.id); d = await digestAdmin(env, R) } else if (CURATORS.some(x => x.id === cq)) d = await digestFor(env, cq); else return ajson({ ok: false, err: 'c' }, 400);
+    if (req.method === 'POST' && u.searchParams.get('sample') === '1' && s.chat) { const c0 = CURATORS.find(x => x.id === cq); const j = await tgSend(env, s.chat, '🧪 <i>Образец сводки ' + th(c0 ? (c0.name === 'Антон' ? 'Антона' : c0.name === 'Кирилл' ? 'Кирилла' : c0.name) : 'по школе') + ' — куратору не отправлялось</i>\n\n' + d.text, d.buttons); return ajson({ ok: !!(j && j.ok), sent: 1 }) }
+    return ajson(Object.assign({ ok: true, dry: true }, d)) }
   if (path === '/app/api/ai/recs') { const r = await aiRecs(env, c, u.searchParams.get('fresh') === '1'); return ajson(Object.assign({ ok: true }, r)) }
   if (path === '/app/api/ai/bc' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), A = await curAlerts(env, cc), D = await loadData(env);
     const goal = String(o.goal || '').trim().slice(0, 600), draft = String(o.draft || '').trim().slice(0, 3000);
@@ -2273,7 +2289,8 @@ const CUR_API = ['/cur/alerts', '/cur/me', '/cur/hwlog', '/cur/hwstat', '/cur/hw
    его вход видит всю очередь, разбивку по кураторам делает страница по /bank/staff/list). Храним последнее число на вход (kv hwq:<cid> | hwq:admin) с временем подсчёта;
    /cur/me и /cur/admin отдают hw_q (ждут проверки), hw_old (дольше 48 ч), hw_oldest, hw_q_at. Число старше 7 дней не показываем. */
 const hwqClean = x => { if (!x || typeof x !== 'object') return null; const n = Math.round(+x.n); if (!(n >= 0 && n <= 1e4)) return null;
-  const o = Math.round(+x.old48 || 0), od = Math.round(+x.oldest || 0); return { n, old48: o >= 0 && o <= n ? o : 0, oldest: od > 1e12 && od < msNow() + 864e5 ? od : null } };
+  const o = Math.round(+x.old48 || 0), o7 = x.old72 == null ? null : Math.round(+x.old72 || 0), od = Math.round(+x.oldest || 0);
+  return Object.assign({ n, old48: o >= 0 && o <= n ? o : 0, oldest: od > 1e12 && od < msNow() + 864e5 ? od : null }, o7 != null && o7 >= 0 && o7 <= n ? { old72: o7 } : {}) }; /* этап 3: old72 — для срочного «N работ ждут больше 3 дней» */
 async function hwQueues(env) { const fresh = x => x && x.at > msNow() - 7 * 864e5 ? x : null, adm = fresh(await kvGet(env, 'hwq:admin')), Q = {};
   for (const c of CURATORS) { const mine = fresh(await kvGet(env, 'hwq:' + c.id)), a = adm && adm.by && adm.by[c.id] ? Object.assign({ at: adm.at }, adm.by[c.id]) : null;
     Q[c.id] = [mine, a].filter(Boolean).sort((x, y) => y.at - x.at)[0] || null }
@@ -2317,16 +2334,18 @@ async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() 
   const Q = [env.DB.prepare('SELECT uid, MAX(day) d FROM ev WHERE day>=? GROUP BY uid').bind(addDays(today, -60)),
     env.DB.prepare('SELECT uid, lesson, MAX(at) at FROM lv GROUP BY uid'),
     env.DB.prepare('SELECT h, day, place, pts FROM snap WHERE day>=? AND day<=?').bind(addDays(today, -8), addDays(today, -7)),
-    env.DB.prepare('SELECT mid, uid, cid, stars, at FROM chat_rate WHERE at>=? AND stars<=2 ORDER BY at DESC').bind(now - 14 * 864e5)];
+    env.DB.prepare('SELECT mid, uid, cid, stars, at FROM chat_rate WHERE at>=? AND stars<=2 ORDER BY at DESC').bind(now - 14 * 864e5),
+    env.DB.prepare('SELECT w.uid, w.chat, w.since, u.username FROM cwait w LEFT JOIN tg_user u ON u.chat=w.chat ORDER BY w.since')]; /* этап 3: откуда ждут — чат платформы (app<uid>) или личка куратора в Telegram */
   let R; try { R = await env.DB.batch(Q) } catch (e) { R = []; for (const q of Q) { try { R.push(await q.all()) } catch (x) { R.push({ results: [] }) } } } /* ev / lv появляются с первым маяком */
   const EV = {}, LV = {}, P7 = {}, RT = {}; for (const x of R[0].results || []) EV[x.uid] = x.d; for (const x of R[1].results || []) LV[x.uid] = x;
+  const CWT = {}; for (const x of (R[4] && R[4].results) || []) if (x.uid && !CWT[x.uid]) CWT[x.uid] = x;
   const d7 = addDays(today, -7); for (const x of R[2].results || []) if (!P7[x.h] || x.day === d7) P7[x.h] = { place: x.place | 0, pts: x.pts | 0 };
   for (const x of R[3].results || []) if (!RT[x.uid] && (cid === 'all' || x.cid === cid)) RT[x.uid] = x;
   const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}, byH = {}; for (const r of D.rows) { if (priv) byU[String(r.uid)] = r; byH[r.h] = r }
   const LM = lessonMap(D), items = [], DROPN = Math.max(8, Math.ceil(0.12 * (D.n || D.rows.length || 0)));
   for (const x of st) { const r = priv ? byU[String(x.uid)] : byH[await hashUid(x.uid)], h = r && r.h, S = [], K = [];
     const last = [x.last, EV[x.uid]].filter(Boolean).sort().pop() || null, d = dd(last), L = LV[x.uid], lm = L ? LM[+L.lesson] : null;
-    if (x.wait) S.push({ k: 'wait', sv: String(x.wait), since: x.wait });
+    if (x.wait) { const cw = CWT[x.uid], tg = !!(cw && !/^app/.test(String(cw.chat))); S.push(Object.assign({ k: 'wait', sv: String(x.wait), since: x.wait, src: tg ? 'tg' : 'app' }, tg ? { tchat: String(cw.chat), tun: cw.username || null } : {})) }
     const rt = RT[x.uid]; if (rt) { S.push({ k: 'rate', sv: String(rt.mid), stars: rt.stars | 0, at: rt.at }); K.push({ k: 'rate', label: 'низкая оценка', pts: 25 }) }
     const ld = L && L.at ? dd(dayStr(new Date(L.at))) : null, active = d != null && d <= 2;
     if (L && active && ld >= 4) S.push({ k: 'stuck', sv: L.lesson + '@' + String(L.at).slice(0, 10), days: ld, lesson: +L.lesson, lt: lm ? lm.t : null });
@@ -2349,7 +2368,8 @@ async function todayOut(env, cid) { const B = await todayBase(env, cid); await s
     const on = sig.filter(s => !s.off), k = prim(on.length ? on : sig), o = Object.assign({}, it, { sig, k, why: sigWhy(it, k) }); if (on.length) items.push(o); else done.push(Object.assign(o, { ack })) }
   const ord = (a, b) => SIG_ORD[a.k] - SIG_ORD[b.k] || (a.k === 'wait' ? (a.sig[0].since || 0) - (b.sig[0].since || 0) : 0) || b.risk - a.risk;
   items.sort(ord); done.sort((a, b) => ((b.ack || {}).at || 0) - ((a.ack || {}).at || 0));
-  return { at: B.at, n: B.n, total: B.total, items, done, hw: B.hw } }
+  let drafts = []; try { drafts = await aiDrafts(env, cid, items) } catch (e) {}
+  return { at: B.at, n: B.n, total: B.total, items, done, hw: B.hw, drafts } }
 const AI_BC_SYS = 'Ты помогаешь куратору онлайн-школы OduvanovSchool (поток «AI-креатор 2.0»: дизайн карточек для маркетплейсов с помощью нейросетей) писать сообщения ученикам в Telegram от имени куратора. '
   + 'Пиши по-русски, на «ты», тепло и по делу, как живой человек: без канцелярита, без давления и чувства вины, без воды. 2–6 коротких предложений, можно 1–2 уместных эмодзи. Без markdown, хэштегов и кавычек вокруг текста. '
   + 'Можно обратиться по имени через {имя} — при отправке туда подставится имя каждого ученика. Не выдумывай факты: даты, эфиры, скидки, ссылки, призы — только если они есть в задаче куратора. В конце — один простой шаг, который можно сделать прямо сейчас.';
@@ -2375,6 +2395,128 @@ async function aiRecs(env, cid, fresh) { const k = 'airecs:' + cid, c = await kv
     const o = await aiText(env, AI_BC_SYS, user, 1200); const m = String(o.text || '').match(/\{[\s\S]*\}/);
     if (m) try { (JSON.parse(m[0]).g || []).forEach(g => { const x = R.find(y => y.aud === g.aud); if (x) { if (g.tip) x.tip = String(g.tip).slice(0, 300); if (g.text) x.draft = cleanAi(g.text) } }) } catch (e) {} }
   const out = { at: msNow(), recs: R }; await kvPut(env, k, out); return out }
+/* 03.11 (кабинет куратора, этап 3; макет docs/mockups/kabinet-kuratora: «Уведомления», панель ученика «Что происходит», «ИИ подготовил черновики»).
+   ИИ «Что происходит» (POST /app/api/ai/student {c, u, fresh}): сигналы ученика (todayBase), последние 10 сообщений чата платформы (chat_msg), 3 последних замечания к ДЗ (cur_hw.comment) → {what, step, draft}.
+   Кэш kv aistu:<uid> на 12 ч; если подпись сигналов (k:sv) другая — считаем заново. «Обновить» (fresh) — не чаще раза в 5 минут.
+   Утром (prep, с 9:15 МСК, дедлайн — 13:00): aiRecs(fresh) и «что происходит» для 5 учеников куратора с наибольшим риском → kv aidr:<cid> {day, at, L:[{uid, name, k, draft, what, at}]};
+   прогресс — kv aiprep:<день> {done:[…], fin}, бюджет запуска делится: что не влезло — в следующий запуск (9:20 → 9:25 → 9:30).
+   Сводка (digest, с 9:30 МСК, один раз в день: kv digest:<cid>:<день>) — куратору в его рабочие дни (hdays), Роману — по школе (digest:admin:<день>).
+   Срочные (urgent, раз в час в запуске :45): ★1–2 куратору (новые после kv urg:<cid>.rt) и работы на проверке дольше 72 ч (раз в день) — только в рабочие часы и дни куратора, не чаще раза в час;
+   вне часов копится: утренняя сводка сдвигает urg.rt и urg.at. Ожидание ответа не дублируем — его напоминает curRemind. */
+const STU_AI_SYS = 'Ты помогаешь куратору онлайн-школы OduvanovSchool (поток «AI-креатор 2.0»: дизайн карточек для маркетплейсов с помощью нейросетей) понять, что происходит с одним учеником, и написать ему личное сообщение. '
+  + 'Опирайся только на факты из данных: сигналы, переписку и замечания к ДЗ. Не выдумывай даты, эфиры, скидки, ссылки, причины и события, которых нет в данных; если причина неясна — так и скажи и предложи мягко спросить. '
+  + 'Черновик — от имени куратора, по-русски, на «ты», тепло и по делу, как живой человек: без давления, упрёков и чувства вины, без канцелярита; 2–4 коротких предложения, можно одно уместное эмодзи, в конце — один простой шаг. '
+  + 'В черновике не упоминай риск, рейтинговые места и то, что за учеником следят («вижу, ты 6 дней не заходил» — нельзя). Без markdown. '
+  + 'Верни ТОЛЬКО JSON: {"what":"1–2 предложения для куратора: что происходит, по фактам","step":"одно предложение: какой шаг сделать куратору","draft":"черновик сообщения ученику с обращением по имени"}';
+function sigFact(g) { const P = (n, a, b, c) => n + ' ' + pl(n, [a, b, c]);
+  switch (g.k) { case 'wait': { const h = Math.round((msNow() / 1000 - g.since) / 3600); return 'ждёт ответа куратора ' + (h < 1 ? 'меньше часа' : P(h, 'час', 'часа', 'часов')) + (g.src === 'tg' ? ' (написал в Telegram, текста переписки нет)' : '') }
+    case 'rate': return 'поставил(а) ★' + g.stars + ' из 5 ответу куратора в чате';
+    case 'stuck': return P(g.days, 'день', 'дня', 'дней') + ' на одном уроке' + (g.lt ? ' «' + g.lt + '»' : '') + ', хотя заходит';
+    case 'stall': return 'заходит, но за неделю ни одного балла в рейтинге (не сдаёт ДЗ)';
+    case 'gone': return g.days == null ? 'ни разу не заходил(а) на сайт и в приложение' : P(g.days, 'день', 'дня', 'дней') + ' не заходит ни на сайт, ни в приложение';
+    case 'cool': return P(g.days, 'день', 'дня', 'дней') + ' без заходов';
+    case 'drop': return 'за неделю опустился(ась) в рейтинге потока с ' + g.from + '-го на ' + g.to + '-е место' }
+  return '' }
+const sigSign = it => it ? it.sig.map(g => g.k + ':' + g.sv).sort().join('|') : 'none';
+const sigPrim = it => it && it.sig.length ? it.sig.slice().sort((a, b) => SIG_ORD[a.k] - SIG_ORD[b.k])[0].k : null;
+async function stuAi(env, cid, uid, o = {}) { uid = +uid; const k = 'aistu:' + uid, c = await kvGet(env, k), base = o.base || await todayBase(env, cid), it = base.items.find(x => +x.uid === uid) || null, sg = sigSign(it), now = msNow();
+  if (c && c.what && c.sig === sg && now - c.at < 12 * 36e5 && !(o.fresh && now - c.at > 5 * 60e3)) return Object.assign({ cached: true }, c);
+  if (!env.ANTHROPIC_API_KEY) return { err: 'ИИ не подключён' };
+  const Q = [env.DB.prepare('SELECT name, curator FROM student WHERE uid=?').bind(uid),
+    env.DB.prepare("SELECT dir, text, at FROM chat_msg WHERE uid=? AND del=0 AND dir IN ('in','out') AND text IS NOT NULL AND text<>'' ORDER BY id DESC LIMIT 10").bind(uid),
+    env.DB.prepare("SELECT lesson, status, comment, at FROM cur_hw WHERE uid=? AND comment IS NOT NULL AND comment<>'' ORDER BY at DESC LIMIT 3").bind(uid)];
+  let R; try { R = await env.DB.batch(Q) } catch (e) { R = []; for (const q of Q) { try { R.push(await q.all()) } catch (x) { R.push({ results: [] }) } } }
+  const S = (R[0].results || [])[0] || {}, name = (it && it.name) || S.name || 'Ученик', fn = firstName(name), D = [];
+  D.push('Ученик: ' + fn + (it && it.place ? ', ' + it.place + '-е место в рейтинге потока' : '') + (it && it.lessons != null && base.total ? ', уроков пройдено ' + it.lessons + ' из ' + base.total : '') + '.');
+  if (it && it.ctx) D.push('Последний открытый урок: ' + it.ctx + '.');
+  D.push(it ? 'Сигналы пульта: ' + it.sig.map(sigFact).filter(Boolean).join('; ') + '.' : 'Тревожных сигналов нет: заходит и продвигается.');
+  const M = (R[1].results || []).reverse();
+  D.push(M.length ? 'Последние сообщения в чате платформы (старые сверху):\n' + M.map(m => (m.dir === 'in' ? 'Ученик' : 'Куратор') + ' (' + dayStr(new Date(m.at)) + '): ' + String(m.text).replace(/\s+/g, ' ').slice(0, 300)).join('\n') : 'Переписки в чате платформы нет.');
+  const H = R[2].results || []; if (H.length) D.push('Последние замечания куратора к ДЗ:\n' + H.map(h => '«' + String(h.lesson || 'ДЗ').slice(0, 80) + '» — ' + (h.status === 'rework' ? 'на доработку' : 'принято') + ': ' + String(h.comment).replace(/\s+/g, ' ').slice(0, 400)).join('\n'));
+  const r = await aiText(env, STU_AI_SYS, D.join('\n\n') + '\n\nИмя для обращения: ' + fn + '. Сегодня ' + dayStr() + '.', 700); if (r.err) return { err: r.err };
+  const m = String(r.text || '').match(/\{[\s\S]*\}/); let j = null; try { j = m && JSON.parse(m[0]) } catch (e) {}
+  if (!j || !j.what) return { err: 'ИИ ответил не по формату — попробуй ещё раз' };
+  const out = { at: now, sig: sg, uid, cid: S.curator || null, name, k: sigPrim(it), what: cleanAi(j.what).slice(0, 500), step: cleanAi(j.step || '').slice(0, 300), draft: cleanAi(j.draft || '').slice(0, 1500) };
+  await kvPut(env, k, out); return out }
+/* черновики дня для «Сегодня»: только по ученикам, у которых сигнал ещё активен */
+async function aiDrafts(env, cid, items) { const day = dayStr(), on = {}; for (const x of items) on[x.uid] = x; const out = [];
+  for (const c of cid === 'all' ? CURATORS : CURATORS.filter(x => x.id === cid)) { const d = await kvGet(env, 'aidr:' + c.id); if (!d || d.day !== day) continue;
+    for (const x of d.L || []) if (on[x.uid] && x.draft) out.push({ uid: x.uid, name: on[x.uid].name || x.name, cid: c.id, k: on[x.uid].k || x.k, draft: x.draft, what: x.what || '', at: x.at }) }
+  return out }
+async function prepJob(env, B, force) { const t = msk(), mn = t.getUTCHours() * 60 + t.getUTCMinutes(), day = dayStr();
+  if (!force && (mn < 9 * 60 + 15 || mn >= 13 * 60)) return { skip: 'time' };
+  if (!env.ANTHROPIC_API_KEY) return { skip: 'noai' };
+  const pk = 'aiprep:' + day, P = (await kvGet(env, pk)) || { done: [] }; if (P.fin && !force) return { skip: 'done' };
+  const out = { recs: 0, stu: 0 }; let stop = false; B.use(1);
+  for (const c of CURATORS) { if (P.done.includes('s:' + c.id)) continue;
+    if (!(await curDays(env, c.id)).includes(t.getUTCDay())) { P.done.push('s:' + c.id); continue }
+    if (!P.done.includes('r:' + c.id)) { if (!B.ok(10)) { stop = true; break } B.use(10); try { await aiRecs(env, c.id, true); out.recs++ } catch (e) {} P.done.push('r:' + c.id) }
+    if (!B.ok(14)) { stop = true; break } B.use(8);
+    const T = await todayOut(env, c.id), top = T.items.filter(x => x.risk > 0).sort((a, b) => b.risk - a.risk).slice(0, 5), old = await kvGet(env, 'aidr:' + c.id);
+    let L = old && old.day === day ? old.L : [];
+    for (const x of top) { const key = 'u:' + x.uid; if (P.done.includes(key)) continue; if (!B.ok(5)) { stop = true; break } B.use(5);
+      let r = null; try { r = await stuAi(env, c.id, x.uid, { base: T }) } catch (e) { r = null } P.done.push(key);
+      if (r && r.draft) { L = L.filter(y => y.uid !== x.uid); L.push({ uid: x.uid, name: x.name, k: x.k, draft: r.draft, what: r.what, at: r.at }); out.stu++ } }
+    await kvPut(env, 'aidr:' + c.id, { day, at: msNow(), L }); if (stop) break; P.done.push('s:' + c.id) }
+  if (!stop) P.fin = 1; await kvPut(env, pk, P); out.fin = !!P.fin; return out }
+const dgDur = s => { const m = Math.max(1, Math.round((msNow() / 1000 - s) / 60)); return m < 60 ? m + NB + 'мин' : m < 1440 ? Math.floor(m / 60) + NB + 'ч' : Math.floor(m / 1440) + NB + 'д ' + Math.floor(m % 1440 / 60) + NB + 'ч' };
+const dgFn = n => th(firstName(n) || 'Ученик');
+async function digestFor(env, cid) { const c = CURATORS.find(x => x.id === cid), T = await todayOut(env, cid), I = T.items, g = (x, k) => x.sig.find(y => y.k === k && !y.off);
+  const has = k => I.filter(x => g(x, k)), W = has('wait').sort((a, b) => g(a, 'wait').since - g(b, 'wait').since), ST = has('stuck'), GO = has('gone'), DP = has('drop'), RT = has('rate'), q = T.hw, L = [];
+  const more = (A, n) => A.length > n ? ' и' + NB + 'ещё ' + (A.length - n) : '';
+  if (W.length) L.push('💬 ' + W.length + NB + pl(W.length, ['ждёт', 'ждут', 'ждут']) + ' ответа' + NB + '— ' + (W.length > 1 ? 'дольше всех ' : '') + dgFn(W[0].name) + ', ' + dgDur(g(W[0], 'wait').since));
+  if (q && q.n) L.push('📝 ' + q.n + NB + 'ДЗ на' + NB + 'проверке' + (q.old48 ? ', ' + q.old48 + NB + 'дольше 48' + NB + 'ч' : ''));
+  if (ST.length) { const ls = [...new Set(ST.map(x => g(x, 'stuck').lt).filter(Boolean))];
+    L.push('🧱 ' + (ST.length === 1 ? dgFn(ST[0].name) + ' застрял' + fem(ST[0].name || '') + (ls[0] ? ' на' + NB + '«' + th(ls[0]) + '»' : '') + NB + '— ' + g(ST[0], 'stuck').days + NB + 'дн'
+      : ST.length + NB + 'застряли' + (ls.length === 1 && ST.every(x => g(x, 'stuck').lt === ls[0]) ? ' на' + NB + '«' + th(ls[0]) + '»' : ': ' + ST.slice(0, 3).map(x => dgFn(x.name) + (g(x, 'stuck').lt ? NB + '— «' + th(g(x, 'stuck').lt) + '»' : '')).join(', ') + more(ST, 3)))) }
+  if (GO.length) L.push('🌙 ' + (GO.length === 1 ? dgFn(GO[0].name) + (g(GO[0], 'gone').days == null ? ' ни разу не' + NB + 'заходил' + fem(GO[0].name || '') : ' не' + NB + 'заходит ' + g(GO[0], 'gone').days + NB + 'дн')
+    : GO.length + NB + 'пропали: ' + GO.slice(0, 3).map(x => dgFn(x.name) + ' (' + (g(x, 'gone').days == null ? 'ни разу' : g(x, 'gone').days + NB + 'дн') + ')').join(', ') + more(GO, 3)));
+  if (DP.length) L.push('📉 ' + (DP.length === 1 ? dgFn(DP[0].name) + ' опустил' + (fem(DP[0].name || '') ? 'ась' : 'ся') + ' с' + NB + g(DP[0], 'drop').from + '-го на' + NB + g(DP[0], 'drop').to + '-е место'
+    : DP.length + NB + 'упали в' + NB + 'рейтинге: ' + DP.slice(0, 3).map(x => dgFn(x.name) + ' (' + g(x, 'drop').from + '→' + g(x, 'drop').to + ')').join(', ') + more(DP, 3)));
+  if (RT.length) L.push('⭐ ' + (RT.length === 1 ? dgFn(RT[0].name) + ' поставил' + fem(RT[0].name || '') + ' ★' + g(RT[0], 'rate').stars + ' твоему ответу в' + NB + 'чате'
+    : RT.length + NB + pl(RT.length, ['низкая оценка', 'низкие оценки', 'низких оценок']) + ' в' + NB + 'чате: ' + RT.slice(0, 3).map(x => dgFn(x.name) + ' ★' + g(x, 'rate').stars).join(', ') + more(RT, 3)));
+  const dr = (await aiDrafts(env, cid, I)).length;
+  const text = '☀️ <b>Доброе утро, ' + th(c ? c.name : cid) + '!</b> ' + (L.length ? 'Что сегодня:\n\n' + L.join('\n') + (dr ? '\n\n✨ ИИ подготовил ' + dr + NB + pl(dr, ['черновик', 'черновика', 'черновиков']) + NB + '— проверь в' + NB + '«Сегодня».' : '') : '\nВсё спокойно 👌 Никто не' + NB + 'ждёт ответа, ДЗ на' + NB + 'проверке нет, ученики в' + NB + 'ритме.');
+  const buttons = [[{ text: 'Открыть «Сегодня»', url: PULT_URL + '#today' }].concat(q && q.n ? [{ text: 'Проверить ДЗ', url: PULT_URL + '#hw' }] : [])];
+  return { text, buttons, st: { wait: W.length, waitSince: W[0] ? g(W[0], 'wait').since : null, hw: q ? q.n : null, hw48: q ? q.old48 || 0 : null, stuck: ST.length, gone: GO.length, drop: DP.length, rate: RT.length, drafts: dr } } }
+async function digestAdmin(env, R) { const L = [], P = (n, a, b, c) => n + NB + pl(n, [a, b, c]), dr = [];
+  for (const c of CURATORS) { const d = R[c.id]; if (!d) continue; const s = d.st, X = [];
+    if (s.wait) X.push('💬 ' + P(s.wait, 'ждёт', 'ждут', 'ждут') + ' (дольше всех ' + dgDur(s.waitSince) + ')');
+    if (s.hw) X.push('📝 ' + s.hw + NB + 'ДЗ' + (s.hw48 ? ', ' + s.hw48 + ' >' + NB + '48' + NB + 'ч' : ''));
+    if (s.stuck) X.push('🧱 ' + P(s.stuck, 'застрял', 'застряли', 'застряли')); if (s.gone) X.push('🌙 ' + P(s.gone, 'пропал', 'пропали', 'пропали'));
+    if (s.drop) X.push('📉 ' + P(s.drop, 'упал', 'упали', 'упали')); if (s.rate) X.push('⭐ ' + P(s.rate, 'низкая оценка', 'низкие оценки', 'низких оценок'));
+    if (s.drafts) dr.push(th(c.name) + NB + s.drafts);
+    L.push('<b>' + th(c.name) + '</b>' + (d.off ? ' (сегодня не' + NB + 'рабочий день)' : '') + ': ' + (X.length ? X.join(' · ') : 'всё спокойно 👌')) }
+  return { text: '☀️ <b>Доброе утро!</b> Кураторы сегодня:\n\n' + L.join('\n') + (dr.length ? '\n\n✨ ИИ подготовил черновики: ' + dr.join(', ') + '.' : ''), buttons: [[{ text: 'Открыть «Сегодня»', url: PULT_URL + '#today' }]] } }
+async function digestJob(env, B, force) { const t = msk(), mn = t.getUTCHours() * 60 + t.getUTCMinutes(), day = dayStr(), now = msNow();
+  if (!force && (mn < 9 * 60 + 29 || mn >= 14 * 60)) return { skip: 'time' };
+  const out = { sent: [] }, R = {}; B.use(1);
+  for (const c of CURATORS) { const fk = 'digest:' + c.id + ':' + day; if (await kvGet(env, fk)) continue;
+    const on = (await curDays(env, c.id)).includes(t.getUTCDay()); if (!B.ok(14)) { out.left = 1; break } B.use(12);
+    const d = await digestFor(env, c.id); R[c.id] = d; if (!on) { d.off = 1; await kvPut(env, fk, { at: now, off: 1 }); continue }
+    const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(c.id).first(); let ok = false;
+    if (ct && ct.tg_id) { B.use(1); const j = await tgSend(env, ct.tg_id, d.text, d.buttons); ok = !!(j && j.ok) }
+    await kvPut(env, fk, { at: now, ok }); const U = (await kvGet(env, 'urg:' + c.id)) || {}; U.at = now; U.rt = now; await kvPut(env, 'urg:' + c.id, U); out.sent.push(c.id + (ok ? '' : ':fail')) }
+  const ak = 'digest:admin:' + day; if (!out.left && !(await kvGet(env, ak))) { for (const c of CURATORS) if (!R[c.id]) { if (!B.ok(13)) { out.left = 1; break } B.use(12); R[c.id] = await digestFor(env, c.id); R[c.id].off = (await curDays(env, c.id)).includes(t.getUTCDay()) ? 0 : 1 }
+    if (!out.left) { const a = await digestAdmin(env, R); for (const x of await admins(env)) { if (!B.ok(1)) break; B.use(1); await tgSend(env, x, a.text, a.buttons) } await kvPut(env, ak, { at: now }); out.sent.push('admin') } }
+  if (out.sent.length) try { await logIt(env, 'digest', 0, out.sent.join(',')) } catch (e) {}
+  return out }
+async function urgentJob(env, B) { const now = msNow(), t = msk(), day = dayStr(), out = { sent: [] }; if (!B.ok(6)) return { skip: 'budget' }; B.use(3); const Q = await hwQueues(env);
+  for (const c of CURATORS) { if (!B.ok(6)) break; B.use(3); const h = await curHours(env, c.id), dd = await curDays(env, c.id); if (!curOn(h, dd, t)) continue;
+    const U = (await kvGet(env, 'urg:' + c.id)) || {}; if (!U.rt) { U.rt = now; await kvPut(env, 'urg:' + c.id, U); continue } if (U.at && now - U.at < 3600e3 - 180e3) continue;
+    let rs = []; try { rs = (await env.DB.prepare('SELECT r.mid, r.uid, r.stars, r.at, s.name, f.reasons, f.text FROM chat_rate r LEFT JOIN student s ON s.uid=r.uid LEFT JOIN chat_fb f ON f.mid=r.mid WHERE r.cid=? AND r.stars<=2 AND r.at>? ORDER BY r.at').bind(c.id, U.rt).all()).results || [] } catch (e) { rs = [] }
+    rs = rs.filter(r => !isStaffUid(env, r.uid));
+    const q = Q[c.id], fresh = q && q.at > now - 864e5, n72 = fresh ? (q.old72 != null ? q.old72 : q.oldest && now - q.oldest > 72 * 36e5 ? -1 : 0) : 0, hw = !!n72 && U.hwd !== day, L = [], btn = [];
+    for (const r of rs.slice(0, 3)) { let rsn = []; try { rsn = JSON.parse(r.reasons || '[]') } catch (e) {}
+      L.push('⭐ ' + th(r.name || 'Ученик') + ' поставил' + fem(r.name || '') + ' ★' + r.stars + ' твоему ответу в' + NB + 'чате' + (rsn.length ? '. Причины: ' + th(rsn.join(', ')) : '') + (r.text ? '\n«' + th(String(r.text).slice(0, 200)) + '»' : '')) }
+    if (rs.length > 3) L.push('…и' + NB + 'ещё ' + (rs.length - 3));
+    if (rs.length === 1) btn.push({ text: 'Открыть ученика', url: PULT_URL + '#today/u=' + rs[0].uid + '/chat' });
+    if (hw) { L.push('📝 ' + (n72 > 0 ? n72 + NB + pl(n72, ['работа ждёт', 'работы ждут', 'работ ждут']) : 'Есть работы, которые ждут') + ' проверки больше 3' + NB + 'дней' + (q.oldest ? ' (самая старая — ' + Math.floor((now - q.oldest) / 864e5) + NB + 'дн)' : '')); btn.push({ text: 'Проверить ДЗ', url: PULT_URL + '#hw' }) }
+    if (!L.length) continue;
+    const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(c.id).first(); if (!ct || !ct.tg_id) continue;
+    B.use(1); await tgSend(env, ct.tg_id, '🔴 <b>Срочно</b>\n' + L.join('\n'), btn.length ? [btn] : null);
+    U.at = now; if (rs.length) U.rt = Math.max(...rs.map(r => r.at)); if (hw) U.hwd = day; await kvPut(env, 'urg:' + c.id, U); out.sent.push(c.id + ':' + rs.length + (hw ? '+hw' : '')) }
+  return out }
 const hwqOut = q => q ? { hw_q: q.n, hw_old: q.old48 || 0, hw_oldest: q.oldest || null, hw_q_at: q.at } : { hw_q: null, hw_old: null, hw_oldest: null, hw_q_at: null };
 /* 02.11: баллы за ДЗ из ленты ответов — base (до ×2), x2 (1 — двойные), fix (1 — только правка баллов у уже принятой работы, без «Проверено») */
 let CURHW_OK = false;
