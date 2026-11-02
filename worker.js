@@ -1417,6 +1417,16 @@ async function appApi(env, req, path) {
     if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail } else log.unshift({ bid, at: new Date().toISOString(), who, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, noTg: o.noTg | 0 });
     await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
     await logIt(env, 'broadcast', 0, cc + ' ' + sent + '/' + to.length); return ajson({ ok: true, sent, fail }) }
+  /* 03.11: «Сегодня» — сигналы и риск (todayOut); отметки «Обработано / Отложить» и «Вернуть» — только по своим ученикам из сигналов */
+  if (path === '/app/api/today') return ajson(Object.assign({ ok: true, c }, await todayOut(env, c)));
+  if ((path === '/app/api/today/ack' || path === '/app/api/today/unack') && req.method === 'POST') { const o = await req.json().catch(() => ({})), cc = appScope(s, o.c), uid = +o.uid;
+    const ks = [...new Set((Array.isArray(o.k) ? o.k : [o.k]).map(String))].filter(k => k in SIG_ORD); if (!okUid(uid) || !ks.length) return ajson({ ok: false, err: 'uid, k' }, 400);
+    await sigAckEnsure(env); const ph = ks.map(() => '?').join(',');
+    if (path.endsWith('unack')) { await env.DB.prepare('DELETE FROM sig_ack WHERE cid=? AND uid=? AND k IN (' + ph + ')').bind(cc, uid, ...ks).run(); return ajson({ ok: true }) }
+    const it = ((await todayBase(env, cc)).items || []).find(x => +x.uid === uid); if (!it) return ajson({ ok: false, err: 'Сигнала по этому ученику уже нет' }, 404);
+    const until = Math.max(0, Math.min(Math.round(+o.until || 0), msNow() + 60 * 864e5)), at = msNow(), sv = k => { const g = it.sig.find(y => y.k === k); return g ? g.sv : '' };
+    await env.DB.batch(ks.map(k => env.DB.prepare('INSERT INTO sig_ack (cid, uid, k, until, at, sv) VALUES (?,?,?,?,?,?) ON CONFLICT(cid, uid, k) DO UPDATE SET until=excluded.until, at=excluded.at, sv=excluded.sv').bind(cc, uid, k, until, at, sv(k))));
+    await logIt(env, 'sig-ack', uid, cc + ' ' + ks.join(',') + (until ? ' до ' + new Date(until).toISOString().slice(0, 16) : '')); return ajson({ ok: true, at }) }
   if (path === '/app/api/ai/recs') { const r = await aiRecs(env, c, u.searchParams.get('fresh') === '1'); return ajson(Object.assign({ ok: true }, r)) }
   if (path === '/app/api/ai/bc' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), A = await curAlerts(env, cc), D = await loadData(env);
     const goal = String(o.goal || '').trim().slice(0, 600), draft = String(o.draft || '').trim().slice(0, 3000);
@@ -2254,6 +2264,63 @@ async function curAlerts(env, cid) { const st = (await appStudents(env, cid)).st
   idle.sort((a, b) => (b.days == null ? 1e4 : b.days) - (a.days == null ? 1e4 : a.days)); wait.sort((a, b) => a.since - b.since);
   const q = (await hwQueues(env))[cid] || null;
   return { n: st.length, idle, stall, wait, hw: q ? { n: q.n, old: q.old48 || 0, at: q.at } : null } }
+/* 03.11 (Роман, макет docs/mockups/kabinet-kuratora, этап 1): экран «Сегодня» в пульте — сигналы по ученикам куратора и риск 0–100 (/app/api/today).
+   Сигналы: wait — ждёт ответа (cwait.since, сек); rate — ★1–2 куратору за 14 дней (chat_rate); stuck — последний открытый урок (lv) не менялся 4+ дня, хотя ученик заходит;
+   stall — заходит, но 0 баллов за 7 дней (week рейтинга); gone — нет заходов 5+ дней (сайт и видео — time, приложение — ev), cool — 3–4 дня; drop — минус 8+ мест за 7 дней (snap по h).
+   Риск: пропал 30 (остывает 15), застрял / не продвигается 20, падение места 10, низкая оценка 25; ожидание ответа — не риск, а срочность (первым в списке).
+   Отметки — sig_ack: until=0 — «обработано», пока значение сигнала (sv) то же; until>0 — отложено до (мс). ДЗ по ученикам сервер не знает — только очередь (hw). */
+const SIG_ORD = { wait: 0, rate: 1, stuck: 2, stall: 2, gone: 3, cool: 3, drop: 4 };
+let SIGACK_OK = false; const TODC = {};
+async function sigAckEnsure(env) { if (SIGACK_OK) return; await env.DB.prepare('CREATE TABLE IF NOT EXISTS sig_ack (cid TEXT NOT NULL, uid INTEGER NOT NULL, k TEXT NOT NULL, until INTEGER DEFAULT 0, at INTEGER, sv TEXT, PRIMARY KEY (cid, uid, k))').run(); SIGACK_OK = true }
+const lessonMap = D => { const M = {}; for (const m of D.modules || []) { const nm = String(m.name || '').match(/^Модуль (\d+)\s*—\s*(.+)$/), mod = nm ? 'М' + nm[1] + ' · ' + nm[2] : String(m.name || '');
+    for (const p of m.parts || []) for (const l of p.lessons || []) M[+l.id] = { t: String(l.t || ''), mod } }
+  for (const o of D.other || []) for (const i of o.items || []) if (!M[+i.id]) M[+i.id] = { t: String(i.t || i.name || ''), mod: String(o.name || o.t || '') }; return M };
+function sigWhy(it, k) { const g = it.sig.find(x => x.k === k) || {}, P = (n, a, b, c) => n + ' ' + pl(n, [a, b, c]);
+  if (k === 'wait') { const m = Math.max(1, Math.round((msNow() / 1000 - g.since) / 60)); return nb('Ждёт ответа ' + (m < 60 ? m + ' мин' : P(Math.floor(m / 60), 'час', 'часа', 'часов')) + '. Ответь первым, пока вопрос не остыл.') }
+  if (k === 'rate') return nb('Оценка твоему ответу в чате — ★' + g.stars + '. Спроси, что было не так: лучше сразу разобраться, чем молча потерять ученика.');
+  if (k === 'stuck') return nb(P(g.days, 'день', 'дня', 'дней') + ' на уроке' + (g.lt ? ' «' + g.lt + '»' : ' №' + g.lesson) + ', хотя заходит. Предложи помочь с этим уроком или глянуть черновик ДЗ, даже неготовый.');
+  if (k === 'stall') return nb('Заходит, но за неделю ни одного балла в рейтинге. Напомни про ближайшее ДЗ: даже лёгкий уровень идёт в рейтинг.');
+  if (k === 'gone') return g.days == null ? nb('Ни одного захода на сайт и в приложение. Напиши лично: всё ли получилось с доступом.') : nb(P(g.days, 'день', 'дня', 'дней') + ' нет ни на сайте, ни в приложении. Не дави: предложи лёгкий уровень, он тоже идёт в рейтинг.');
+  if (k === 'cool') return nb(P(g.days, 'день', 'дня', 'дней') + ' без заходов. Напиши пару тёплых слов, пока ученик не выпал из ритма.');
+  if (k === 'drop') return nb('За неделю место в рейтинге — с ' + g.from + '-го на ' + g.to + '-е. Подскажи, где быстро добрать баллы: ДЗ в окне ×2.');
+  return '' }
+async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v;
+  const st = (await appStudents(env, cid)).students || [], D = await loadData(env), today = dayStr(), now = msNow(), d0 = Date.parse(today + 'T00:00:00Z');
+  const dd = s => s ? Math.round((d0 - Date.parse(String(s).slice(0, 10) + 'T00:00:00Z')) / 864e5) : null;
+  const Q = [env.DB.prepare('SELECT uid, MAX(day) d FROM ev WHERE day>=? GROUP BY uid').bind(addDays(today, -60)),
+    env.DB.prepare('SELECT uid, lesson, MAX(at) at FROM lv GROUP BY uid'),
+    env.DB.prepare('SELECT h, day, place FROM snap WHERE day>=? AND day<=?').bind(addDays(today, -8), addDays(today, -7)),
+    env.DB.prepare('SELECT mid, uid, cid, stars, at FROM chat_rate WHERE at>=? AND stars<=2 ORDER BY at DESC').bind(now - 14 * 864e5)];
+  let R; try { R = await env.DB.batch(Q) } catch (e) { R = []; for (const q of Q) { try { R.push(await q.all()) } catch (x) { R.push({ results: [] }) } } } /* ev / lv появляются с первым маяком */
+  const EV = {}, LV = {}, P7 = {}, RT = {}; for (const x of R[0].results || []) EV[x.uid] = x.d; for (const x of R[1].results || []) LV[x.uid] = x;
+  const d7 = addDays(today, -7); for (const x of R[2].results || []) if (!P7[x.h] || x.day === d7) P7[x.h] = x.place | 0;
+  for (const x of R[3].results || []) if (!RT[x.uid] && (cid === 'all' || x.cid === cid)) RT[x.uid] = x;
+  const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}, byH = {}; for (const r of D.rows) { if (priv) byU[String(r.uid)] = r; byH[r.h] = r }
+  const LM = lessonMap(D), items = [];
+  for (const x of st) { const r = priv ? byU[String(x.uid)] : byH[await hashUid(x.uid)], h = r && r.h, S = [], K = [];
+    const last = [x.last, EV[x.uid]].filter(Boolean).sort().pop() || null, d = dd(last), L = LV[x.uid], lm = L ? LM[+L.lesson] : null;
+    if (x.wait) S.push({ k: 'wait', sv: String(x.wait), since: x.wait });
+    const rt = RT[x.uid]; if (rt) { S.push({ k: 'rate', sv: String(rt.mid), stars: rt.stars | 0, at: rt.at }); K.push({ k: 'rate', label: 'низкая оценка', pts: 25 }) }
+    const ld = L && L.at ? dd(dayStr(new Date(L.at))) : null, active = d != null && d <= 2;
+    if (L && active && ld >= 4) S.push({ k: 'stuck', sv: L.lesson + '@' + String(L.at).slice(0, 10), days: ld, lesson: +L.lesson, lt: lm ? lm.t : null });
+    if (d != null && d < 5 && x.week === 0) S.push({ k: 'stall', sv: String(x.pts | 0) });
+    if (S.some(y => y.k === 'stuck' || y.k === 'stall')) K.push({ k: 'stuck', label: S.some(y => y.k === 'stuck') ? 'застрял на уроке' : 'не продвигается', pts: 20 });
+    if (d == null || d >= 5) { S.push({ k: 'gone', sv: last || 'never', days: d }); K.push({ k: 'gone', label: 'пропал', pts: 30 }) }
+    else if (d >= 3) { S.push({ k: 'cool', sv: last, days: d }); K.push({ k: 'cool', label: 'остывает', pts: 15 }) }
+    const p0 = h ? P7[h] : 0; if (p0 && x.place && x.place - p0 >= 8) { S.push({ k: 'drop', sv: String(x.place), from: p0, to: x.place }); K.push({ k: 'drop', label: 'падение места', pts: 10 }) }
+    if (!S.length) continue; const risk = Math.min(100, K.reduce((t, y) => t + y.pts, 0));
+    items.push({ uid: x.uid, name: x.name, cur: x.cur, tar: x.tar, tg: !!x.tgid, tgu: x.tgu, place: x.place, lessons: x.lessons, last, days: d, risk, lvl: risk >= 60 ? 'r' : risk >= 35 ? 'w' : '', rk: K, sig: S,
+      ctx: lm ? lm.mod + (lm.t ? ' · «' + lm.t + '»' : '') + (L && L.at ? ' · ' + dayStr(new Date(L.at)) : '') : null }) }
+  const q = (await hwQueues(env))[cid] || null, v = { at: now, n: st.length, total: D.total_lessons || null, items, hw: q ? { n: q.n, old48: q.old48 || 0, at: q.at } : null };
+  TODC[cid] = { at: Date.now(), v }; return v }
+async function todayOut(env, cid) { const B = await todayBase(env, cid); await sigAckEnsure(env);
+  const A = {}; for (const a of ((await env.DB.prepare('SELECT uid, k, until, at, sv FROM sig_ack WHERE cid=?').bind(cid).all()).results || [])) A[a.uid + ':' + a.k] = a;
+  const now = msNow(), items = [], done = [], prim = L => L.slice().sort((a, b) => SIG_ORD[a.k] - SIG_ORD[b.k])[0].k;
+  for (const it of B.items) { let ack = null; const sig = it.sig.map(s => { const a = A[it.uid + ':' + s.k], off = !!a && (a.until > 0 ? a.until > now : a.sv === s.sv); if (off && (!ack || a.at > ack.at)) ack = { at: a.at, until: a.until }; return off ? Object.assign({ off: 1 }, s) : s });
+    const on = sig.filter(s => !s.off), k = prim(on.length ? on : sig), o = Object.assign({}, it, { sig, k, why: sigWhy(it, k) }); if (on.length) items.push(o); else done.push(Object.assign(o, { ack })) }
+  const ord = (a, b) => SIG_ORD[a.k] - SIG_ORD[b.k] || (a.k === 'wait' ? (a.sig[0].since || 0) - (b.sig[0].since || 0) : 0) || b.risk - a.risk;
+  items.sort(ord); done.sort((a, b) => ((b.ack || {}).at || 0) - ((a.ack || {}).at || 0));
+  return { at: B.at, n: B.n, total: B.total, items, done, hw: B.hw } }
 const AI_BC_SYS = 'Ты помогаешь куратору онлайн-школы OduvanovSchool (поток «AI-креатор 2.0»: дизайн карточек для маркетплейсов с помощью нейросетей) писать сообщения ученикам в Telegram от имени куратора. '
   + 'Пиши по-русски, на «ты», тепло и по делу, как живой человек: без канцелярита, без давления и чувства вины, без воды. 2–6 коротких предложений, можно 1–2 уместных эмодзи. Без markdown, хэштегов и кавычек вокруг текста. '
   + 'Можно обратиться по имени через {имя} — при отправке туда подставится имя каждого ученика. Не выдумывай факты: даты, эфиры, скидки, ссылки, призы — только если они есть в задаче куратора. В конце — один простой шаг, который можно сделать прямо сейчас.';
