@@ -2305,12 +2305,12 @@ async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() 
     if (L && active && ld >= 4) S.push({ k: 'stuck', sv: L.lesson + '@' + String(L.at).slice(0, 10), days: ld, lesson: +L.lesson, lt: lm ? lm.t : null });
     if (d != null && d < 5 && x.week === 0) S.push({ k: 'stall', sv: String(x.pts | 0) });
     if (S.some(y => y.k === 'stuck' || y.k === 'stall')) K.push({ k: 'stuck', label: S.some(y => y.k === 'stuck') ? 'застрял на уроке' : 'не продвигается', pts: 20 });
-    if (d == null || d >= 5) { S.push({ k: 'gone', sv: last || 'never', days: d }); K.push({ k: 'gone', label: 'пропал', pts: 30 }) }
+    if ((d == null && !(x.week > 0)) || d >= 5) { S.push({ k: 'gone', sv: last || 'never', days: d }); /* нет данных о заходах, но за неделю есть баллы — значит, учится (например, из приложения GetCourse) */ K.push({ k: 'gone', label: 'пропал', pts: 30 }) }
     else if (d >= 3) { S.push({ k: 'cool', sv: last, days: d }); K.push({ k: 'cool', label: 'остывает', pts: 15 }) }
     const p0 = h ? P7[h] : 0; if (p0 && x.place && x.place - p0 >= 8) { S.push({ k: 'drop', sv: String(x.place), from: p0, to: x.place }); K.push({ k: 'drop', label: 'падение места', pts: 10 }) }
     if (!S.length) continue; const risk = Math.min(100, K.reduce((t, y) => t + y.pts, 0));
     items.push({ uid: x.uid, name: x.name, cur: x.cur, tar: x.tar, tg: !!x.tgid, tgu: x.tgu, place: x.place, lessons: x.lessons, last, days: d, risk, lvl: risk >= 60 ? 'r' : risk >= 35 ? 'w' : '', rk: K, sig: S,
-      ctx: lm ? lm.mod + (lm.t ? ' · «' + lm.t + '»' : '') + (L && L.at ? ' · ' + dayStr(new Date(L.at)) : '') : null }) }
+      ctx: lm ? [lm.mod, lm.t ? '«' + lm.t + '»' : '', L && L.at ? (dt => +dt.slice(8) + '\u00a0' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'нояб', 'дек'][+dt.slice(5, 7) - 1])(dayStr(new Date(L.at))) : ''].filter(Boolean).join(' · ') : null }) }
   const q = (await hwQueues(env))[cid] || null, v = { at: now, n: st.length, total: D.total_lessons || null, items, hw: q ? { n: q.n, old48: q.old48 || 0, at: q.at } : null };
   TODC[cid] = { at: Date.now(), v }; return v }
 async function todayOut(env, cid) { const B = await todayBase(env, cid); await sigAckEnsure(env);
