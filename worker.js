@@ -1417,6 +1417,33 @@ async function appApi(env, req, path) {
     if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail } else log.unshift({ bid, at: new Date().toISOString(), who, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, noTg: o.noTg | 0 });
     await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
     await logIt(env, 'broadcast', 0, cc + ' ' + sent + '/' + to.length); return ajson({ ok: true, sent, fail }) }
+  /* 03.11 (кабинет куратора, этап 2): панель ученика в пульте — всё по одному ученику одним D1-batch: место по дням (snap, 15 дн), последний открытый урок (lv) и сколько уроков открыто,
+     время за 7 дней (time: сайт / видео), последний заход на сайт и в приложение (ev), оценки куратору (chat_rate + chat_fb), проверенные ДЗ (cur_hw), ожидание ответа (cwait). Куратор — только свой ученик */
+  if (path === '/app/api/student') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return ajson({ ok: false, err: 'u' }, 400);
+    const st = await env.DB.prepare('SELECT s.uid, s.name, s.curator, s.tg_chat, t.username tgu FROM student s LEFT JOIN tg_user t ON t.chat=s.tg_chat WHERE s.uid=?').bind(uid).first();
+    if (s.role !== 'admin' && (!st || st.curator !== s.cid)) return ajson({ ok: false, err: 'Это не твой ученик' }, 403);
+    const D = await loadData(env), priv = !!(D.rows.length && D.rows[0].uid != null), h0 = await hashUid(uid), r = (priv ? D.rows.find(x => String(x.uid) === String(uid)) : D.rows.find(x => x.h === h0)) || null;
+    const today = dayStr(), wk = addDays(today, -6), hh = (r && r.h) || h0;
+    const Q = [env.DB.prepare('SELECT day, place, pts FROM snap WHERE h=? AND day>=? ORDER BY day').bind(hh, addDays(today, -14)),
+      env.DB.prepare('SELECT lesson, at FROM lv WHERE uid=? ORDER BY at DESC LIMIT 1').bind(uid),
+      env.DB.prepare('SELECT COUNT(*) n FROM lv WHERE uid=?').bind(uid),
+      env.DB.prepare('SELECT COALESCE(SUM(site),0) site, COALESCE(SUM(video),0) video FROM time WHERE uid=? AND day>=?').bind(uid, wk),
+      env.DB.prepare('SELECT MAX(day) d FROM time WHERE uid=? AND (site>0 OR video>0)').bind(uid),
+      env.DB.prepare('SELECT MAX(day) d, COALESCE(SUM(CASE WHEN day>=? THEN n ELSE 0 END),0) n7 FROM ev WHERE uid=?').bind(wk, uid),
+      env.DB.prepare('SELECT r.mid, r.cid, r.stars, r.at, f.reasons, f.text FROM chat_rate r LEFT JOIN chat_fb f ON f.mid=r.mid WHERE r.uid=? ORDER BY r.at DESC LIMIT 40').bind(uid),
+      env.DB.prepare('SELECT status, COUNT(*) n, COALESCE(SUM(pts),0) p FROM cur_hw WHERE uid=? AND COALESCE(fix,0)=0 GROUP BY status').bind(uid),
+      env.DB.prepare('SELECT lesson, status, pts, at FROM cur_hw WHERE uid=? AND COALESCE(fix,0)=0 ORDER BY at DESC LIMIT 8').bind(uid),
+      env.DB.prepare('SELECT MIN(since) since FROM cwait WHERE uid=?').bind(uid)];
+    let R; try { R = await env.DB.batch(Q) } catch (e) { R = []; for (const q of Q) { try { R.push(await q.all()) } catch (x) { R.push({ results: [] }) } } } /* ev / lv / cur_hw.fix могут ещё не существовать */
+    const A = i => (R[i] && R[i].results) || [], F = i => A(i)[0] || {}, L = F(1), lm = L.lesson ? lessonMap(D)[+L.lesson] : null, cn = c => c ? ((CURATORS.find(x => x.id === c) || {}).name || c) : null;
+    const hs = {}; for (const x of A(7)) hs[x.status] = { n: x.n | 0, p: x.p | 0 };
+    return ajson({ ok: true, uid, name: (r && r.name) || (st && st.name) || ('id ' + uid), cur: (st && st.curator) || null, curName: cn(st && st.curator), tar: (r && r.tar) || null, acc: (r && r.acc) || null,
+      place: (r && r.place) || null, pts: r ? r.pts | 0 : null, week: r ? r.week | 0 : null, lessons: r ? r.lessons | 0 : null, hw: r ? r.hw | 0 : null, total: D.total_lessons || null, n: D.n || null,
+      tg: !!(st && st.tg_chat), tgu: (st && st.tgu) || null, snap: A(0).map(x => ({ d: x.day, p: x.place | 0, s: x.pts | 0 })),
+      lv: L.lesson ? { id: +L.lesson, at: L.at || null, t: lm ? lm.t : null, mod: lm ? lm.mod : null } : null, lvn: F(2).n | 0,
+      t7: { site: F(3).site | 0, video: F(3).video | 0 }, site_last: F(4).d || null, app_last: F(5).d || null, app7: F(5).n7 | 0,
+      rate: A(6).map(x => ({ mid: x.mid, cur: cn(x.cid), stars: x.stars | 0, at: x.at, reasons: x.reasons || null, text: x.text || null })),
+      hwst: hs, hwl: A(8).map(x => ({ lesson: x.lesson || '', st: x.status, pts: x.pts | 0, at: x.at })), wait: F(9).since || null }) }
   /* 03.11: «Сегодня» — сигналы и риск (todayOut); отметки «Обработано / Отложить» и «Вернуть» — только по своим ученикам из сигналов */
   if (path === '/app/api/today') return ajson(Object.assign({ ok: true, c }, await todayOut(env, c)));
   if ((path === '/app/api/today/ack' || path === '/app/api/today/unack') && req.method === 'POST') { const o = await req.json().catch(() => ({})), cc = appScope(s, o.c), uid = +o.uid;
