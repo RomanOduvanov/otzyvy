@@ -1465,12 +1465,6 @@ async function appApi(env, req, path) {
     const cc = s.role === 'admin' ? (st && CURATORS.some(x => x.id === st.curator) ? st.curator : 'all') : s.cid;
     const r = await stuAi(env, cc, uid, { fresh: !!o.fresh }); if (r.err) { await logIt(env, 'ai-stu-err', uid, r.err + (r.raw ? ' · ' + r.raw.slice(0, 200) : '')); return ajson(Object.assign({ ok: false, err: r.err }, s.role === 'admin' && r.raw ? { raw: r.raw } : {})) } if (!r.cached) await logIt(env, 'ai-stu', uid, cc);
     return ajson({ ok: true, what: r.what, step: r.step, draft: r.draft, k: r.k, at: r.at, cached: !!r.cached }) }
-  /* ВРЕМЕННО (проверка этапа 3): предпросмотр сводки для админа; sample=1 — один образец только в Telegram вошедшего админа */
-  if (path === '/app/api/digest' && s.role === 'admin') { const cq = u.searchParams.get('c') || 'anton'; let d;
-    if (req.method === 'POST' && u.searchParams.get('prep') === '1') return ajson({ ok: true, prep: await prepJob(env, budget(45), true) });
-    if (cq === 'admin') { const R = {}; for (const x of CURATORS) R[x.id] = await digestFor(env, x.id); d = await digestAdmin(env, R) } else if (CURATORS.some(x => x.id === cq)) d = await digestFor(env, cq); else return ajson({ ok: false, err: 'c' }, 400);
-    if (req.method === 'POST' && u.searchParams.get('sample') === '1' && s.chat) { const c0 = CURATORS.find(x => x.id === cq); const j = await tgSend(env, s.chat, '🧪 <i>Образец сводки ' + th(c0 ? (c0.name === 'Антон' ? 'Антона' : c0.name === 'Кирилл' ? 'Кирилла' : c0.name) : 'по школе') + ' — куратору не отправлялось</i>\n\n' + d.text, d.buttons); return ajson({ ok: !!(j && j.ok), sent: 1 }) }
-    return ajson(Object.assign({ ok: true, dry: true }, d)) }
   if (path === '/app/api/ai/recs') { const r = await aiRecs(env, c, u.searchParams.get('fresh') === '1'); return ajson(Object.assign({ ok: true }, r)) }
   if (path === '/app/api/ai/bc' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), A = await curAlerts(env, cc), D = await loadData(env);
     const goal = String(o.goal || '').trim().slice(0, 600), draft = String(o.draft || '').trim().slice(0, 3000);
@@ -2408,7 +2402,7 @@ const STU_AI_SYS = 'Ты помогаешь куратору онлайн-шко
   + 'Опирайся только на факты из данных: сигналы, переписку и замечания к ДЗ. Не выдумывай даты, эфиры, скидки, ссылки, причины и события, которых нет в данных; если причина неясна — так и скажи и предложи мягко спросить. '
   + 'Черновик — от имени куратора, по-русски, на «ты», тепло и по делу, как живой человек: без давления, упрёков и чувства вины, без канцелярита; 2–4 коротких предложения, можно одно уместное эмодзи, в конце — один простой шаг. '
   + 'В черновике не упоминай риск, рейтинговые места и то, что за учеником следят («вижу, ты 6 дней не заходил» — нельзя). Без markdown. '
-  + 'Куратор и так видит место, число уроков и даты в карточке — не пересказывай цифры, а дай вывод: что, похоже, происходит и почему это важно. '
+  + 'Куратор и так видит место, число уроков и даты в карточке — не пересказывай цифры, а дай вывод: что, похоже, происходит и почему это важно; не делай выводов, которых нет в данных. '
   + 'Верни ТОЛЬКО JSON: {"what":"диагноз для куратора: 1–2 коротких предложения, до 220 знаков","step":"один конкретный шаг куратору: одно короткое предложение, до 120 знаков","draft":"черновик сообщения ученику с обращением по имени"}';
 function sigFact(g) { const P = (n, a, b, c) => n + ' ' + pl(n, [a, b, c]);
   switch (g.k) { case 'wait': { const h = Math.round((msNow() / 1000 - g.since) / 3600); return 'ждёт ответа куратора ' + (h < 1 ? 'меньше часа' : P(h, 'час', 'часа', 'часов')) + (g.src === 'tg' ? ' (написал в Telegram, текста переписки нет)' : '') }
