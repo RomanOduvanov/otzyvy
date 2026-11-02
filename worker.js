@@ -2395,7 +2395,7 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
         const x = { k: revKey(c), d: c.d, who: c.who, src, q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', low: revLow(c) }; if (k) FK[k] = x; feed.push(x) }
       const hid = [], HK = {}; for (const c of D0.comments || []) { const hk = revKey(c), h = H[hk]; if (!h) continue; if (HK[hk]) { if (c.t && HK[hk].t.indexOf(c.t) < 0) HK[hk].t += ' · ' + c.t; continue } HK[hk] = { k: hk, d: c.d, who: c.who, src: c.src === 'Оценка урока' ? 'lesson' : 'anketa', q: c.q, mod: (M[c.m] || {}).name || c.m, score: c.score, scale: c.scale, t: c.t || '', why: h.why, by: h.by, hat: h.at }; hid.push(HK[hk]) }
       const seen = new Set(), low = feed.filter(c => c.low && !seen.has(c.who + c.d + c.src + c.mod) && seen.add(c.who + c.d + c.src + c.mod));
-      out.school = { updated: D.updated, week: W.ratings != null ? { stars: W.stars, n_r: W.ratings, n_s: W.surveys, interest: W.interest } : null, all: { stars: A.stars, n_r: A.n_r, n_s: A.n_s, interest: A.interest, useful: A.useful, apply: A.apply, dist: A.dist || null }, mods, feed: feed.slice(0, 300), low: low.slice(0, 100), low_n: low.length, hidden: hid.sort((a, b) => a.d < b.d ? 1 : -1).slice(0, 200) } }
+      out.school = { updated: D.updated, week: W.ratings != null ? { stars: W.stars, n_r: W.ratings, n_s: W.surveys, interest: W.interest } : null, all: { stars: A.stars, n_r: A.n_r, n_s: A.n_s, interest: A.interest, useful: A.useful, apply: A.apply, dist: A.dist || null }, mods, feed: feed.slice(0, 300), low: low.slice(0, 100), low_n: low.length, hidden: hid.sort((a, b) => a.d < b.d ? 1 : -1).slice(0, 200), ai_err: REVAI_ERR || null } }
     try { const f = await env.DB.prepare('SELECT SUM(CASE WHEN vote>0 THEN 1 ELSE 0 END) up, SUM(CASE WHEN vote<0 THEN 1 ELSE 0 END) down FROM ai_fb WHERE at>=?').bind(from).first(); const up = (f && f.up) || 0, dn = (f && f.down) || 0; out.neuro = { up, down: dn, share: up + dn ? Math.round(up / (up + dn) * 100) : null } } catch (e) { out.neuro = null }
     const fl = await qAll(env.DB.prepare('SELECT r.mid, r.uid, r.cid, r.stars, r.at, f.reasons, f.text, s.name FROM chat_rate r LEFT JOIN chat_fb f ON f.mid=r.mid LEFT JOIN student s ON s.uid=r.uid WHERE r.at>=? AND r.stars<=3 ORDER BY r.at DESC LIMIT 40').bind(from));
     out.chat_low = fl.filter(x => !isStaffUid(env, x.uid)).map(x => ({ mid: x.mid, uid: x.uid, name: x.name, cid: x.cid, stars: x.stars, at: x.at, reasons: x.reasons, text: x.text }));
@@ -2417,6 +2417,7 @@ function revAdj(D, H) { if (!D || !H || !Object.keys(H).length) return D; const 
     return false });
   X.hidden_n = done.size; return X }
 /* ИИ: честная ли низкая оценка. ok — критика качества (остаётся); tech — накладка с материалом (не тот ролик, нет видео) — убираем из статистики, но Роману сообщаем; skip — к качеству не относится */
+let REVAI_ERR = '';
 async function revAiCheck(env, D, lim) { if (!env.ANTHROPIC_API_KEY || !D) return []; const H = (await kvGet(env, 'revhide')) || {}, C = (await kvGet(env, 'revai')) || {}, T = {}, ord = [];
   for (const c of D.comments || []) { if (!revLow(c)) continue; const k = revKey(c); if (C[k] || H[k]) continue; if (!T[k]) { T[k] = { c, t: [] }; ord.push(k) } if (c.t && T[k].t.indexOf(c.t) < 0) T[k].t.push(c.t) }
   const todo = ord.slice(0, lim || 15); if (!todo.length) return []; const M = {}; for (const m of D.mods || []) M[m.id] = m.name;
@@ -2426,7 +2427,7 @@ async function revAiCheck(env, D, lim) { if (!env.ANTHROPIC_API_KEY || !D) retur
     + 'tech — техническая накладка с материалом: не тот ролик, нет видео, урок дублирует другой, битая ссылка, не открывается файл. Это чинят, а не учитывают в оценке. '
     + 'skip — оценка не про качество: ученик не смотрел урок, уже знает тему и поэтому поставил низко, тема ему не нужна, перепутал шкалу (текст хвалит, а балл низкий), бессмыслица. '
     + 'Если сомневаешься — ok. Верни ТОЛЬКО JSON: {"r":[{"i":0,"v":"ok|tech|skip","why":"коротко, до 12 слов"}]}';
-  const o = await aiText(env, sys, L, 900), m = String(o.text || '').match(/\{[\s\S]*\}/); if (!m) return []; let R = []; try { R = JSON.parse(m[0]).r || [] } catch (e) { return [] }
+  const o = await aiText(env, sys, L, 900), m = String(o.text || '').match(/\{[\s\S]*\}/); REVAI_ERR = o.err || (m ? '' : 'no-json: ' + String(o.text || '').slice(0, 200)); if (!m) return []; let R = []; try { R = JSON.parse(m[0]).r || [] } catch (e) { REVAI_ERR = 'parse: ' + String(e.message).slice(0, 80); return [] }
   const now = msNow(), out = []; for (const x of R) { const k = todo[+x.i]; if (!k || !/^(ok|tech|skip)$/.test(x.v)) continue; C[k] = { v: x.v, why: String(x.why || '').slice(0, 160), at: now };
     if (x.v !== 'ok') { H[k] = { why: (x.v === 'tech' ? 'Тех. накладка: ' : 'Не про качество: ') + C[k].why, by: 'ИИ', at: now, v: x.v }; out.push([k, x.v, C[k].why]) } }
   await kvPut(env, 'revai', C); await kvPut(env, 'revhide', H); return out }
