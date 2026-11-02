@@ -2426,8 +2426,8 @@ async function revAiCheck(env, D, lim) { if (!env.ANTHROPIC_API_KEY || !D) retur
     + 'ok — честная критика: содержание, подача, сложность, темп, нехватка практики или примеров, непонятно объяснено — даже резко. Без текста — тоже ok. '
     + 'tech — техническая накладка с материалом: не тот ролик, нет видео, урок дублирует другой, битая ссылка, не открывается файл. Это чинят, а не учитывают в оценке. '
     + 'skip — оценка не про качество: ученик не смотрел урок, уже знает тему и поэтому поставил низко, тема ему не нужна, перепутал шкалу (текст хвалит, а балл низкий), бессмыслица. '
-    + 'Если сомневаешься — ok. Верни ТОЛЬКО JSON: {"r":[{"i":0,"v":"ok|tech|skip","why":"коротко, до 12 слов"}]}';
-  const o = await aiText(env, sys, L, 900), m = String(o.text || '').match(/\{[\s\S]*\}/); REVAI_ERR = o.err || (m ? '' : 'no-json: ' + String(o.text || '').slice(0, 200)); if (!m) return []; let R = []; try { R = JSON.parse(m[0]).r || [] } catch (e) { REVAI_ERR = 'parse: ' + String(e.message).slice(0, 80); return [] }
+    + 'Если сомневаешься — ok. В why не используй кавычки. Верни ТОЛЬКО JSON: {"r":[{"i":0,"v":"ok|tech|skip","why":"коротко, до 12 слов"}]}';
+  const o = await aiText(env, sys, L, 900), m = String(o.text || '').match(/\{[\s\S]*\}/); REVAI_ERR = o.err || (m ? '' : 'no-json: ' + String(o.text || '').slice(0, 200)); if (!m) return []; let R = []; try { R = JSON.parse(m[0]).r || [] } catch (e) { const re = /"i"\s*:\s*(\d+)\s*,\s*"v"\s*:\s*"(ok|tech|skip)"(?:\s*,\s*"why"\s*:\s*"([^"]*))?/g; let x; while ((x = re.exec(m[0]))) R.push({ i: +x[1], v: x[2], why: x[3] || '' }); REVAI_ERR = R.length ? '' : 'parse: ' + String(e.message).slice(0, 80); if (!R.length) return [] }
   const now = msNow(), out = []; for (const x of R) { const k = todo[+x.i]; if (!k || !/^(ok|tech|skip)$/.test(x.v)) continue; C[k] = { v: x.v, why: String(x.why || '').slice(0, 160), at: now };
     if (x.v !== 'ok') { H[k] = { why: (x.v === 'tech' ? 'Тех. накладка: ' : 'Не про качество: ') + C[k].why, by: 'ИИ', at: now, v: x.v }; out.push([k, x.v, C[k].why]) } }
   await kvPut(env, 'revai', C); await kvPut(env, 'revhide', H); return out }
