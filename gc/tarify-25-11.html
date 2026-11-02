@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Тарифы · Закрытая группа 25.11</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap">
+<style>
+/* 03.11: страница отдела продаж для закрытой группы AI-дизайнер 3.0 (старт 25.11). Шаг 1 — тариф, шаг 2 — сразу или рассрочка → форма заказа GetCourse /sales/shop/offer/id/<оффер>.
+   Почту клиент вводит сам на странице GetCourse. ?p=regular — обычные цены (по умолчанию ранние), ?t=base|premium|amazon — сразу шаг 2, ?m=1 — список ссылок для менеджеров. */
+:root{
+  --bg:#000106; --s1:#161616; --s2:#1f1f1f; --s3:#262626;
+  --hair:rgba(255,255,255,.08); --hair2:rgba(255,255,255,.14);
+  --fg:#fff; --ink2:rgba(255,255,255,.64); --ink3:rgba(255,255,255,.42);
+  --lil:#c38bff; --lilBg:rgba(195,139,255,.12); --lilLine:rgba(195,139,255,.42);
+  --pinkA:#fef8ff; --pinkB:#fccbff; --pinkT:#602364;
+  --F:"Inter Tight",Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:400 15px/1.45 var(--F);-webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(1100px 520px at 50% 110%,rgba(122,52,214,.30),transparent 70%);background-attachment:fixed}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+a:focus-visible,button:focus-visible{outline:2px solid var(--lil);outline-offset:3px}
+.wrap{max-width:1120px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-right,0px)) 64px max(16px,env(safe-area-inset-left,0px))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:28px}
+.brand{font-weight:500;font-size:15px;letter-spacing:-.01em;color:var(--ink2)}
+.brand b{color:var(--fg);font-weight:500}
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--lilLine);background:var(--lilBg);color:var(--lil);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:500;white-space:nowrap}
+.badge i{width:7px;height:7px;border-radius:50%;background:var(--lil);box-shadow:0 0 10px var(--lil)}
+h1,h2,h3{margin:0;font-weight:500;letter-spacing:-.03em;text-wrap:balance}
+.hero{display:flex;flex-direction:column;gap:12px;margin-bottom:28px;max-width:760px}
+.hero h1{font-size:clamp(32px,6vw,56px);line-height:1.02;letter-spacing:-.045em}
+.hero p{margin:0;color:var(--ink2);font-size:16px;max-width:60ch}
+.steps{display:flex;gap:8px;margin-bottom:18px;font-size:13px;color:var(--ink3)}
+.steps span{display:inline-flex;align-items:center;gap:7px}
+.steps span b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--s3);color:var(--ink2);font-weight:500;font-size:12px}
+.steps span.on{color:var(--fg)}
+.steps span.on b{background:var(--lil);color:#1b0b2b}
+.steps em{font-style:normal;color:var(--ink3)}
+
+/* шаг 1 */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
+.card{position:relative;background:var(--s1);border:1px solid var(--hair);border-radius:24px;padding:22px 20px 20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card.hit{border-color:var(--lilLine);background:linear-gradient(180deg,rgba(195,139,255,.10),rgba(195,139,255,0) 46%),var(--s1)}
+.card .tag{position:absolute;top:-11px;left:20px;background:var(--lil);color:#1b0b2b;font-size:12px;font-weight:600;border-radius:999px;padding:4px 10px}
+.card h2{font-size:26px;line-height:1.05}
+.card .sub{color:var(--ink2);font-size:14px;margin-top:-8px}
+.price{display:flex;flex-direction:column;gap:4px}
+.price .now{font-size:32px;font-weight:500;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.price .old{color:var(--ink3);font-size:14px}
+.price .old s{text-decoration-color:rgba(255,255,255,.5)}
+.price .inst{color:var(--ink2);font-size:14px}
+.price .inst b{color:var(--fg);font-weight:500}
+ul.inc{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:14px;color:var(--ink2)}
+ul.inc li{position:relative;padding-left:22px}
+ul.inc li::before{content:"";position:absolute;left:2px;top:.45em;width:10px;height:6px;border-left:2px solid var(--lil);border-bottom:2px solid var(--lil);transform:rotate(-45deg)}
+ul.inc li.plus{color:var(--fg)}
+ul.inc li.no{color:var(--ink3)}
+ul.inc li.no::before{border:0;width:9px;height:2px;background:var(--ink3);transform:none;top:.62em}
+.card .sp{flex:1}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border-radius:16px;padding:12px 18px;font-weight:500;font-size:16px;text-decoration:none;text-align:center;transition:transform .12s ease,filter .12s ease}
+.btn:active{transform:scale(.985)}
+.btn.pink{background:linear-gradient(180deg,var(--pinkA),var(--pinkB));color:var(--pinkT)}
+.btn.pink:hover{filter:brightness(1.04)}
+.btn.ghost{background:var(--s3);color:var(--fg);border:1px solid var(--hair2)}
+.btn.ghost:hover{background:#2d2d2d}
+.note{color:var(--ink3);font-size:13px;margin:18px 0 0;max-width:70ch}
+
+/* шаг 2 */
+.pay{display:none;max-width:560px}
+body.s2 .pay{display:block}
+body.s2 .grid,body.s2 #n1{display:none}
+.back{display:inline-flex;align-items:center;gap:6px;color:var(--ink2);font-size:14px;margin-bottom:14px;min-height:36px}
+.back:hover{color:var(--fg)}
+.sum{background:var(--s1);border:1px solid var(--lilLine);border-radius:24px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
+.sum .k{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--lil)}
+.sum h2{font-size:28px;line-height:1.05}
+.opts{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.opt small{display:block;font-size:13px;font-weight:400;opacity:.75;margin-top:2px}
+.opt{flex-direction:column;gap:0;min-height:64px}
+.how{margin:16px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;color:var(--ink2);font-size:14px}
+.how li{display:flex;gap:10px}
+.how li b{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--s3);font-weight:500;font-size:12px;color:var(--fg)}
+
+/* менеджерам */
+.mgr{display:none;margin-top:48px;border-top:1px solid var(--hair2);padding-top:22px}
+body.m .mgr{display:block}
+.mgr h3{font-size:22px;margin-bottom:6px}
+.mgr p{margin:0 0 14px;color:var(--ink2);font-size:14px}
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;background:var(--s1);border:1px solid var(--hair);border-radius:16px;padding:12px 14px}
+.row .t{font-size:14px;min-width:0}
+.row .t b{font-weight:500}
+.row .t span{display:block;color:var(--ink3);font-size:12px;overflow-wrap:anywhere}
+.row .p{font-variant-numeric:tabular-nums;font-weight:500;white-space:nowrap}
+.row .a{grid-column:1/-1;display:flex;gap:8px}
+.mini{font-size:13px;border-radius:10px;padding:7px 12px;background:var(--s3);border:1px solid var(--hair2);text-decoration:none;min-height:34px;display:inline-flex;align-items:center}
+.mini.ok{color:var(--lil);border-color:var(--lilLine)}
+.mgr h4{margin:18px 0 8px;font-weight:500;font-size:15px;color:var(--ink2)}
+
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr);gap:22px}.card.hit{order:-1}}
+@media (max-width:480px){.wrap{padding-top:18px}.top{flex-wrap:wrap}.badge{white-space:normal}.top{margin-bottom:22px}.hero p{font-size:15px}.card h2{font-size:24px}.price .now{font-size:30px}.sum h2{font-size:24px}}
+@media (min-width:901px){.row{grid-template-columns:minmax(0,1fr) auto auto}.row .a{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><b>OduvanovSchool</b></div>
+    <span class="badge"><i></i>Закрытая группа · старт 25&nbsp;ноября</span>
+  </div>
+
+  <header class="hero">
+    <h1>AI-дизайнер с&nbsp;0 до&nbsp;PRO&nbsp;3.0</h1>
+    <p>AI-дизайн с&nbsp;нуля, портфолио и&nbsp;первые заказы&nbsp;— в&nbsp;закрытой группе, старт 25&nbsp;ноября. Выбери тариф, затем способ оплаты&nbsp;— сразу или в&nbsp;рассрочку.</p>
+  </header>
+
+  <div class="steps" aria-label="Шаги">
+    <span id="st1" class="on"><b>1</b>Тариф</span><em>→</em><span id="st2"><b>2</b>Оплата</span>
+  </div>
+
+  <section class="grid" id="cards" aria-label="Тарифы"></section>
+  <p class="note" id="n1">Цены в&nbsp;рублях. Рассрочку и&nbsp;кредит от&nbsp;банков-партнёров выберешь на&nbsp;странице оплаты.</p>
+
+  <section class="pay" id="pay" aria-live="polite">
+    <button class="back" id="back" type="button">← Другой тариф</button>
+    <div class="sum">
+      <div class="k">Твой тариф</div>
+      <h2 id="pName"></h2>
+      <div class="opts">
+        <a class="btn pink opt" id="payNow" href="#"><span id="payNowT"></span><small>картой, СБП или&nbsp;зарубежной картой</small></a>
+        <a class="btn ghost opt" id="payInst" href="#"><span id="payInstT"></span><small>Сплит, Подели, кредит и&nbsp;рассрочка банков</small></a>
+      </div>
+      <ul class="how">
+        <li><b>1</b><span>Откроется страница заказа GetCourse.</span></li>
+        <li><b>2</b><span>Укажи свою почту&nbsp;— на&nbsp;неё придёт доступ к&nbsp;обучению.</span></li>
+        <li><b>3</b><span>Нажми «Оформить заказ» и&nbsp;выбери способ оплаты.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="mgr" id="mgr" aria-label="Ссылки для менеджеров">
+    <h3>Ссылки для менеджеров</h3>
+    <p>Ссылку на&nbsp;оплату клиент открывает сам: если открыть её, будучи в&nbsp;своём аккаунте GetCourse, заказ оформится на&nbsp;тебя.</p>
+    <h4>Страница тарифов</h4>
+    <div class="rows" id="mPages"></div>
+    <h4>Оплата напрямую</h4>
+    <div class="rows" id="mOffers"></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var GC='https://oduvanovroman.getcourse.ru/sales/shop/offer/id/', NB=' ';
+  /* офферы GetCourse, созданы 03.11 (Закрытая группа 25.11) */
+  var T={
+    base:{nm:'Базовый',sub:'Учишься сам в'+NB+'своём темпе',
+      early:{now:[8873746,49900],inst:[8873747,69900]},regular:{now:[8873746,49900],inst:[8873747,69900]},
+      inc:[['Модули 00–08 (кроме 04): визуал, Figma и'+NB+'Photoshop, нейросети, фото, инфографика, сайты, AI-видео'],['Письменный конспект каждого урока'],['Библиотека дополнительных материалов'],['Сертификат участника'],['Без домашних заданий, кураторов и'+NB+'чатов','no']]},
+    premium:{nm:'Премиум',sub:'С'+NB+'кураторами и'+NB+'потоком',hit:'Чаще выбирают',
+      early:{now:[8873736,69900],inst:[8873738,95000]},regular:{now:[8873739,89900],inst:[8873740,109000]},
+      inc:[['Всё из'+NB+'Базового'],['Предобучение и'+NB+'модуль 04 «Поток клиентов и'+NB+'продажи»','plus'],['Домашние задания и'+NB+'индивидуальная кураторская поддержка','plus'],['Групповые онлайн-разборы и'+NB+'большой блок онлайн-практики','plus'],['Чаты потока и'+NB+'тарифа, закрытый чат с'+NB+'вакансиями','plus'],['Шанс стать наставником или куратором следующего потока','plus']]},
+    amazon:{nm:'Премиум Амазон',sub:'Плюс заработок в'+NB+'долларах',
+      early:{now:[8873741,109900],inst:[8873742,149000]},regular:{now:[8873743,129900],inst:[8873744,159000]},
+      inc:[['Всё из'+NB+'Премиума'],['Большой модуль «Заработок на'+NB+'Amazon»','plus'],['Возможность попасть в'+NB+'моё Агентство и'+NB+'получать заказы','plus'],['Поддержка старшего куратора школы 24/7','plus']]}
+  };
+  var ORDER=['base','premium','amazon'];
+  var Q=new URLSearchParams(location.search), REG=Q.get('p')==='regular', MODE=REG?'regular':'early', SEL=null;
+  function rub(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,NB)+NB+'₽'}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function el(id){return document.getElementById(id)}
+
+  var h='';
+  ORDER.forEach(function(k){var t=T[k],p=t[MODE],o=t.regular;
+    h+='<article class="card'+(t.hit?' hit':'')+'">'+(t.hit?'<span class="tag">'+t.hit+'</span>':'')
+      +'<div><h2>'+esc(t.nm)+'</h2></div><div class="sub">'+esc(t.sub)+'</div>'
+      +'<div class="price"><div class="now">'+rub(p.now[1])+'</div>'
+      +(!REG&&o.now[1]!==p.now[1]?'<div class="old">обычная цена <s>'+rub(o.now[1])+'</s></div>':'')
+      +'<div class="inst">или в'+NB+'рассрочку&nbsp;— <b>'+rub(p.inst[1])+'</b></div></div>'
+      +'<ul class="inc">'+t.inc.map(function(x){return '<li'+(x[1]?' class="'+x[1]+'"':'')+'>'+esc(x[0])+'</li>'}).join('')+'</ul>'
+      +'<div class="sp"></div><button class="btn '+(t.hit?'pink':'ghost')+'" type="button" data-k="'+k+'">Выбрать '+esc(t.nm)+'</button></article>'});
+  el('cards').innerHTML=h;
+
+  function setUrl(k,push){try{var u=new URLSearchParams(location.search);if(k)u.set('t',k);else u.delete('t');var s=u.toString();history[push?'pushState':'replaceState']({t:k||null},'',location.pathname+(s?'?'+s:'')+location.hash)}catch(e){}}
+  function show(k,push){
+    if(!T[k]){k=null}
+    SEL=k;document.body.classList.toggle('s2',!!k);
+    el('st1').classList.toggle('on',!k);el('st2').classList.toggle('on',!!k);
+    if(k){var t=T[k],p=t[MODE];
+      el('pName').textContent=t.nm;
+      el('payNowT').textContent='Оплатить сразу'+NB+'— '+rub(p.now[1]);
+      el('payInstT').textContent='В'+NB+'рассрочку'+NB+'— '+rub(p.inst[1]);
+      el('payNow').href=GC+p.now[0];el('payInst').href=GC+p.inst[0];
+    }
+    if(push!==undefined)setUrl(k,push);
+    try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){window.scrollTo(0,0)}
+  }
+  el('cards').addEventListener('click',function(e){var b=e.target.closest('[data-k]');if(b)show(b.getAttribute('data-k'),true)});
+  el('back').addEventListener('click',function(){if(history.state&&history.state.t)history.back();else show(null,false)});
+  window.addEventListener('popstate',function(){var k=new URLSearchParams(location.search).get('t');show(k)});
+  var t0=Q.get('t');if(t0==='prem')t0='premium';if(t0==='amz')t0='amazon';if(T[t0])show(t0,false);
+
+  /* ?m=1 — ссылки для менеджеров */
+  if(Q.get('m')==='1'){document.body.classList.add('m');
+    var base=location.origin+location.pathname;
+    function row(title,sub,price,url){return '<div class="row"><div class="t"><b>'+esc(title)+'</b><span>'+esc(sub||url)+'</span></div>'+(price?'<div class="p">'+price+'</div>':'<div></div>')+'<div class="a"><a class="mini" href="'+esc(url)+'" target="_blank" rel="noopener">Открыть</a><button class="mini" type="button" data-copy="'+esc(url)+'">Копировать</button></div></div>'}
+    var pg=[['Тарифы, ранние цены',base],['Тарифы, обычные цены',base+'?p=regular']];
+    ORDER.forEach(function(k){pg.push([T[k].nm+', ранняя цена',base+'?t='+k]);if(k!=='base')pg.push([T[k].nm+', обычная цена',base+'?p=regular&t='+k])});
+    el('mPages').innerHTML=pg.map(function(x){return row(x[0],x[1],'',x[1])}).join('');
+    var of=[];ORDER.forEach(function(k){var t=T[k];(k==='base'?['early']:['early','regular']).forEach(function(m){var p=t[m],lb=k==='base'?'':(m==='early'?' · ранняя':' · обычная');
+      of.push(row(t.nm+lb+' · сразу','оффер '+p.now[0]+' · '+GC+p.now[0],rub(p.now[1]),GC+p.now[0]));
+      of.push(row(t.nm+lb+' · рассрочка','оффер '+p.inst[0]+' · '+GC+p.inst[0],rub(p.inst[1]),GC+p.inst[0]))})});
+    el('mOffers').innerHTML=of.join('');
+    el('mgr').addEventListener('click',function(e){var b=e.target.closest('[data-copy]');if(!b)return;var u=b.getAttribute('data-copy');
+      function done(){b.textContent='Скопировано';b.classList.add('ok');setTimeout(function(){b.textContent='Копировать';b.classList.remove('ok')},1600)}
+      function fb(){try{var ta=document.createElement('textarea');ta.value=u;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();done()}catch(x){}}
+      try{navigator.clipboard.writeText(u).then(done,fb)}catch(x){fb()}});
+  }
+})();
+</script>
+</body>
+</html>
