@@ -292,6 +292,18 @@ function modMailHtml(I, first, unsub) { const esc2 = esc, nb2 = t => nb(t);
     + `<div style="font-size:14px;line-height:21px;color:#8b8b95;margin-top:18px">Удобнее в Telegram: кнопка откроет приложение школы. С компьютера — <a href="${SITE}/teach/control/stream" style="color:#d77fff;text-decoration:none;font-weight:600">кабинет на сайте</a>.</div></td></tr>`
     + `<tr><td style="padding:22px 8px 0;font-family:Inter,Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6b75">Онлайн-школа Романа Одуванова. Вопросы — в <a href="${CARE}" style="color:#a78bfa;text-decoration:underline">Службу заботы</a> или куратору в приложении. <a href="${unsub}" style="color:#a78bfa;text-decoration:underline">Не присылать письма о модулях</a></td></tr>`
     + `</table></td></tr></table></div></body></html>` }
+/* 04.11: письмо рассылки из пульта — тот же вид, что «Открыт новый модуль» */
+function bcMailHtml(who, subj, text, btn, unsub) { const body = esc(text).split(/\n{2,}/).map(p => '<p style="margin:0 0 14px">' + nb(p).replace(/\n/g, '<br>') + '</p>').join('');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>${esc(subj)}</title></head><body style="margin:0;padding:0;background-color:#000106">`
+    + `<div style="margin:0;padding:0;background-color:#000106"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000106" style="background-color:#000106;width:100%"><tr><td align="center" style="padding:32px 12px 40px"><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">`
+    + `<tr><td style="padding:0 8px 24px"><img src="https://romanoduvanov.github.io/otzyvy/gc/email-logo-white.png" width="240" height="33" alt="OduvanovSchool" style="display:block;border:0;width:240px;height:33px"></td></tr>`
+    + `<tr><td bgcolor="#141414" style="background-color:#141414;border:1px solid #262626;border-radius:28px;padding:36px 32px 32px;font-family:${MM_F};color:#ffffff">`
+    + `<div style="font-size:15px;line-height:20px;font-weight:600;color:#c38bff;margin:0 0 14px">${esc(who === 'Роман' ? 'Роман Одуванов' : 'Куратор ' + who)}</div>`
+    + `<div style="font-size:16px;line-height:24px;color:#e6e6ea">${body}</div>`
+    + (btn ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px"><tr><td align="center" bgcolor="#fccbff" style="border-radius:16px;background-color:#fccbff;background-image:linear-gradient(180deg,#fef8ff,#fccbff)"><a href="${esc(btn.url)}" style="display:block;padding:18px 24px;font-family:${MM_F};font-size:17px;line-height:22px;font-weight:600;color:#602364;text-decoration:none;border-radius:16px">${esc(btn.text)}</a></td></tr></table>` : '')
+    + `<div style="font-size:14px;line-height:21px;color:#8b8b95;margin-top:18px">Ответить можно в&nbsp;<a href="https://t.me/oduvanov_school_bot?startapp=chat" style="color:#d77fff;text-decoration:none;font-weight:600">чате школы</a> или в&nbsp;<a href="${SITE}/teach/control/stream" style="color:#d77fff;text-decoration:none;font-weight:600">кабинете на&nbsp;сайте</a>.</div></td></tr>`
+    + `<tr><td style="padding:22px 8px 0;font-family:Inter,Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6b6b75">Онлайн-школа Романа Одуванова. Вопросы — в <a href="${CARE}" style="color:#a78bfa;text-decoration:underline">Службу заботы</a>. <a href="${unsub}" style="color:#a78bfa;text-decoration:underline">Не присылать письма школы</a></td></tr>`
+    + `</table></td></tr></table></div></body></html>` }
 async function modUnsubLink(env, uid) { return (env.BASE_URL || 'https://oduvanov-api.romanoduvanov52.workers.dev') + '/modunsub?u=' + uid + '&s=' + (await hmacHex(env, 'mo|' + uid)).slice(0, 24) }
 async function modMailJob(env, B) { if (!env.RESEND_KEY) return { skip: 'no-mail' }; const D = await loadData(env), now = Date.now();
   const open = (D.modules || []).filter(m => !m.amazon && +m.id !== AMAZON_MOD && m.at && Date.parse(m.at) <= now && now - Date.parse(m.at) < 12 * 36e5);
@@ -922,7 +934,10 @@ export default {
         if (!w.uid) w.uid = await softUid(env, w, uid);
         if (!w.uid) { const s = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(uid).first(); const c0 = s && s.curator && CURATORS.find(x => x.id === s.curator);
           return json(req, { ok: true, auth: false, tg_ok: true, cur: c0 ? curPub(c0) : null, curators: CURATORS.map(curPub) }) }
-        const r = await studentRow(env, uid); return json(req, { ok: true, auth: true, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
+        const r = await studentRow(env, uid);
+        /* 04.11 (Роман): need_cur — ученик текущего потока (строка рейтинга) без куратора: на сайте висит плашка «Выбери куратора» */
+        let need_cur = false; if (!r.curator && !isStaffUid(env, uid)) { try { const D = await loadData(env); need_cur = (D.rows || []).some(x => x.uid != null && +x.uid === +uid) } catch (e) {} }
+        return json(req, { ok: true, auth: true, need_cur, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
       if (path === '/cur' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
         const w = await who(env, o.t, 'a'); if (!w.uid && !w.bad) w.uid = await softUid(env, w, +o.u); if (!w.uid || (o.u && +o.u !== w.uid)) return deny(req);
         const uid = w.uid, c = CURATORS.find(x => x.id === o.c); if (!c) return json(req, { ok: false }, 400);
@@ -1423,18 +1438,27 @@ async function appApi(env, req, path) {
     await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]);
     if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).map(x => x === 7 ? 0 : x).filter(x => x >= 0 && x <= 6))]; /* пульт шлёт Вс=7 */ if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
   if (path === '/app/api/bclog') return ajson({ ok: true, log: (await kvGet(env, 'bclog:' + c)) || [] });
-  if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
+  /* 04.11 (Роман): рассылка в Telegram, на почту или туда и туда (ch: tg | mail | both). Почта — из выгрузки GetCourse (gc_name.email), письмо в стиле писем школы, отписка — mail_off */
+  if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), ch = ['tg', 'mail', 'both'].includes(o.ch) ? o.ch : 'tg';
     const text = String(o.text || '').trim().slice(0, 3000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
     const all = (await appStudents(env, cc)).students; const want = Array.isArray(o.uids) && o.uids.length ? new Set(o.uids.map(Number)) : null;
-    const to = all.filter(x => x.tgid && (!want || want.has(x.uid))); if (to.length > 40) return ajson({ ok: false, err: 'batch' }, 400); /* бесплатный Cloudflare: ~50 запросов за вызов — страница шлёт пачками по 35 */
+    const inW = x => !want || want.has(x.uid), toT = ch === 'mail' ? [] : all.filter(x => x.tgid && inW(x));
+    let toM = ch === 'tg' ? [] : all.filter(x => x.em && inW(x));
+    if (toM.length) { const off = new Set((await qAll(env.DB.prepare('SELECT uid FROM mail_off'))).map(r => +r.uid)); toM = toM.filter(x => !off.has(+x.uid)) }
+    if (toT.length > 40 || toM.length > 100) return ajson({ ok: false, err: 'batch' }, 400); /* бесплатный Cloudflare: ~50 запросов за вызов — страница шлёт пачками по 35 */
     const who = s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор');
     const btn = o.link && /^https:\/\//.test(o.link) ? [[{ text: String(o.btn || 'Открыть').slice(0, 40), url: o.link }]] : undefined;
-    let sent = 0, fail = 0;
-    for (const x of to) { const j = await tgSend(env, x.tgid, '<b>' + th(who) + '</b>\n' + th(text.replace(/\{имя\}/g, firstName(x.name) || 'привет')), btn); if (j && j.ok) sent++; else fail++ }
+    let sent = 0, fail = 0, msent = 0, mfail = 0;
+    for (const x of toT) { const j = await tgSend(env, x.tgid, '<b>' + th(who) + '</b>\n' + th(text.replace(/\{имя\}/g, firstName(x.name) || 'привет')), btn); if (j && j.ok) sent++; else fail++ }
+    if (toM.length) { if (!env.RESEND_KEY) mfail = toM.length; else {
+      const subj = String(o.subj || '').trim().slice(0, 120) || (who === 'Роман' ? 'Сообщение от Романа Одуванова' : 'Сообщение от куратора ' + who);
+      const msgs = await Promise.all(toM.map(async x => ({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [x.em], subject: subj.replace(/\{имя\}/g, firstName(x.name) || ''), html: bcMailHtml(who, subj, text.replace(/\{имя\}/g, firstName(x.name) || 'привет'), btn ? btn[0][0] : null, await modUnsubLink(env, x.uid)) })));
+      const r = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(msgs) });
+      const t = await r.text(); await logIt(env, r.ok ? 'bcmail-ok' : 'bcmail-err', 0, cc + ' · ' + toM.length + ' · ' + t.slice(0, 200)); if (r.ok) msent = toM.length; else mfail = toM.length } }
     const log = (await kvGet(env, 'bclog:' + cc)) || []; const bid = String(o.bid || '').slice(0, 40);
-    if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail } else log.unshift({ bid, at: new Date().toISOString(), who, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, noTg: o.noTg | 0 });
+    if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail; log[0].msent = (log[0].msent || 0) + msent } else log.unshift({ bid, at: new Date().toISOString(), who, ch, text: text.slice(0, 1500), btn: btn ? btn[0][0].text : null, link: btn ? btn[0][0].url : null, all: !want, sent, fail, msent, noTg: o.noTg | 0 });
     await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
-    await logIt(env, 'broadcast', 0, cc + ' ' + sent + '/' + to.length); return ajson({ ok: true, sent, fail }) }
+    await logIt(env, 'broadcast', 0, cc + ' ' + ch + ' tg ' + sent + '/' + toT.length + ' mail ' + msent + '/' + toM.length); return ajson({ ok: true, sent, fail, msent, mfail }) }
   /* 03.11 (кабинет куратора, этап 2): панель ученика в пульте — всё по одному ученику одним D1-batch: место по дням (snap, 15 дн), последний открытый урок (lv) и сколько уроков открыто,
      время за 7 дней (time: сайт / видео), последний заход на сайт и в приложение (ev), оценки куратору (chat_rate + chat_fb), проверенные ДЗ (cur_hw), ожидание ответа (cwait). Куратор — только свой ученик */
   if (path === '/app/api/student') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return ajson({ ok: false, err: 'u' }, 400);
