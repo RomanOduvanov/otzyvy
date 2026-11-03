@@ -63,7 +63,7 @@
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
   })();
   function make(O) {
-    try { window.__fdSite = O.site || (/getcourse|oduvanovschool/.test(location.host) ? location.origin : 'https://oduvanovschool.pro') } catch (e) {}
+    try { window.__fdSite = O.site || (/getcourse|oduvanovschool/.test(location.host) ? location.origin : 'https://oduvanovroman.getcourse.ru') } catch (e) {}
   var U = +O.U || 0, SITE = O.site || '', FEED = '/teach/control/answers/unanswered', HW_MAX = 70, W_HW = 72 * 36e5;
   var LV = { easy: ['Лёгкий', 20], mid: ['Средний', 40], max: ['Максимальный', 70] }, SVC = /служебн|ученики не видят|не для учеников|архив уроков/i;
   var K = { esc: function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) },
