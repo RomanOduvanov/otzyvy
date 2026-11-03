@@ -1489,7 +1489,7 @@ async function appApi(env, req, path) {
     const r = await env.DB.prepare("INSERT INTO bc_plan (cc, role, cid, at, data, st, done, sent, fail, msent, created) VALUES (?,?,?,?,?,'plan',0,0,0,0,?) RETURNING id").bind(cc, s.role, s.cid || null, at, JSON.stringify(d), Date.now()).first();
     await logIt(env, 'bcplan-new', 0, cc + ' ' + new Date(at).toISOString() + ' ' + uids.length); return ajson({ ok: true, id: r && r.id }) }
   if (path === '/app/api/bcplan') { const cc = appScope(s, u.searchParams.get('c'));
-    const L = await qAll(env.DB.prepare("SELECT id, at, data, st, done, sent, fail, msent FROM bc_plan WHERE cc=? AND (st IN ('plan','run') OR at > ?) ORDER BY at LIMIT 30").bind(cc, Date.now() - 3 * 864e5));
+    const L = await qAll(env.DB.prepare("SELECT id, at, data, st, done, sent, fail, msent FROM bc_plan WHERE cc=? AND st != 'cancel' AND (st IN ('plan','run') OR at > ?) ORDER BY at LIMIT 30").bind(cc, Date.now() - 3 * 864e5));
     return ajson({ ok: true, plans: L.map(x => { const d = JSON.parse(x.data || '{}'); return { id: x.id, at: x.at, st: x.st, n: (d.uids || []).length, ch: d.ch, text: String(d.text || '').slice(0, 300), subj: d.subj || '', done: x.done, sent: x.sent, fail: x.fail, msent: x.msent } }) }) }
   if (path === '/app/api/bcplan/cancel' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
     const r = await env.DB.prepare("UPDATE bc_plan SET st='cancel' WHERE id=? AND cc=? AND st='plan'").bind(+o.id || 0, cc).run(); return ajson({ ok: !!(r.meta && r.meta.changes) }) }
