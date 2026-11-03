@@ -354,9 +354,9 @@
         if (f && navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f] }).catch(function (e) { if (!e || e.name !== 'AbortError') fallback() }); else fallback() }, 'image/png') } catch (e) { fallback() } }
   /* v13: «Написать» ученику — в чат на платформе. Хост (приложение, пульт) может передать chat(uid, text); иначе — страница чата на сайте (?fs=chat&u=…).
      Текст похвалы при этом копируется, чтобы вставить его в чат. */
-  var GCU = 'https://oduvanovroman.getcourse.ru';
+  var GCU = 'https://oduvanovschool.pro';
   function chatGo(O, uid, text) { if (O && typeof O.chat === 'function') { try { O.chat(uid, text); return } catch (e) {} }
-    var u = GCU + '/teach/control/stream?fs=chat&u=' + (+uid || 0), go = function () { if (/getcourse\.ru$/.test(location.hostname)) { location.href = u.slice(GCU.length); return }
+    var u = GCU + '/teach/control/stream?fs=chat&u=' + (+uid || 0), go = function () { if (/getcourse\.ru$|oduvanovschool\.pro$/.test(location.hostname)) { location.href = u.slice(GCU.length); return }
       if (window.top !== window && !TGW()) { try { window.top.location.href = u; return } catch (e) {} } if (O && O.open) O.open(u); else window.open(u, '_blank') };
     if (text && navigator.clipboard && navigator.clipboard.writeText) { var t = setTimeout(go, 600); navigator.clipboard.writeText(text).then(function () { clearTimeout(t); toast('Текст похвалы скопирован' + NB + '— вставь его в' + NB + 'чат'); setTimeout(go, 400) }, function () { clearTimeout(t); go() }) } else go() }
   var MID = 0;
