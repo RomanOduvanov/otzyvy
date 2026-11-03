@@ -48,6 +48,7 @@
        pdf — просмотр поверх страницы (в просмотрщике браузера есть «Скачать»), остальное (zip, psd, docx…) — скрытый iframe, браузер сам сохраняет файл.
        Лента внутри пульта (адрес github.io) — просим сайт-родителя (eco.js), там вход в GetCourse */
     var fdDoc = window.__fdDoc = function (u, name) { var pdf = /\.pdf(\?|$)/i.test(name || '') || /\.pdf(\?|$)/i.test(u);
+      /* 04.11: Safari не показывает PDF внутри страницы (белый лист) — открываем отдельной вкладкой, там есть «Скачать» */ if (pdf && /^((?!chrome|chromium|crios|android|edg).)*safari/i.test(navigator.userAgent)) { var w = window.open(u, '_blank'); if (!w) location.href = u; return }
       if (!pdf) { var f = document.createElement('iframe'); f.style.display = 'none'; f.src = u; document.body.appendChild(f); setTimeout(function () { f.remove() }, 6e4); return }
       var L = document.createElement('div'); L.setAttribute('role', 'dialog'); L.setAttribute('aria-label', 'Просмотр PDF'); L.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,1,6,.92);display:flex;flex-direction:column;padding:12px;gap:10px';
       var bs = 'height:40px;padding:0 16px;border-radius:12px;border:0;background:rgba(255,255,255,.12);color:#fff;font:600 14px "Inter Tight",Inter,sans-serif;cursor:pointer;display:inline-flex;align-items:center;text-decoration:none';
@@ -57,6 +58,7 @@
       L.querySelector('.x').onclick = close; L.onclick = function (e) { if (e.target === L) close() }; document.addEventListener('keydown', key, true); document.body.appendChild(L) };
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a.doc[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
       e.preventDefault(); e.stopImmediatePropagation(); var site = window.__fdSite || location.origin, h = a.getAttribute('href'), u = /^https?:/i.test(h) ? h : site + h, nm = a.getAttribute('title') || '';
+      if (/\.pdf(\?|$)/i.test(nm || u) && /^((?!chrome|chromium|crios|android|edg).)*safari/i.test(navigator.userAgent)) { window.open(u, '_blank'); return } /* Safari: PDF — отдельной вкладкой прямо по клику */
       if (new URL(u).origin !== location.origin && window.parent !== window) { try { window.parent.postMessage({ ecoDl: u, name: nm }, '*'); return } catch (er) {} } fdDoc(u, nm) }, true);
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
   })();
