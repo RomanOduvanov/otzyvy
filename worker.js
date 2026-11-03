@@ -2087,7 +2087,10 @@ async function gcImport(env, kind, params) { if (!env.GC_KEY_W) throw new Error(
   const r = await fetch(GC_HOST + '/pl/api/' + kind, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
   if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + ')'); return j }
 async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
-  await ensure(env); const k = String(o.k || u.searchParams.get('k') || ''); if (!k || !same(k, await cpayKey(env))) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
+  await ensure(env); const k = String(o.k || u.searchParams.get('k') || ''), ss = k ? null : await staffSess(env, req, u); /* 03.11: и Роман из пульта (сессия admin) */
+  if (!(k && same(k, await cpayKey(env))) && !(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
+  /* проверка ключа записи без создания объектов: импорт заказа без почты → GetCourse отвечает ошибкой проверки (ключ верный) или «ключ неверный» */
+  if (path === '/pay/ping') { if (!env.GC_KEY_W) return json(req, { ok: false, key: false }); const j = await gcImport(env, 'deals', { user: {}, system: {}, deal: {} }); return json(req, { ok: true, key: true, gc: { success: j.success, err: String(j.error_message || (j.result && j.result.error_message) || '').slice(0, 200) } }) }
   if (path === '/pay/catalog') return json(req, { ok: true, items: CPAY_ITEMS.map(x => ({ id: x.id, t: x.t, k: x.k })), terms: Object.entries(CPAY_TERMS).map(([id, v]) => ({ id, t: v[1], days: v[0] })), key: !!env.GC_KEY_W });
   if (path === '/pay/list') { const L = await qAll(env.DB.prepare('SELECT id, num, email, name, items, days, sum, note, link, st, at, paid, paid_at, until FROM cpay ORDER BY id DESC LIMIT 50')); return json(req, { ok: true, list: L.map(x => Object.assign(x, { items: JSON.parse(x.items || '[]') })) }) }
   if (path === '/pay/create' && req.method === 'POST') {
