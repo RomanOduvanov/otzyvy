@@ -437,11 +437,17 @@ const CURATORS = [
 const curPub = c => c && { id: c.id, name: c.name, full: c.full, about: c.about, uid: c.uid };
 /* ---------- кураторы в своей личке Telegram: бот школы подключён к их аккаунту через Telegram Business ---------- */
 const CUR_HOURS_DEF = [10, 20]; /* рабочие часы по МСК, пока куратор не выставит свои в пульте */
-const curHours = async (env, cid) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('hours:' + cid).first(); try { const h = r && JSON.parse(r.v); if (h && h.length === 2) return h } catch (e) {} return CUR_HOURS_DEF };
+/* 04.11 (Роман: «каждый день настраивать отдельно»): у куратора может быть расписание по дням — kv 'hsched:<cid>' = 7 элементов (0 — Вс), [с, до] или null (выходной).
+   curHours отдаёт [с, до] как раньше (часы первого рабочего дня), а расписание кладёт в h.sched — его учитывают curOn, curNext, workSec */
+const CHC = {}; const curHours = async (env, cid) => { const c = CHC[cid]; if (c && Date.now() - c.at < 30e3) return c.v;
+  let h = null; try { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('hours:' + cid).first(); const x = r && JSON.parse(r.v); if (x && x.length === 2) h = [x[0], x[1]] } catch (e) {} if (!h) h = CUR_HOURS_DEF.slice();
+  try { const sc = await kvGet(env, 'hsched:' + cid); if (Array.isArray(sc) && sc.length === 7) h.sched = sc.map(d => Array.isArray(d) && d.length === 2 && d[0] < d[1] ? [d[0] | 0, d[1] | 0] : null) } catch (e) {}
+  CHC[cid] = { at: Date.now(), v: h }; return h };
+const hOfDay = (h, days, wd) => h && h.sched ? h.sched[wd] : (!days || days.includes(wd)) ? h : null;
 const curKey = async (env, cid) => (await sha('cur:' + cid + ':' + env.ADMIN_KEY)).slice(0, 16);
 /* секунды между a и b (unix), попавшие в рабочие часы [h1, h2) по МСК */
 function workSec(a, b, h) { if (!(b > a)) return 0; let s = 0, t = a; const end = Math.min(b, a + 14 * 86400);
-  while (t < end) { const d = msk(new Date(t * 1000)), hr = d.getUTCHours(), next = Math.min(end, t - (d.getUTCMinutes() * 60 + d.getUTCSeconds()) + 3600); if (hr >= h[0] && hr < h[1]) s += next - t; t = next } return s }
+  while (t < end) { const d = msk(new Date(t * 1000)), hr = d.getUTCHours(), next = Math.min(end, t - (d.getUTCMinutes() * 60 + d.getUTCSeconds()) + 3600), r = hOfDay(h, null, d.getUTCDay()); if (r && hr >= r[0] && hr < r[1]) s += next - t; t = next } return s }
 async function saveTgUser(env, u) { if (!u || !u.id) return; await env.DB.prepare('INSERT OR REPLACE INTO tg_user (chat, username, name, at) VALUES (?,?,?,?)').bind(String(u.id), u.username || null, [u.first_name, u.last_name].filter(Boolean).join(' ') || null, new Date().toISOString()).run() }
 const admins = async env => ((await env.DB.prepare('SELECT chat FROM tg_admin').all()).results || []).map(a => a.chat);
 async function bizConnection(env, bc) {
@@ -485,7 +491,7 @@ async function bizMessage(env, m, edited) {
 async function curRemind(env, B) { const now = Date.now() / 1000 | 0, out = [];
   await env.DB.batch([env.DB.prepare('DELETE FROM cwait WHERE since < ?').bind(now - 3 * 86400), env.DB.prepare('DELETE FROM cwait WHERE chat IN (SELECT chat FROM tg_admin) OR chat IN (SELECT tg_id FROM cur_tg)')]);
   const ws = (await env.DB.prepare('SELECT w.*, c.tg_id, s.name sname, u.username FROM cwait w JOIN cur_tg c ON c.cid=w.cid LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.reminded < 2').all()).results || [];
-  for (const w of ws) { if (B && !B.ok(3)) { out.push('budget'); break } const h = await curHours(env, w.cid), hr = msk().getUTCHours(); if (hr < h[0] || hr >= h[1]) continue;
+  for (const w of ws) { if (B && !B.ok(3)) { out.push('budget'); break } const h = await curHours(env, w.cid); if (!curOn(h, await curDays(env, w.cid))) continue;
     const ans = await env.DB.prepare('SELECT id FROM cresp WHERE cid=? AND chat=? AND answered >= ?').bind(w.cid, w.chat, w.since).first(); if (ans) { await env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); continue }
     const sec = workSec(w.since, now, h), who = th(w.sname || 'Ученик'), c = CURATORS.find(x => x.id === w.cid), since = msk(new Date(w.since * 1000)), sinceT = ('0' + since.getUTCHours()).slice(-2) + ':' + ('0' + since.getUTCMinutes()).slice(-2) + (dayStr(new Date(w.since * 1000)) !== dayStr() ? ' (' + since.getUTCDate() + '.' + ('0' + (since.getUTCMonth() + 1)).slice(-2) + ')' : '');
     const btn = (w.username ? [[{ text: 'Открыть чат', url: 'https://t.me/' + w.username }]] : []).concat([[{ text: '✅ Уже ответил', callback_data: 'cwd:' + w.cid + ':' + w.chat }, { text: 'Ответ не нужен', callback_data: 'cwn:' + w.cid + ':' + w.chat }]]);
@@ -500,7 +506,7 @@ async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days
     const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
     const byDay = {}; for (const r of rs) (byDay[r.day] = byDay[r.day] || []).push(r.wsec);
     const wait = ((await env.DB.prepare('SELECT w.uid, w.since, w.chat, s.name FROM cwait w LEFT JOIN student s ON s.uid=w.uid WHERE w.cid=? ORDER BY w.since').bind(c.id).all()).results || []).filter(w => !(w.uid && isStaffUid(env, w.uid))).map(w => ({ uid: w.uid, name: w.name, since: w.since, wsec: workSec(w.since, now, h), src: /^app/.test(String(w.chat)) ? 'app' : 'tg' })); /* 30.10 QA №7: свои тесты команды не считаем — как в списке учеников. Раунд 3 (Н5): src — откуда ждут: tg (личка куратора в Telegram) или app (чат платформы) */
-    res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, answered: rs.length, median: med(rs.map(r => r.wsec).filter(x => x > 0)), offHours: rs.filter(r => !(r.wsec > 0)).length, in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
+    res.push({ id: c.id, full: c.full, tg: ct && ct.username, connected: !!(ct && ct.enabled), hours: h, sched: h.sched || null, days: await curDays(env, c.id), answered: rs.length, median: med(rs.map(r => r.wsec).filter(x => x > 0)), offHours: rs.filter(r => !(r.wsec > 0)).length, in2h: rs.length ? Math.round(rs.filter(r => r.wsec <= 7200).length / rs.length * 100) : null, over4h: rs.filter(r => r.wsec > 14400).length,
       days: Object.keys(byDay).sort().map(d => ({ day: d, median: med(byDay[d].filter(x => x > 0)), n: byDay[d].length })), waiting: wait }) }
   return { ok: true, days, curators: res } }
 /* вебхук сам добавляет бизнес-события (без ручной ссылки /tg/setup) */
@@ -1475,6 +1481,10 @@ async function appApi(env, req, path) {
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
   if (path === '/app/api/stats') { const st = await curStats(env, Math.min(90, Math.max(1, +u.searchParams.get('days') || 14))); return ajson({ ok: true, c, curators: c === 'all' ? st.curators : st.curators.filter(x => x.id === c) }) }
   if (path === '/app/api/hours' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
+    /* 04.11: расписание по дням (sched: 7 × [с, до] | null, 0 — Вс) */
+    if (Array.isArray(o.sched) && o.sched.length === 7 && cc !== 'all') { const sc = o.sched.map(d => Array.isArray(d) && d[0] >= 0 && d[1] <= 24 && d[0] < d[1] ? [d[0] | 0, d[1] | 0] : null); const on = sc.map((x, i) => x ? i : -1).filter(i => i >= 0);
+      if (!on.length) return ajson({ ok: false, err: 'Отметь хотя бы один рабочий день' }, 400); const first = sc[[1, 2, 3, 4, 5, 6, 0].find(i => sc[i])];
+      await kvPut(env, 'hsched:' + cc, sc); await kvPut(env, 'hours:' + cc, first); await kvPut(env, 'hdays:' + cc, on); delete CHC[cc]; for (const k in CCC) delete CCC[k]; return ajson({ ok: true }) }
     if (cc === 'all' || !(o.from >= 0 && o.to <= 24 && o.from < o.to)) return ajson({ ok: false }, 400);
     await kvPut(env, 'hours:' + cc, [o.from | 0, o.to | 0]);
     if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).map(x => x === 7 ? 0 : x).filter(x => x >= 0 && x <= 6))]; /* пульт шлёт Вс=7 */ if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
@@ -1997,14 +2007,14 @@ const NOTIF_DEF = { cur: 1, hw: 1, efir: 1, lessons: 1, rating: 0, bank: 1 };
 async function notifGet(env, uid) { const n = Object.assign({}, NOTIF_DEF, { quiet: null }, (await kvGet(env, 'notif:' + uid)) || {}); n.cur = 1; return n }
 async function notifOn(env, uid, k) { return k === 'cur' || !!(await notifGet(env, uid))[k] }
 /* рабочие дни куратора (0 — вс … 6 — сб), по умолчанию будни; часы — curHours */
-async function curDays(env, cid) { const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [0, 1, 2, 3, 4, 5, 6] }
+async function curDays(env, cid) { const h = await curHours(env, cid); if (h.sched) return h.sched.map((x, i) => x ? i : -1).filter(i => i >= 0); const d = await kvGet(env, 'hdays:' + cid); return Array.isArray(d) && d.length ? d.map(Number).filter(x => x >= 0 && x <= 6) : [0, 1, 2, 3, 4, 5, 6] }
 const daysTxt = d => d.length === 7 ? 'каждый день' : d.join() === '1,2,3,4,5' ? 'по будням' : d.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(x => WD[x]).join(', ');
 const medOf = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null;
 /* 1.11 (Роман: «некорректно в сети куратор или нет»): «в сети» учитывает и дни, и часы; когда не в сети — пишем, когда ответит */
 const WDF = ['в воскресенье', 'в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу'];
-function curOn(h, days, now = msk()) { return days.includes(now.getUTCDay()) && now.getUTCHours() >= h[0] && now.getUTCHours() < h[1] }
+function curOn(h, days, now = msk()) { const r = hOfDay(h, days, now.getUTCDay()); return !!r && now.getUTCHours() >= r[0] && now.getUTCHours() < r[1] }
 function curNext(h, days, now = msk()) { if (curOn(h, days, now)) return null; const d0 = now.getUTCDay(), hr = now.getUTCHours();
-  for (let i = 0; i < 8; i++) { const d = (d0 + i) % 7; if (!days.includes(d)) continue; if (i === 0 && hr >= h[0]) continue; return 'ответит ' + (i === 0 ? 'сегодня' : i === 1 ? 'завтра' : WDF[d]) + ' с ' + h[0] + ':00 МСК' } return null }
+  for (let i = 0; i < 8; i++) { const d = (d0 + i) % 7, r = hOfDay(h, days, d); if (!r) continue; if (i === 0 && hr >= r[0]) continue; return 'ответит ' + (i === 0 ? 'сегодня' : i === 1 ? 'завтра' : WDF[d]) + ' с ' + r[0] + ':00 МСК' } return null }
 const CCC = {}; async function curCardC(env, cid) { const c = CCC[cid]; if (c && Date.now() - c.at < 60e3) return c.v; const v = await curCard(env, cid); CCC[cid] = { at: Date.now(), v }; return v }
 async function curCard(env, cid) { const c = CURATORS.find(x => x.id === cid); if (!c) return null; const now = msk(), from = (msNow() / 1000 | 0) - 30 * 86400;
   const [h, days, photo, tgu] = await Promise.all([curHours(env, cid), curDays(env, cid), kvGet(env, 'curphoto:' + cid), curTg(env, cid)]);
