@@ -13,7 +13,7 @@ const DATA_URL = 'https://romanoduvanov.github.io/otzyvy/gc/reyting-7993b0/data.
 /* отчёты родителям идут 4 месяца на текущей версии продукта (старт потока 12.10.2026); срок меняется через env.REPORT_UNTIL */
 const REPORT_UNTIL = '2027-02-12';
 const until = env => (env && env.REPORT_UNTIL) || REPORT_UNTIL;
-const ORIGINS = ['https://oduvanovroman.getcourse.ru', 'https://romanoduvanov.github.io'];
+const ORIGINS = ['https://oduvanovroman.getcourse.ru', 'https://oduvanovschool.pro', 'https://www.oduvanovschool.pro', 'https://romanoduvanov.github.io', 'https://pay.oduvanovschool.pro']; /* 03.11: свой домен кабинета oduvanovschool.pro и страницы оплат pay.oduvanovschool.pro */
 const SITE = 'https://oduvanovroman.getcourse.ru';
 const CARE = 'https://t.me/zabota_oduvanov';
 const TECH_TG = 'https://t.me/Yark0s';
