@@ -31,7 +31,10 @@
     var close = function () { if (!L) return; var l = L; L = null; l.classList.remove('on'); setTimeout(function () { l.remove() }, 200); document.removeEventListener('keydown', key, true) };
     var go = function (d) { var j = i + d; if (j < 0 || j >= list.length) return; i = j; show() };
     var key = function (e) { if (!L) return; if (e.key === 'Escape') { e.stopPropagation(); close() } else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1) };
-    var dl = function (b) { var u = list[i] ? big(list[i]) : ''; if (!u) return; b.disabled = true; fetch(u, { mode: 'cors' }).then(function (r) { if (!r.ok) throw 0; return r.blob() }).then(function (bl) { var o = URL.createObjectURL(bl), a = document.createElement('a'); a.href = o; a.download = nm(u); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(o) }, 4e3) }).catch(function () { window.open(u, '_blank', 'noopener') }).then(function () { b.disabled = false }) };
+    /* «Скачать»: у картинок CORS нет — качаем оригинал через загрузчик GetCourse (/pl/fileservice/user/file/download/h/<hash>, отдаёт attachment) скрытым iframe: страница не уходит */
+    var dl = function (b) { var u = list[i] ? big(list[i]) : '', m = u.match(/\/h\/([0-9a-f]{32}\.\w{2,5})/i), site = window.__fdSite || location.origin; if (!u) return;
+      if (!m) { window.open(u, '_blank', 'noopener'); return } var f = document.createElement('iframe'); f.style.display = 'none'; f.src = site + '/pl/fileservice/user/file/download/h/' + m[1]; document.body.appendChild(f); setTimeout(function () { f.remove() }, 6e4);
+      b.disabled = true; setTimeout(function () { b.disabled = false }, 1500) };
     var open = function (a) { var box = a.closest('.fd-fl') || a.parentNode; list = [].slice.call(box.querySelectorAll('a[href]')).filter(function (x) { return x.querySelector('img') }); i = Math.max(0, list.indexOf(a));
       L = document.createElement('div'); L.id = 'fdLb'; L.setAttribute('role', 'dialog'); L.setAttribute('aria-label', 'Просмотр работы');
       L.innerHTML = '<div class="tb"><span class="ct"></span><button type="button" class="bt dl" aria-label="Скачать">' + SV('M12 4v11M7 10l5 5 5-5M5 20h14') + '<span class="l">Скачать</span></button><a class="bt or" target="_blank" rel="noopener" aria-label="Открыть оригинал">' + SV('M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5') + '<span class="l">Оригинал</span></a><button type="button" class="bt x" aria-label="Закрыть">' + SV('M6 6l12 12M18 6 6 18') + '</button></div>'
@@ -44,6 +47,7 @@
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
   })();
   function make(O) {
+    try { window.__fdSite = O.site || (/getcourse|oduvanovschool/.test(location.host) ? location.origin : 'https://oduvanovroman.getcourse.ru') } catch (e) {}
   var U = +O.U || 0, SITE = O.site || '', FEED = '/teach/control/answers/unanswered', HW_MAX = 70, W_HW = 72 * 36e5;
   var LV = { easy: ['Лёгкий', 20], mid: ['Средний', 40], max: ['Максимальный', 70] }, SVC = /служебн|ученики не видят|не для учеников|архив уроков/i;
   var K = { esc: function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) },
