@@ -306,7 +306,7 @@ a.b1,a.b2{text-decoration:none}
 
 <div id="app" class="wrap hid"><nav class="nav" id="kNav" aria-label="Разделы кабинета"></nav><div class="kMain">
 <header class="hd"><div><h1 id="hTitle">Пульт куратора</h1><p id="hSub">Ученики, ответы и&nbsp;рассылки</p></div>
-<div class="row"><div class="row hid" id="hdX"></div><div class="seg hid" id="siteNav"><button data-nav="cur">Проверка ДЗ</button><button data-nav="chat">Сообщения</button><button class="on">Пульт</button></div><div class="seg hid" id="curSeg"></div><button class="sb" id="bOut">Выйти</button></div></header>
+<div class="row"><div class="row hid" id="hdX"></div><div class="seg hid" id="siteNav"><button class="on">Пульт</button><button data-nav="cur">Проверка ДЗ</button><button data-nav="chat">Сообщения</button></div><div class="seg hid" id="curSeg"></div><button class="sb" id="bOut">Выйти</button></div></header>
 <div class="kpis" id="kpis"></div>
 <div class="ctl"><div class="tabs" id="tabs"><button data-t="td">Сегодня</button><button data-t="st" class="on">Ученики</button><button data-t="hw" class="hid" id="tabHw">ДЗ</button><button data-t="cu" class="hid" id="tabCu">Кураторы</button><button data-t="ch">Чаты</button><button data-t="rv">Отзывы</button><button data-t="bc">Рассылки</button><button data-t="hr">Время работы</button><button data-t="ms" id="tabMs">Моя статистика</button><button data-t="bk">Банк учеников</button><button data-t="ef">Эфиры</button><button data-t="cz" class="hid" id="tabCz">Служба заботы</button><button data-t="nr" class="hid" id="tabNr">Нейро</button><button data-t="an" class="hid" id="tabAn">Аналитика</button><button data-t="mo" class="hid" id="tabMo">Ещё</button></div><span class="muted" id="upd" style="font-size:13px"></span></div>
 
@@ -359,7 +359,7 @@ a.b1,a.b2{text-decoration:none}
 (function(){
 var MA=/[?&]ma=1\b/.test(location.search),EMB=MA||/[?&]embed=1/.test(location.search);if(MA)document.documentElement.classList.add('ma');
 /* 1.11 (Роман: «в пульт можно попасть только из Сообщений»): на сайте пульт показывает ту же навигацию, что «Проверка ДЗ» и «Сообщения» */
-if(EMB&&!MA){var sn=document.getElementById('siteNav');if(sn){sn.classList.remove('hid');sn.onclick=function(e){var b=e.target.closest('[data-nav]');if(!b)return;var u=SITE+'/teach/control/stream?fs='+b.getAttribute('data-nav');try{top.location.href=u}catch(x){window.open(u,'_top')}}}}
+if(EMB&&!MA){var sn=document.getElementById('siteNav');if(sn){sn.classList.remove('hid');sn.onclick=function(e){var b=e.target.closest('[data-nav]');if(!b)return;var k=b.getAttribute('data-nav'); /* 03.11 (Роман): разделы — внутри пульта, без загрузки страниц */ if(k==='cur'&&HWIN){kHw();return}if(k==='chat'){tabGo('ch');return}var u=SITE+'/teach/control/stream?fs='+k;try{top.location.href=u}catch(x){window.open(u,'_top')}}}}
 /* 30.10 QA №15: пульт открыт прямо в Telegram (не внутри приложения и не на сайте) — отступ под часами и кнопками Telegram; переменные --tg-* ставит telegram-web-app.js */
 if(!EMB&&(window.Telegram&&window.Telegram.WebApp||/tgWebApp/.test(location.hash)||window.TelegramWebviewProxy)){document.documentElement.classList.add('tgw');
   if(!(window.Telegram&&window.Telegram.WebApp)){var tgs=document.createElement('script');tgs.src='https://telegram.org/js/telegram-web-app.js?59';tgs.onload=function(){try{Telegram.WebApp.ready();Telegram.WebApp.expand()}catch(e){}};document.head.appendChild(tgs)}}if(EMB&&!MA){document.documentElement.classList.add('emb');var ph=0,post=function(){var hh=document.documentElement.scrollHeight;if(hh!==ph){ph=hh;try{parent.postMessage({ecoH:hh},'*')}catch(e){}}};setInterval(post,400);window.addEventListener('load',post)}
@@ -575,6 +575,14 @@ if(MA){document.addEventListener('click',function(e){var a=e.target.closest&&e.t
 var CHQ=['Супер, принято!','Посмотрю сегодня','Пришли, пожалуйста, скрин'],BA=API.replace(/\/app\/api\/$/,''),XK={},CHS={f:'wait',L:null,u:0,name:'',j:null,tm:0,pend:[],q:''},KMAX=650*1024;
 function rapi(p,o){o=o||{};o.headers=Object.assign({'Content-Type':'application/json'},o.headers||{});if(T)o.headers.Authorization='Bearer '+T;
   return fetch(BA+p,o).then(function(r){if(r.status===401){logout(true);throw new Error('auth')}if(r.status===404||r.status===405||r.status===501)return {ok:false,nf:1};return r.json().catch(function(){return {ok:false}})})}
+/* 03.11 (Роман: «всё грузится по полминуты, блоки и текст ИИ появляются с задержкой, страница дёргается»): GET-ответы сервера — сразу из localStorage (последний раз), свежие — фоном;
+   если пришло новое — тихая перерисовка (не во время набора текста). Ключ — по входу (первые 8 символов токена) */
+var PCP={};function pcKey(b,p){return 'pc:'+String(T||'').slice(0,8)+':'+b+p}
+function pcRedraw(){clearTimeout(pcRedraw.t);pcRedraw.t=setTimeout(function(){var a=document.activeElement;if(a&&/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)){pcRedraw();return}try{if(ME)xLoad().then(load)}catch(e){}try{if(window.kRedrawTab)kRedrawTab()}catch(e){}},400)}
+function pcWrap(fn,b){return function(p,o){if(o&&(o.body||(o.method&&o.method!=='GET')))return fn(p,o);var k=pcKey(b,p),c=null;try{c=JSON.parse(localStorage.getItem(k)||'null')}catch(e){}
+  var net=function(){if(PCP[k])return PCP[k];return PCP[k]=fn(p,o).then(function(j){delete PCP[k];try{if(j&&j.ok!==false&&!j.nf){var s1=JSON.stringify(j),ch=!c||JSON.stringify(c.j)!==s1;if(s1.length<1.5e6)localStorage.setItem(k,JSON.stringify({t:Date.now(),j:j}));if(c&&ch)pcRedraw()}}catch(e){}return j},function(e){delete PCP[k];throw e})};
+  if(c&&c.j&&Date.now()-c.t<864e5){if(Date.now()-c.t>15e3)net().catch(function(){});return Promise.resolve(c.j)}return net()}}
+api=pcWrap(api,'a');rapi=pcWrap(rapi,'r');window.kRedrawTab=function(){var t=kTab();if(t==='td')tabGo('td')};
 function kNum(x){return typeof x==='number'&&isFinite(x)}
 function kT(t){if(t==null||t==='')return 0;if(typeof t==='string'&&!/^\d+$/.test(t))return Date.parse(t)||0;t=+t;return t<1e12?t*1000:t}
 function kAgo(ms){var m=Math.max(0,Math.round((Date.now()-ms)/60000));if(m<60)return m+' мин';var h=Math.floor(m/60);if(h<24)return h+' ч'+(m%60?' '+(m%60)+' мин':'');var d=Math.floor(h/24);return d+' д'+(h%24?' '+(h%24)+' ч':'')}
