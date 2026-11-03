@@ -537,6 +537,10 @@ async function tgUpdate(env, up) {
     await tgSend(env, chat, '👋 <b>Здравствуйте!</b>\n\nВы подписаны на отчёты об обучении <b>' + th(p.student || 'ученика') + '</b> в OduvanovSchool. Они будут приходить ' + (FQT[p.freq] || 'раз в неделю') + ' в ' + String(p.hour).padStart(2, '0') + ':00 по Москве.\n\nА вот первый отчёт 👇');
     if (dayStr() <= until(env)) await tgSendReport(env, p);
     return }
+  /* 04.11: менеджер открывает приглашение от Романа (/manager → ссылка t.me/…?start=mgr_…) — его чат запоминается, дальше /manager работает и у него */
+  if (st && st[1] && st[1].startsWith('mgr_')) { if (!same(st[1].slice(4), (await cpayKey(env)).slice(0, 12))) return tgSend(env, chat, 'Ссылка недействительна. Попроси у Романа новую.');
+    const M = (await kvGet(env, 'cpaymgr')) || []; if (!M.includes(String(chat))) { M.push(String(chat)); await kvPut(env, 'cpaymgr', M.slice(-50)) } await logIt(env, 'cpay-mgr', 0, chat);
+    return tgSend(env, chat, '🔗 Кабинет менеджера: ссылки на оплату и своя ссылка для брони/предоплаты. Не пересылай её в общие чаты:\nhttps://pay.oduvanovschool.pro/manager/?k=' + (await cpayKey(env)) + '\n\nПотерял ссылку — напиши боту /manager.') }
   if (st && st[1] && st[1].startsWith('cur_')) { let c = null; for (const x of CURATORS) if (st[1].slice(4) === await curKey(env, x.id)) c = x;
     if (!c) return tgSend(env, chat, 'Ссылка недействительна. Попроси у Романа новую.');
     await saveTgUser(env, m.from); const bc = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('bc:' + chat).first();
@@ -556,7 +560,10 @@ async function tgUpdate(env, up) {
     if (st[1].slice(4) !== await admKey(env)) return tgSend(env, chat, 'Ссылка недействительна.');
     await env.DB.prepare('INSERT OR REPLACE INTO tg_admin (chat, name, added) VALUES (?,?,?)').bind(chat, [m.from && m.from.first_name, m.from && m.from.last_name].filter(Boolean).join(' '), new Date().toISOString()).run();
     await logIt(env, 'tg-admin', 0, chat); return tgSend(env, chat, '✅ Готово! Сюда будут приходить уведомления об оплатах OduvanovSchool.') }
-  if (/^\/manager/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (a) return tgSend(env, chat, '🔗 Кабинет менеджера (кастомные ссылки на оплату). Ссылку не пересылай в общие чаты — по ней создаются заказы:\n' + 'https://pay.oduvanovschool.pro/manager/?k=' + (await cpayKey(env))) }
+  if (/^\/manager/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(), M = (await kvGet(env, 'cpaymgr')) || [];
+    if (a) return tgSend(env, chat, '🔗 Кабинет менеджера (кастомные ссылки на оплату). Ссылку не пересылай в общие чаты — по ней создаются заказы:\nhttps://pay.oduvanovschool.pro/manager/?k=' + (await cpayKey(env)) + '\n\n👤 Дать доступ менеджеру: перешли ему эту ссылку, он откроет её в Telegram — и бот будет выдавать ему кабинет по /manager:\nhttps://t.me/' + BOT(env) + '?start=mgr_' + (await cpayKey(env)).slice(0, 12));
+    if (M.includes(String(chat))) return tgSend(env, chat, '🔗 Кабинет менеджера:\nhttps://pay.oduvanovschool.pro/manager/?k=' + (await cpayKey(env)));
+    return tgSend(env, chat, 'Кабинет менеджера — по приглашению Романа. Попроси у него ссылку-приглашение.') }
   if (/^\/curators/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (a) return tgSend(env, chat, await curInvites(env)) }
   if (/^\/stop/.test(text)) { const r = await env.DB.prepare('UPDATE parent SET active=0 WHERE tg_chat=?').bind(chat).run(); await env.DB.prepare('DELETE FROM tg_admin WHERE chat=?').bind(chat).run();
     return tgSend(env, chat, 'Готово, уведомления отключены.') }
