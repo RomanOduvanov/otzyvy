@@ -38,6 +38,7 @@ const json = (req, obj, st = 200, hd = {}) => new Response(JSON.stringify(obj), 
 const html = (body, st = 200) => new Response(body, { status: st, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
 export const SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS cpay (id INTEGER PRIMARY KEY AUTOINCREMENT, num INTEGER, did INTEGER, email TEXT, name TEXT, phone TEXT, items TEXT, days INTEGER, sum REAL, note TEXT, link TEXT, st TEXT, at TEXT, paid REAL, paid_at TEXT, until TEXT, rem INTEGER DEFAULT 0, mgr TEXT)',
   'CREATE TABLE IF NOT EXISTS time (uid INTEGER NOT NULL, day TEXT NOT NULL, site INTEGER NOT NULL DEFAULT 0, video INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (uid, day))',
   'CREATE TABLE IF NOT EXISTS uidmap (uid INTEGER PRIMARY KEY, h TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS uidmap_h ON uidmap (h)',
@@ -555,6 +556,7 @@ async function tgUpdate(env, up) {
     if (st[1].slice(4) !== await admKey(env)) return tgSend(env, chat, 'Ссылка недействительна.');
     await env.DB.prepare('INSERT OR REPLACE INTO tg_admin (chat, name, added) VALUES (?,?,?)').bind(chat, [m.from && m.from.first_name, m.from && m.from.last_name].filter(Boolean).join(' '), new Date().toISOString()).run();
     await logIt(env, 'tg-admin', 0, chat); return tgSend(env, chat, '✅ Готово! Сюда будут приходить уведомления об оплатах OduvanovSchool.') }
+  if (/^\/manager/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (a) return tgSend(env, chat, '🔗 Кабинет менеджера (кастомные ссылки на оплату). Ссылку не пересылай в общие чаты — по ней создаются заказы:\n' + 'https://pay.oduvanovschool.pro/manager/?k=' + (await cpayKey(env))) }
   if (/^\/curators/.test(text)) { const a = await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first(); if (a) return tgSend(env, chat, await curInvites(env)) }
   if (/^\/stop/.test(text)) { const r = await env.DB.prepare('UPDATE parent SET active=0 WHERE tg_chat=?').bind(chat).run(); await env.DB.prepare('DELETE FROM tg_admin WHERE chat=?').bind(chat).run();
     return tgSend(env, chat, 'Готово, уведомления отключены.') }
@@ -722,6 +724,7 @@ export default {
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
       if (path.startsWith('/srch/')) return srchApi(env, req, path);
+      if (path.startsWith('/pay/')) return cpayApi(env, req, path);
       /* 01.11: запасная раздача файлов сайта (eco/layout/theme), пока GitHub Pages не принимает выкладки. Залить: POST /gc/put?name=… с X-GH-Token (право push в репозиторий) */
       if (path === '/gc/put' && req.method === 'POST') { if (!(await ghOk(env, req))) return deny(req); const nm = u.searchParams.get('name') || ''; if (!/^(eco|layout|theme|appskin)-[0-9a-f]{8}\.(js|css)$/.test(nm)) return json(req, { ok: false, err: 'name' }, 400);
         const body = await req.text(); if (!body || body.length > 1800000) return json(req, { ok: false, err: 'size' }, 400); await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('gcf:' + nm, body).run(); return json(req, { ok: true, name: nm, bytes: body.length }) }
@@ -948,12 +951,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['prep', 'efir', 'pay', 'names'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report'],
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -2055,6 +2058,70 @@ async function ptestApi(env, req) { let o = {}; try { o = JSON.parse(await req.t
     p = await env.DB.prepare('SELECT * FROM parent WHERE uid=?').bind(uid).first() }
   const q = Object.assign({}, p, { tg_chat: tu.chat, name: o.name || p.name || 'Роман' }), j = await tgSendReport(env, q);
   await logIt(env, 'ptest', uid, un); return json(req, { ok: !!(j && j.ok), err: j && !j.ok ? (j.description || 'не отправилось') : null }) }
+/* ---------- 03.11 (Роман): кастомные ссылки на оплату для менеджеров (брони/предоплаты — суммы разные).
+   Менеджер (pay.oduvanovschool.pro/manager/?k=…; ссылку даёт бот по /manager админу) выбирает, к чему открыть доступ (модули закрытой группы 3.0, весь курс, бонусы), срок и сумму →
+   заказ в GetCourse через API (ключ GC_KEY_W «Чтение и запись», секрет Cloudflare) с deal_cost = сумма и ссылкой на оплату.
+   Оплата (в т. ч. частичная) видна в выгрузке платежей (pay, статус «Получен», колонка «Заказ») → cron cpay добавляет в группы (users import, refresh_if_exists) и ставит срок.
+   Срок вышел → бот пишет админам, из каких групп убрать (снятие групп через API заменяет весь список групп ученика — делаем вручную, чтобы не задеть чужие). ---------- */
+const CPAY_ITEMS = [
+  { id: 'all', t: 'Весь курс AI-креатор 3.0 (закрытая группа 25.11)', g: '3.0 — Закрытая группа 25.11', k: 'course' },
+  { id: 'm00', t: 'Модуль 00 — Точка входа', g: '3.0 доступ — Модуль 00 Точка входа', k: 'mod' },
+  { id: 'm01', t: 'Модуль 01 — Инструментарий креатора', g: '3.0 доступ — Модуль 01 Инструментарий креатора', k: 'mod' },
+  { id: 'm02', t: 'Модуль 02 — Архитектура визуала', g: '3.0 доступ — Модуль 02 Архитектура визуала', k: 'mod' },
+  { id: 'm03', t: 'Модуль 03 — Генеративные системы', g: '3.0 доступ — Модуль 03 Генеративные системы', k: 'mod' },
+  { id: 'm04', t: 'Модуль 04 — Поток клиентов', g: '3.0 доступ — Модуль 04 Поток клиентов', k: 'mod' },
+  { id: 'm05', t: 'Модуль 05 — Генеративная фотолаборатория', g: '3.0 доступ — Модуль 05 Фотолаборатория', k: 'mod' },
+  { id: 'm06', t: 'Модуль 06 — Инфографика с нейросетями', g: '3.0 доступ — Модуль 06 Инфографика', k: 'mod' },
+  { id: 'amz', t: 'Amazon — выход на Amazon', g: '3.0 доступ — Amazon', k: 'mod' },
+  { id: 'm07', t: 'Модуль 07 — Сайты будущего', g: '3.0 доступ — Модуль 07 Сайты будущего', k: 'mod' },
+  { id: 'm08', t: 'Модуль 08 — Генерация AI-видео', g: '3.0 доступ — Модуль 08 AI-видео', k: 'mod' },
+  { id: 'sprint', t: 'Бонус: Спринт', g: 'Спринт', k: 'bonus' },
+  { id: 'practicum', t: 'Бонус: Практикум по дизайну карточек', g: 'Практикум — доступ', k: 'bonus' },
+  { id: 'camp', t: 'Бонус: Design Camp', g: 'Дизайн кэмп — доступ', k: 'bonus' }];
+const CPAY_TERMS = { '1w': [7, '1 неделя'], '2w': [14, '2 недели'], '1m': [30, '1 месяц'], '2m': [61, '2 месяца'], '6m': [183, '6 месяцев'], '9m': [274, '9 месяцев'], '12m': [365, '12 месяцев'] };
+const cpayKey = async env => (await sha('cpay-manager:' + env.ADMIN_KEY)).slice(0, 24);
+const b64u = s => { const b = new TextEncoder().encode(s); let x = ''; for (let i = 0; i < b.length; i++) x += String.fromCharCode(b[i]); return btoa(x) };
+async function gcImport(env, kind, params) { if (!env.GC_KEY_W) throw new Error('На сервере нет ключа GetCourse «Чтение и запись» (GC_KEY_W)');
+  const body = new URLSearchParams({ key: env.GC_KEY_W, action: 'add', params: b64u(JSON.stringify(params)) });
+  const r = await fetch(GC_HOST + '/pl/api/' + kind, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
+  if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + ')'); return j }
+async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
+  await ensure(env); const k = String(o.k || u.searchParams.get('k') || ''); if (!k || !same(k, await cpayKey(env))) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
+  if (path === '/pay/catalog') return json(req, { ok: true, items: CPAY_ITEMS.map(x => ({ id: x.id, t: x.t, k: x.k })), terms: Object.entries(CPAY_TERMS).map(([id, v]) => ({ id, t: v[1], days: v[0] })), key: !!env.GC_KEY_W });
+  if (path === '/pay/list') { const L = await qAll(env.DB.prepare('SELECT id, num, email, name, items, days, sum, note, link, st, at, paid, paid_at, until FROM cpay ORDER BY id DESC LIMIT 50')); return json(req, { ok: true, list: L.map(x => Object.assign(x, { items: JSON.parse(x.items || '[]') })) }) }
+  if (path === '/pay/create' && req.method === 'POST') {
+    const email = String(o.email || '').trim().toLowerCase(), name = bStr(o.name, 80), phone = bStr(o.phone, 30), note = bStr(o.note, 300), sum = Math.round(+o.sum * 100) / 100, term = CPAY_TERMS[o.term] ? o.term : '';
+    const items = (Array.isArray(o.items) ? o.items : []).filter((x, i, a) => a.indexOf(x) === i).map(id => CPAY_ITEMS.find(x => x.id === id)).filter(Boolean);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(req, { ok: false, err: 'Проверь почту ученика' }, 400);
+    if (!items.length) return json(req, { ok: false, err: 'Выбери, к чему открыть доступ' }, 400);
+    if (!(sum >= 1 && sum <= 1e6)) return json(req, { ok: false, err: 'Сумма — от 1 до 1 000 000 ₽' }, 400);
+    if (!term) return json(req, { ok: false, err: 'Выбери срок доступа' }, 400);
+    const title = 'Индивидуальный доступ: ' + items.map(x => x.t.replace(/^Бонус: /, '')).join(', ');
+    const comm = 'Создано менеджером через pay.oduvanovschool.pro · срок ' + CPAY_TERMS[term][1] + (note ? ' · ' + note : '');
+    const j = await gcImport(env, 'deals', { user: { email, first_name: name || undefined, phone: phone || undefined }, system: { refresh_if_exists: 0, return_payment_link: 1, return_deal_number: 1 },
+      deal: { product_title: title.slice(0, 250), product_description: comm.slice(0, 500), deal_cost: sum, deal_status: 'new', quantity: 1, deal_comment: comm.slice(0, 500) } });
+    const R = j.result || {}; if (!(j.success === true || j.success === 'true') || !(R.success === true || R.success === 'true') || !R.deal_id) { await logIt(env, 'cpay-err', 0, JSON.stringify(j).slice(0, 400)); return json(req, { ok: false, err: 'GetCourse не создал заказ: ' + (R.error_message || j.error_message || 'неизвестная ошибка') }, 502) }
+    const link = R.payment_link || null;
+    await env.DB.prepare('INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, mgr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(+R.deal_number || null, +R.deal_id, email, name || null, phone || null, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], sum, note || null, link, 'new', new Date().toISOString(), bStr(o.mgr, 40) || null).run();
+    await logIt(env, 'cpay-new', 0, email + ' ' + sum + ' ' + items.map(x => x.id).join(','));
+    return json(req, { ok: true, link, num: +R.deal_number || null, deal_id: +R.deal_id }) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
+/* cron: оплата (в т. ч. частичная) по заказу → группы и срок; срок вышел → админам, что снять */
+async function cpayJob(env, B) { const out = { granted: 0, expired: 0 }; let L = []; try { L = await qAll(env.DB.prepare("SELECT * FROM cpay WHERE st IN ('new','granted') ORDER BY id DESC LIMIT 200")) } catch (e) { return { skip: 'no table' } }
+  for (const c of L.filter(x => x.st === 'new')) { const p = await env.DB.prepare("SELECT SUM(sum) s, MIN(created) at FROM pay WHERE status='Получен' AND (deal=? OR deal=?)").bind(c.num || -1, c.did || -1).first();
+    if (!p || !(p.s > 0)) continue; if (!env.GC_KEY_W) { out.nokey = 1; break }
+    const G = JSON.parse(c.items || '[]').map(id => (CPAY_ITEMS.find(x => x.id === id) || {}).g).filter(Boolean);
+    const j = await gcImport(env, 'users', { user: { email: c.email, group_name: G }, system: { refresh_if_exists: 1 } }); const R = j.result || {};
+    if (!(j.success === true || j.success === 'true') || R.error) { await logIt(env, 'cpay-grant-err', 0, c.id + ' ' + JSON.stringify(j).slice(0, 300)); continue }
+    const until = new Date(Date.now() + c.days * 864e5).toISOString();
+    await env.DB.prepare("UPDATE cpay SET st='granted', paid=?, paid_at=?, until=? WHERE id=?").bind(p.s, p.at || new Date().toISOString(), until, c.id).run(); out.granted++;
+    await tgAdmins(env, '✅ Оплата по кастомной ссылке: ' + th(c.email) + ' — ' + Math.round(p.s).toLocaleString('ru-RU') + ' ₽ из ' + Math.round(c.sum).toLocaleString('ru-RU') + ' ₽' + (p.s < c.sum ? ' (частично)' : '') + '. Открыт доступ до ' + until.slice(0, 10) + ': ' + th(G.join(', '))) }
+  const now = new Date().toISOString();
+  for (const c of L.filter(x => x.st === 'granted' && x.until && x.until < now && !x.rem)) { const G = JSON.parse(c.items || '[]').map(id => (CPAY_ITEMS.find(x => x.id === id) || {}).g).filter(Boolean);
+    await tgAdmins(env, '⏰ Закончился срок доступа по кастомной ссылке: ' + th(c.email) + '. Убери его из групп в GetCourse: ' + th(G.join(', ')));
+    await env.DB.prepare("UPDATE cpay SET rem=1, st='expired' WHERE id=?").bind(c.id).run(); out.expired++ }
+  return out }
+async function tgAdmins(env, text) { const A = await qAll(env.DB.prepare('SELECT chat FROM tg_admin')); for (const a of A) { try { await tgSend(env, a.chat, text) } catch (e) {} } }
 async function srchApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
   const W = await chatWho(env, req, u, o); if (!W) return json(req, { ok: false, err: 'Нужно войти', st: 401 }, 401);
   if (path === '/srch/index' && req.method === 'POST') { if (W.me !== 'admin') return json(req, { ok: false, err: 'Только админ' }, 403);
