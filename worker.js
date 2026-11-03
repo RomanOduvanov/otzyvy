@@ -49,6 +49,7 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS student (uid INTEGER PRIMARY KEY, name TEXT, tg_chat TEXT, tg_token TEXT, tg_at TEXT, curator TEXT, cur_at TEXT)',
   'CREATE TABLE IF NOT EXISTS gc_name (uid INTEGER PRIMARY KEY, name TEXT, at TEXT)',
   'CREATE TABLE IF NOT EXISTS mail_off (uid INTEGER PRIMARY KEY, kind TEXT, at TEXT)',
+  'CREATE TABLE IF NOT EXISTS bc_plan (id INTEGER PRIMARY KEY AUTOINCREMENT, cc TEXT, role TEXT, cid TEXT, at INTEGER, data TEXT, st TEXT, done INTEGER DEFAULT 0, sent INTEGER DEFAULT 0, fail INTEGER DEFAULT 0, msent INTEGER DEFAULT 0, created INTEGER)',
   'CREATE TABLE IF NOT EXISTS stu_tg (uid INTEGER PRIMARY KEY, username TEXT, at TEXT)', /* 30.10: Telegram ученика из формы первого входа — видит куратор */ /* 30.10: отписка от писем о модулях */
   'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
   'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
@@ -913,7 +914,7 @@ export default {
         if (!CURATORS.some(c => c.id === cq)) return json(req, { ok: false, err: 'cid' }, 400); return json(req, Object.assign({ ok: true, dry: true }, await digestFor(env, cq))) }
       if (path === '/admin/run' && u.searchParams.get('k') === env.ADMIN_KEY) { const res = await runHourly(env, true); return json(req, res) }
       /* Telegram: вебхук и настройка */
-      if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 });
+      if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 }); if (Date.now() - BCT > 60e3) { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env, budget(40)).catch(() => {})) } /* 04.11: запланированные рассылки — точнее крона (бот получает обновления постоянно) */
         const up = await req.json(); ctx.waitUntil(tgUpdate(env, up).catch(e => logIt(env, 'tg-ex', 0, String(e && e.message || e)))); return new Response('ok') }
       if (path === '/tg/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const base = env.BASE_URL || u.origin;
         const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message', 'edited_business_message', 'deleted_business_messages'], drop_pending_updates: true });
@@ -981,12 +982,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay', 'crask'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
+const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1385,6 +1386,38 @@ async function appLoginTg(env, chat, nonce, from) {
 }
 async function appSession(env, req) { const t = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/, ''); if (!/^[0-9a-f]{32}$/.test(t)) return null;
   const s = await kvGet(env, 'sess:' + t); if (!s || s.exp < Date.now()) return null; s.tok = t; return s }
+/* 04.11: отправка пачки рассылки (до 35 человек) — из пульта сразу и из запланированных (bcPlanTick) */
+async function bcSend(env, s, o) { const cc = appScope(s, o.c), ch = ['tg', 'mail', 'both'].includes(o.ch) ? o.ch : 'tg';
+    const text = String(o.text || '').trim().slice(0, 3000); if (!text) return { ok: false, err: 'empty' };
+    const all = (await appStudents(env, cc)).students; const want = Array.isArray(o.uids) && o.uids.length ? new Set(o.uids.map(Number)) : null;
+    const inW = x => !want || want.has(x.uid), toT = ch === 'mail' ? [] : all.filter(x => x.tgid && inW(x));
+    let toM = ch === 'tg' ? [] : all.filter(x => x.em && inW(x));
+    if (toM.length) { const off = new Set((await qAll(env.DB.prepare('SELECT uid FROM mail_off'))).map(r => +r.uid)); toM = toM.filter(x => !off.has(+x.uid)) }
+    if (toT.length > 40 || toM.length > 100) return { ok: false, err: 'batch' }; /* бесплатный Cloudflare: ~50 запросов за вызов — страница шлёт пачками по 35 */
+    const who = s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор');
+    /* 04.11: несколько кнопок (btns: [{t,u}], до 5) — каждая отдельной строкой; старый формат btn/link тоже принимаем */
+    const BL = (Array.isArray(o.btns) ? o.btns : o.link ? [{ t: o.btn, u: o.link }] : []).filter(b => b && /^https:\/\//.test(String(b.u || ''))).slice(0, 5).map(b => ({ text: String(b.t || 'Открыть').slice(0, 40), url: String(b.u).slice(0, 500) }));
+    const btn = BL.length ? BL.map(b => [b]) : undefined;
+    let sent = 0, fail = 0, msent = 0, mfail = 0;
+    for (const x of toT) { const j = await tgSend(env, x.tgid, th(text.replace(/\{имя\}/g, firstName(x.name) || 'привет')), btn); /* 04.11 (Роман): без «Роман» первой строкой — человек должен сразу видеть суть, сообщение и так от бота */ if (j && j.ok) sent++; else fail++ }
+    if (toM.length) { if (!env.RESEND_KEY) mfail = toM.length; else {
+      const subj = String(o.subj || '').trim().slice(0, 120) || (who === 'Роман' ? 'Сообщение от Романа Одуванова' : 'Сообщение от куратора ' + who);
+      const msgs = await Promise.all(toM.map(async x => ({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [x.em], subject: subj.replace(/\{имя\}/g, firstName(x.name) || ''), html: bcMailHtml(who, subj, text.replace(/\{имя\}/g, firstName(x.name) || 'привет'), BL, await modUnsubLink(env, x.uid)) })));
+      const r = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(msgs) });
+      const t = await r.text(); await logIt(env, r.ok ? 'bcmail-ok' : 'bcmail-err', 0, cc + ' · ' + toM.length + ' · ' + t.slice(0, 200)); if (r.ok) msent = toM.length; else mfail = toM.length } }
+    const log = (await kvGet(env, 'bclog:' + cc)) || []; const bid = String(o.bid || '').slice(0, 40);
+    if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail; log[0].msent = (log[0].msent || 0) + msent } else log.unshift({ bid, at: new Date().toISOString(), who, ch, text: text.slice(0, 1500), btn: BL.length ? BL.map(b => b.text).join(' · ') : null, link: BL.length ? BL[0].url : null, all: !want, sent, fail, msent, noTg: o.noTg | 0 });
+    await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
+    await logIt(env, 'broadcast', 0, cc + ' ' + ch + ' tg ' + sent + '/' + toT.length + ' mail ' + msent + '/' + toM.length); return { ok: true, sent, fail, msent, mfail } }
+let BCT = 0;
+async function bcPlanTick(env, B) { let P = null; try { P = await env.DB.prepare("SELECT * FROM bc_plan WHERE st IN ('plan','run') AND at <= ? ORDER BY at LIMIT 1").bind(Date.now()).first() } catch (e) { return { skip: 'no table' } } if (!P) return { none: 1 };
+  const d = JSON.parse(P.data || '{}'), U = d.uids || [], part = U.slice(P.done, P.done + 30), s = { role: P.role, cid: P.cid };
+  if (!part.length) { await env.DB.prepare("UPDATE bc_plan SET st='done' WHERE id=?").bind(P.id).run(); return { done: P.id } }
+  await env.DB.prepare("UPDATE bc_plan SET st='run', done=? WHERE id=? AND done=?").bind(P.done + part.length, P.id, P.done).run(); /* сначала сдвигаем — повторный тик не отправит ту же пачку */
+  const r = await bcSend(env, s, { c: P.cc, uids: part, ch: d.ch, subj: d.subj, text: d.text, btns: d.btns, bid: 'plan' + P.id, noTg: d.noTg });
+  await env.DB.prepare("UPDATE bc_plan SET sent=sent+?, fail=fail+?, msent=msent+?, st=CASE WHEN done>=? THEN 'done' ELSE st END WHERE id=?").bind(r.sent | 0, (r.fail | 0) + (r.mfail | 0), r.msent | 0, U.length, P.id).run();
+  if (P.done + part.length >= U.length) await logIt(env, 'bcplan-done', 0, P.cc + ' ' + P.id);
+  return { id: P.id, part: part.length, r } }
 function appScope(s, c) { if (s.role === 'admin') return CURATORS.find(x => x.id === c) ? c : (c === 'all' ? 'all' : CURATORS[0].id); return s.cid }
 const APPC = {}; /* кэш списка в памяти изолята на 30 с: переключение и повторные запросы мгновенные */
 async function appStudents(env, cid) { const ck = APPC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v; const v = await appStudents0(env, cid); APPC[cid] = { at: Date.now(), v }; return v }
@@ -1447,28 +1480,19 @@ async function appApi(env, req, path) {
     if (Array.isArray(o.days)) { const d = [...new Set(o.days.map(Number).map(x => x === 7 ? 0 : x).filter(x => x >= 0 && x <= 6))]; /* пульт шлёт Вс=7 */ if (d.length) await kvPut(env, 'hdays:' + cc, d) } return ajson({ ok: true }) }
   if (path === '/app/api/bclog') return ajson({ ok: true, log: (await kvGet(env, 'bclog:' + c)) || [] });
   /* 04.11 (Роман): рассылка в Telegram, на почту или туда и туда (ch: tg | mail | both). Почта — из выгрузки GetCourse (gc_name.email), письмо в стиле писем школы, отписка — mail_off */
-  if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c), ch = ['tg', 'mail', 'both'].includes(o.ch) ? o.ch : 'tg';
-    const text = String(o.text || '').trim().slice(0, 3000); if (!text) return ajson({ ok: false, err: 'empty' }, 400);
-    const all = (await appStudents(env, cc)).students; const want = Array.isArray(o.uids) && o.uids.length ? new Set(o.uids.map(Number)) : null;
-    const inW = x => !want || want.has(x.uid), toT = ch === 'mail' ? [] : all.filter(x => x.tgid && inW(x));
-    let toM = ch === 'tg' ? [] : all.filter(x => x.em && inW(x));
-    if (toM.length) { const off = new Set((await qAll(env.DB.prepare('SELECT uid FROM mail_off'))).map(r => +r.uid)); toM = toM.filter(x => !off.has(+x.uid)) }
-    if (toT.length > 40 || toM.length > 100) return ajson({ ok: false, err: 'batch' }, 400); /* бесплатный Cloudflare: ~50 запросов за вызов — страница шлёт пачками по 35 */
-    const who = s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор');
-    /* 04.11: несколько кнопок (btns: [{t,u}], до 5) — каждая отдельной строкой; старый формат btn/link тоже принимаем */
-    const BL = (Array.isArray(o.btns) ? o.btns : o.link ? [{ t: o.btn, u: o.link }] : []).filter(b => b && /^https:\/\//.test(String(b.u || ''))).slice(0, 5).map(b => ({ text: String(b.t || 'Открыть').slice(0, 40), url: String(b.u).slice(0, 500) }));
-    const btn = BL.length ? BL.map(b => [b]) : undefined;
-    let sent = 0, fail = 0, msent = 0, mfail = 0;
-    for (const x of toT) { const j = await tgSend(env, x.tgid, th(text.replace(/\{имя\}/g, firstName(x.name) || 'привет')), btn); /* 04.11 (Роман): без «Роман» первой строкой — человек должен сразу видеть суть, сообщение и так от бота */ if (j && j.ok) sent++; else fail++ }
-    if (toM.length) { if (!env.RESEND_KEY) mfail = toM.length; else {
-      const subj = String(o.subj || '').trim().slice(0, 120) || (who === 'Роман' ? 'Сообщение от Романа Одуванова' : 'Сообщение от куратора ' + who);
-      const msgs = await Promise.all(toM.map(async x => ({ from: env.MAIL_FROM || 'OduvanovSchool <onboarding@resend.dev>', to: [x.em], subject: subj.replace(/\{имя\}/g, firstName(x.name) || ''), html: bcMailHtml(who, subj, text.replace(/\{имя\}/g, firstName(x.name) || 'привет'), BL, await modUnsubLink(env, x.uid)) })));
-      const r = await fetch('https://api.resend.com/emails/batch', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(msgs) });
-      const t = await r.text(); await logIt(env, r.ok ? 'bcmail-ok' : 'bcmail-err', 0, cc + ' · ' + toM.length + ' · ' + t.slice(0, 200)); if (r.ok) msent = toM.length; else mfail = toM.length } }
-    const log = (await kvGet(env, 'bclog:' + cc)) || []; const bid = String(o.bid || '').slice(0, 40);
-    if (bid && log[0] && log[0].bid === bid) { log[0].sent += sent; log[0].fail += fail; log[0].msent = (log[0].msent || 0) + msent } else log.unshift({ bid, at: new Date().toISOString(), who, ch, text: text.slice(0, 1500), btn: BL.length ? BL.map(b => b.text).join(' · ') : null, link: BL.length ? BL[0].url : null, all: !want, sent, fail, msent, noTg: o.noTg | 0 });
-    await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
-    await logIt(env, 'broadcast', 0, cc + ' ' + ch + ' tg ' + sent + '/' + toT.length + ' mail ' + msent + '/' + toM.length); return ajson({ ok: true, sent, fail, msent, mfail }) }
+  if (path === '/app/api/broadcast' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const r = await bcSend(env, s, o); return ajson(r, r.ok === false ? 400 : 200) }
+  /* 04.11 (Роман): запланированные рассылки — на день и время (МСК). Хранятся в bc_plan, отправляет bcPlanTick пачками по 35 (крон + любые запросы к серверу, не чаще раза в минуту) */
+  if (path === '/app/api/bcplan' && req.method === 'POST') { const o = await req.json().catch(() => ({})); await ensure(env); const cc = appScope(s, o.c), at = +o.at || 0, text = String(o.text || '').trim().slice(0, 3000);
+    if (!text) return ajson({ ok: false, err: 'Пустое сообщение' }, 400); if (!(at > Date.now() + 60e3) || at > Date.now() + 90 * 864e5) return ajson({ ok: false, err: 'Время — в будущем, не дальше 90 дней' }, 400);
+    const uids = (Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid).slice(0, 2000); if (!uids.length) return ajson({ ok: false, err: 'Отметь получателей' }, 400);
+    const d = { uids, ch: ['tg', 'mail', 'both'].includes(o.ch) ? o.ch : 'tg', subj: String(o.subj || '').slice(0, 120), text, btns: Array.isArray(o.btns) ? o.btns.slice(0, 5) : [], noTg: o.noTg | 0 };
+    const r = await env.DB.prepare("INSERT INTO bc_plan (cc, role, cid, at, data, st, done, sent, fail, msent, created) VALUES (?,?,?,?,?,'plan',0,0,0,0,?) RETURNING id").bind(cc, s.role, s.cid || null, at, JSON.stringify(d), Date.now()).first();
+    await logIt(env, 'bcplan-new', 0, cc + ' ' + new Date(at).toISOString() + ' ' + uids.length); return ajson({ ok: true, id: r && r.id }) }
+  if (path === '/app/api/bcplan') { const cc = appScope(s, u.searchParams.get('c'));
+    const L = await qAll(env.DB.prepare("SELECT id, at, data, st, done, sent, fail, msent FROM bc_plan WHERE cc=? AND (st IN ('plan','run') OR at > ?) ORDER BY at LIMIT 30").bind(cc, Date.now() - 3 * 864e5));
+    return ajson({ ok: true, plans: L.map(x => { const d = JSON.parse(x.data || '{}'); return { id: x.id, at: x.at, st: x.st, n: (d.uids || []).length, ch: d.ch, text: String(d.text || '').slice(0, 300), subj: d.subj || '', done: x.done, sent: x.sent, fail: x.fail, msent: x.msent } }) }) }
+  if (path === '/app/api/bcplan/cancel' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
+    const r = await env.DB.prepare("UPDATE bc_plan SET st='cancel' WHERE id=? AND cc=? AND st='plan'").bind(+o.id || 0, cc).run(); return ajson({ ok: !!(r.meta && r.meta.changes) }) }
   /* 03.11 (кабинет куратора, этап 2): панель ученика в пульте — всё по одному ученику одним D1-batch: место по дням (snap, 15 дн), последний открытый урок (lv) и сколько уроков открыто,
      время за 7 дней (time: сайт / видео), последний заход на сайт и в приложение (ev), оценки куратору (chat_rate + chat_fb), проверенные ДЗ (cur_hw), ожидание ответа (cwait). Куратор — только свой ученик */
   if (path === '/app/api/student') { const uid = +u.searchParams.get('u'); if (!okUid(uid)) return ajson({ ok: false, err: 'u' }, 400);
