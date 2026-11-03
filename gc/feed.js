@@ -10,6 +10,39 @@
   if (window.ECOFEED) return;
   var INST = null, CSSD = {};
   window.ECOFEED = { init: function (O) { if (INST) return INST; INST = make(O || {}); return INST } };
+  /* 03.11 (Роман): картинки работ открываются поверх ленты (как просмотр на уроке, layout.js #flLb), а не новой вкладкой: листание ←/→ и свайпом, Esc, «Скачать», «Оригинал» */
+  (function () { if (document.getElementById('fdLbCss')) return; var css = document.createElement('style'); css.id = 'fdLbCss';
+    css.textContent = '#fdLb{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:rgba(0,1,6,.92);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);opacity:0;transition:opacity .2s;font-family:"Inter Tight",Inter,system-ui,sans-serif;color:#fff}#fdLb.on{opacity:1}'
+      + '#fdLb .tb{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:12px 12px 8px 16px}#fdLb .ct{flex:1;font-size:14px;color:rgba(255,255,255,.6)}'
+      + '#fdLb .bt{flex:none;height:44px;min-width:44px;padding:0 14px;border:0;border-radius:14px;background:rgba(255,255,255,.1);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:inherit;font-size:14px;font-weight:500;line-height:1;cursor:pointer;text-decoration:none!important}#fdLb .bt:hover{background:rgba(255,255,255,.16)}#fdLb .bt.x{padding:0}'
+      + '#fdLb .st{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:72px 16px 16px}'
+      + '#fdLb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);opacity:0;transition:opacity .25s}#fdLb img.ok{opacity:1}#fdLb img.lo{filter:blur(6px);width:min(100%,520px);height:auto}'
+      + '#fdLb .sp{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid rgba(195,139,255,.18);border-top-color:#c38bff;animation:fdLbS .8s linear infinite}@keyframes fdLbS{to{transform:rotate(360deg)}}'
+      + '#fdLb .nv{position:absolute;top:50%;margin-top:-24px;width:48px;height:48px;border:0;border-radius:16px;background:rgba(22,22,22,.8);color:#fff;display:grid;place-items:center;cursor:pointer}#fdLb .nv.p{left:16px}#fdLb .nv.n{right:16px}#fdLb .nv[hidden]{display:none}@media(max-width:767px){#fdLb .nv{display:none}#fdLb .bt .l{display:none}}';
+    (document.head || document.documentElement).appendChild(css);
+    var SV = function (d, w) { return '<svg width="' + (w || 20) + '" height="' + (w || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>' };
+    var L = null, list = [], i = 0, x0 = null;
+    var big = function (a) { var h = a.getAttribute('href') || ''; return h.indexOf('//') === 0 ? location.protocol + h : h };
+    var nm = function (u) { var m = String(u).split('?')[0].match(/[^\/]+\.(png|jpe?g|webp|gif)$/i); return m ? m[0] : 'rabota.jpg' };
+    var show = function () { var im = L.querySelector('img'), sp = L.querySelector('.sp'), a = list[i], th = a.querySelector('img'), u = big(a), n = i;
+      sp.style.display = ''; if (th && th.complete && th.naturalWidth) { im.src = th.currentSrc || th.src; im.className = 'ok lo' } else { im.className = ''; im.removeAttribute('src') }
+      var pre = new Image(); pre.onload = function () { if (!L || n !== i) return; im.src = u; im.className = 'ok'; sp.style.display = 'none' }; pre.onerror = function () { if (L && n === i) sp.style.display = 'none' }; pre.src = u;
+      L.querySelector('.ct').textContent = list.length > 1 ? (i + 1) + ' из ' + list.length : ''; L.querySelector('.or').href = u; L.querySelector('.nv.p').hidden = i === 0; L.querySelector('.nv.n').hidden = i === list.length - 1 };
+    var close = function () { if (!L) return; var l = L; L = null; l.classList.remove('on'); setTimeout(function () { l.remove() }, 200); document.removeEventListener('keydown', key, true) };
+    var go = function (d) { var j = i + d; if (j < 0 || j >= list.length) return; i = j; show() };
+    var key = function (e) { if (!L) return; if (e.key === 'Escape') { e.stopPropagation(); close() } else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1) };
+    var dl = function (b) { var u = list[i] ? big(list[i]) : ''; if (!u) return; b.disabled = true; fetch(u, { mode: 'cors' }).then(function (r) { if (!r.ok) throw 0; return r.blob() }).then(function (bl) { var o = URL.createObjectURL(bl), a = document.createElement('a'); a.href = o; a.download = nm(u); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(o) }, 4e3) }).catch(function () { window.open(u, '_blank', 'noopener') }).then(function () { b.disabled = false }) };
+    var open = function (a) { var box = a.closest('.fd-fl') || a.parentNode; list = [].slice.call(box.querySelectorAll('a[href]')).filter(function (x) { return x.querySelector('img') }); i = Math.max(0, list.indexOf(a));
+      L = document.createElement('div'); L.id = 'fdLb'; L.setAttribute('role', 'dialog'); L.setAttribute('aria-label', 'Просмотр работы');
+      L.innerHTML = '<div class="tb"><span class="ct"></span><button type="button" class="bt dl" aria-label="Скачать">' + SV('M12 4v11M7 10l5 5 5-5M5 20h14') + '<span class="l">Скачать</span></button><a class="bt or" target="_blank" rel="noopener" aria-label="Открыть оригинал">' + SV('M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5') + '<span class="l">Оригинал</span></a><button type="button" class="bt x" aria-label="Закрыть">' + SV('M6 6l12 12M18 6 6 18') + '</button></div>'
+        + '<div class="st"><span class="sp"></span><img alt=""><button type="button" class="nv p" aria-label="Предыдущая">' + SV('M15 6l-6 6 6 6') + '</button><button type="button" class="nv n" aria-label="Следующая">' + SV('M9 6l6 6-6 6') + '</button></div>';
+      document.body.appendChild(L); requestAnimationFrame(function () { if (L) L.classList.add('on') }); show(); document.addEventListener('keydown', key, true);
+      L.querySelector('.x').onclick = close; L.querySelector('.dl').onclick = function () { dl(this) }; L.querySelector('.nv.p').onclick = function () { go(-1) }; L.querySelector('.nv.n').onclick = function () { go(1) };
+      L.querySelector('.st').addEventListener('click', function (e) { if (e.target === this) close() });
+      L.addEventListener('touchstart', function (e) { x0 = e.touches[0] ? [e.touches[0].clientX, e.touches[0].clientY] : null }, { passive: true });
+      L.addEventListener('touchend', function (e) { if (!x0 || !e.changedTouches[0]) return; var dx = e.changedTouches[0].clientX - x0[0], dy = e.changedTouches[0].clientY - x0[1]; x0 = null; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1); else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) close() }, { passive: true }) };
+    document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
+  })();
   function make(O) {
   var U = +O.U || 0, SITE = O.site || '', FEED = '/teach/control/answers/unanswered', HW_MAX = 70, W_HW = 72 * 36e5;
   var LV = { easy: ['Лёгкий', 20], mid: ['Средний', 40], max: ['Максимальный', 70] }, SVC = /служебн|ученики не видят|не для учеников|архив уроков/i;
