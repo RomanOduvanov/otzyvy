@@ -44,9 +44,20 @@
       L.querySelector('.st').addEventListener('click', function (e) { if (e.target === this) close() });
       L.addEventListener('touchstart', function (e) { x0 = e.touches[0] ? [e.touches[0].clientX, e.touches[0].clientY] : null }, { passive: true });
       L.addEventListener('touchend', function (e) { if (!x0 || !e.changedTouches[0]) return; var dx = e.changedTouches[0].clientX - x0[0], dy = e.changedTouches[0].clientY - x0[1]; x0 = null; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1); else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) close() }, { passive: true }) };
-    /* 04.11 (Роман): файлы работы (pdf, zip, psd…) не открываем пустой вкладкой — качаем сразу через загрузчик GetCourse скрытым iframe */
-    document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a.doc[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return; var m = a.getAttribute('href').match(/\/h\/([0-9a-f]{32}(?:\.\w{1,6})?)/i); if (!m) return;
-      e.preventDefault(); e.stopImmediatePropagation(); var f = document.createElement('iframe'); f.style.display = 'none'; f.src = (window.__fdSite || location.origin) + '/pl/fileservice/user/file/download/h/' + m[1]; document.body.appendChild(f); setTimeout(function () { f.remove() }, 6e4) }, true);
+    /* 04.11 (Роман): файлы работы не открываем пустой вкладкой. GetCourse отдаёт их «inline», скачать в один клик с чужого адреса нельзя, поэтому:
+       pdf — просмотр поверх страницы (в просмотрщике браузера есть «Скачать»), остальное (zip, psd, docx…) — скрытый iframe, браузер сам сохраняет файл.
+       Лента внутри пульта (адрес github.io) — просим сайт-родителя (eco.js), там вход в GetCourse */
+    var fdDoc = window.__fdDoc = function (u, name) { var pdf = /\.pdf(\?|$)/i.test(name || '') || /\.pdf(\?|$)/i.test(u);
+      if (!pdf) { var f = document.createElement('iframe'); f.style.display = 'none'; f.src = u; document.body.appendChild(f); setTimeout(function () { f.remove() }, 6e4); return }
+      var L = document.createElement('div'); L.setAttribute('role', 'dialog'); L.setAttribute('aria-label', 'Просмотр PDF'); L.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,1,6,.92);display:flex;flex-direction:column;padding:12px;gap:10px';
+      var bs = 'height:40px;padding:0 16px;border-radius:12px;border:0;background:rgba(255,255,255,.12);color:#fff;font:600 14px "Inter Tight",Inter,sans-serif;cursor:pointer;display:inline-flex;align-items:center;text-decoration:none';
+      L.innerHTML = '<div style="display:flex;gap:8px;align-items:center;justify-content:flex-end"><span style="flex:1;color:rgba(255,255,255,.7);font:500 14px Inter,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span><a class="o" target="_blank" rel="noopener" style=\'' + bs + '\'>Открыть отдельно</a><button type="button" class="x" aria-label="Закрыть" style=\'' + bs + '\'>✕</button></div><iframe title="PDF" style="flex:1;width:100%;border:0;border-radius:12px;background:#fff"></iframe>';
+      L.querySelector('span').textContent = name || 'PDF'; L.querySelector('a.o').href = u; L.querySelector('iframe').src = u;
+      var close = function () { L.remove(); document.removeEventListener('keydown', key, true) }, key = function (e) { if (e.key === 'Escape') { e.stopPropagation(); close() } };
+      L.querySelector('.x').onclick = close; L.onclick = function (e) { if (e.target === L) close() }; document.addEventListener('keydown', key, true); document.body.appendChild(L) };
+    document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a.doc[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault(); e.stopImmediatePropagation(); var site = window.__fdSite || location.origin, h = a.getAttribute('href'), u = /^https?:/i.test(h) ? h : site + h, nm = a.getAttribute('title') || '';
+      if (new URL(u).origin !== location.origin && window.parent !== window) { try { window.parent.postMessage({ ecoDl: u, name: nm }, '*'); return } catch (er) {} } fdDoc(u, nm) }, true);
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
   })();
   function make(O) {
