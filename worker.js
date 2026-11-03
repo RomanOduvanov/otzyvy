@@ -2073,6 +2073,9 @@ async function ptestApi(env, req) { let o = {}; try { o = JSON.parse(await req.t
    Срок вышел → бот пишет админам, из каких групп убрать (снятие групп через API заменяет весь список групп ученика — делаем вручную, чтобы не задеть чужие). ---------- */
 const CPAY_ITEMS = [
   { id: 'all', t: 'Весь курс AI-креатор 3.0 (закрытая группа 25.11)', g: '3.0 — Закрытая группа 25.11', k: 'course' },
+  { id: 't_base', t: 'Тариф: Базовый', g: '3.0 — Базовый', k: 'tariff' },
+  { id: 't_prem', t: 'Тариф: Премиум', g: '3.0 — Премиум', k: 'tariff' },
+  { id: 't_amz', t: 'Тариф: Премиум Амазон', g: '3.0 — Премиум Амазон', k: 'tariff' },
   { id: 'm00', t: 'Модуль 00 — Точка входа', g: '3.0 доступ — Модуль 00 Точка входа', k: 'mod' },
   { id: 'm01', t: 'Модуль 01 — Инструментарий креатора', g: '3.0 доступ — Модуль 01 Инструментарий креатора', k: 'mod' },
   { id: 'm02', t: 'Модуль 02 — Архитектура визуала', g: '3.0 доступ — Модуль 02 Архитектура визуала', k: 'mod' },
@@ -2094,7 +2097,13 @@ async function gcImport(env, kind, params) { if (!env.GC_KEY_W) throw new Error(
   const r = await fetch(GC_HOST + '/pl/api/' + kind, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
   if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + ')'); return j }
 async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
-  await ensure(env); const k = String(o.k || u.searchParams.get('k') || ''), ss = k ? null : await staffSess(env, req, u); /* 03.11: и Роман из пульта (сессия admin) */
+  await ensure(env);
+  /* 04.11 (Роман: «доступ должен выдаваться сразу»): страница «Оплата прошла» сообщает номер заказа (layout.js) → сразу тянем платежи за сутки и выдаём доступ; без ключа менеджера, повтор — не чаще раза в минуту на заказ */
+  if (path === '/pay/paid' && req.method === 'POST') { const id = +o.id || 0; if (!(id > 0)) return json(req, { ok: false }, 400);
+    const c = await env.DB.prepare("SELECT id FROM cpay WHERE did=? AND st='new'").bind(id).first(); if (!c) return json(req, { ok: true, skip: 1 });
+    const lk = 'cpaypaid:' + id, last = await kvGet(env, lk); if (last && Date.now() - +last < 60e3) return json(req, { ok: true, wait: 1 }); await kvPut(env, lk, String(Date.now()));
+    return json(req, { ok: true, r: await cpayJob(env, budget(30)) }) }
+  const k = String(o.k || u.searchParams.get('k') || ''), ss = k ? null : await staffSess(env, req, u); /* 03.11: и Роман из пульта (сессия admin) */
   if (!(k && same(k, await cpayKey(env))) && !(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
   /* проверка ключа записи без создания объектов: импорт заказа без почты → GetCourse отвечает ошибкой проверки (ключ верный) или «ключ неверный» */
   if (path === '/pay/run') { if (!(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Только Роман' }, 403); return json(req, { ok: true, r: await cpayJob(env, budget(30)) }) }
@@ -2106,6 +2115,7 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
     const items = (Array.isArray(o.items) ? o.items : []).filter((x, i, a) => a.indexOf(x) === i).map(id => CPAY_ITEMS.find(x => x.id === id)).filter(Boolean);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(req, { ok: false, err: 'Проверь почту ученика' }, 400);
     if (!items.length) return json(req, { ok: false, err: 'Выбери, к чему открыть доступ' }, 400);
+    if (items.filter(x => x.k === 'tariff').length > 1) return json(req, { ok: false, err: 'Тариф — только один' }, 400);
     if (!(sum >= 1 && sum <= 1e6)) return json(req, { ok: false, err: 'Сумма — от 1 до 1 000 000 ₽' }, 400);
     if (!term) return json(req, { ok: false, err: 'Выбери срок доступа' }, 400);
     const title = 'Индивидуальный доступ: ' + items.map(x => x.t.replace(/^Бонус: /, '')).join(', ');
