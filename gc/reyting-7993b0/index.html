@@ -280,8 +280,8 @@ const FS={
  /* 01.11: у части учеников блок «Твои баллы и статус» не появлялся. Причины: ждали токен максимум 9 с (на медленном интернете не успевали),
     ответ «нет токена» или 401/сбой сети не перезапрашивали — блок оставался пустым. Теперь: ждём до 25 с, при сбое 3 повтора (1,5 / 4 / 8 с),
     на «нет токена» и 401 просим у страницы свежий токен (force). */
- auth(force){if(!force&&FS._a)return FS._a;return FS._a=new Promise(ok=>{const GC=(function(){var ok=/^https:\/\/(oduvanovroman\.getcourse\.ru|(www\.)?oduvanovschool\.pro)$/,c=[];try{c.push(new URLSearchParams(location.search).get('po'))}catch(e){}try{c.push(location.ancestorOrigins[0])}catch(e){}try{c.push(new URL(document.referrer).origin)}catch(e){}for(var i=0;i<c.length;i++)if(c[i]&&ok.test(c[i]))return c[i];return 'https://oduvanovschool.pro'})();let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
-  const f=e=>{if(!/^https:\/\/(oduvanovroman\.getcourse\.ru|(www\.)?oduvanovschool\.pro)$/.test(e.origin)||!e.data||!('fsAuth' in e.data))return;end(e.data.fsAuth)};addEventListener('message',f);
+ auth(force){if(!force&&FS._a)return FS._a;return FS._a=new Promise(ok=>{const GC='https://oduvanovroman.getcourse.ru';let done=0,iv=0;const end=v=>{if(done)return;done=1;clearInterval(iv);removeEventListener('message',f);ok(v)};
+  const f=e=>{if(e.origin!==GC||!e.data||!('fsAuth' in e.data))return;end(e.data.fsAuth)};addEventListener('message',f);
   const ask=()=>{try{parent.postMessage({fsNeedAuth:1,force:force?1:0},GC)}catch(e){}};ask();iv=setInterval(ask,800);setTimeout(()=>end(null),25000)})},
  data(){return FS._d||(FS._d=(async()=>{let fr=0;for(let i=0;i<4;i++){try{const a=await FS.auth(fr);fr=0;if(!a||!a.v){fr=1;throw new Error('auth')}
    const u=FS.uid(),r=await fetch(FS.API+'/rating?v='+encodeURIComponent(a.v)+(u?'&for='+u:''),{cache:'no-store'});if(r.status===401){fr=1;throw new Error('401')}if(!r.ok)throw new Error('http '+r.status);
@@ -495,7 +495,7 @@ function sorted(){const f=KV[SK];return D.rows.slice().sort((a,b)=>{const va=f(a
 function syncTh(){document.querySelectorAll('#th button').forEach(b=>{const on=b.dataset.k===SK&&!(SK==='place'&&SD===1);b.classList.toggle('on',on);b.classList.toggle('asc',on&&SD===-1);b.title=b.dataset.k==='name'?'Сортировать по алфавиту':'Сортировать: лучшие сверху / снизу'})}
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('#th button');if(!b)return;const k=b.dataset.k;if(SK===k)SD=-SD;else{SK=k;SD=1}renderAll();syncTh()});const ids={};const TF=['','','Премиум','Премиум Амазон'];
 function tfc(x){const i=TF.indexOf(x.tar);return x.tar?`<div class="tf t${i+1}">${esc(x.tar.replace('Амазон','Amazon'))}</div>`:'<div class="tf">—</div>'}
-function nmh(x){const n=esc(x.name);return adm&&ids[x.h]?`<a href="https://oduvanovschool.pro/user/control/user/update/id/${ids[x.h]}" target="_blank" title="Профиль в GetCourse">${n}</a>`:n}
+function nmh(x){const n=esc(x.name);return adm&&ids[x.h]?`<a href="https://oduvanovroman.getcourse.ru/user/control/user/update/id/${ids[x.h]}" target="_blank" title="Профиль в GetCourse">${n}</a>`:n}
 function rankIdx(r){return D.ranks.findIndex(x=>x[0]===r.rank)}
 function renderMe(){const r=auto||D.rows.find(x=>x.name===me)||null;const el=document.getElementById('me');
  FS.me(el,D,r,{awards:A,link:null});
