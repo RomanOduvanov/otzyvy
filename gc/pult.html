@@ -169,7 +169,7 @@ html.kk #kNav{display:flex}
 #kNav .nv .n.r{background:var(--redBg);color:var(--red)}
 #kNav .nv:hover{background:var(--s1)}
 #kNav .nv.on{background:var(--lil);color:#1a0730;font-weight:500}#kNav .nv.on svg{opacity:1}#kNav .nv.on .n{background:rgba(26,7,48,.18);color:#1a0730}
-#kNav .nsub{display:flex;flex-direction:column;gap:2px;padding:2px 0 2px 30px}
+#kNav .nsub{display:flex;flex-direction:column;gap:2px;padding:2px 0 2px 30px}.nsub.hid{display:none}#kNav .nch{margin-left:auto;width:8px;height:8px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg) translate(-2px,-2px);opacity:.55;transition:transform .15s}#kNav .nch.up{transform:rotate(-135deg) translate(-2px,-2px)}#kNav .nv em+.nch,#kNav .nv .nch{flex:none}
 #kNav .nsub button{height:36px;border-radius:10px;padding:0 10px;font-size:14px;color:var(--ink3);text-align:left;display:flex;justify-content:space-between;align-items:center}
 #kNav .nsub button:hover,#kNav .nsub button.on{background:var(--s1);color:var(--ink2)}#kNav .nsub button.on{color:var(--fg)}
 #kNav .nsub .n{font-style:normal;font-size:11px;height:18px;min-width:20px;padding:0 6px;border-radius:99px;background:var(--redBg);color:var(--red);display:grid;place-items:center}
@@ -861,8 +861,8 @@ function kNavDraw(){var N=$('kNav'),B=$('kBar');if(!N||!ME||!document.documentEl
   var cid=!kAdm()&&(ME.cid||((ME.curators||[])[0]||{}).id)||'',ph=cid?'https://romanoduvanov.github.io/otzyvy/gc/curators/'+encodeURIComponent(cid)+'.jpg':'';
   /* 03.11 (Роман): в шапке меню — фото куратора (gc/curators/<cid>.jpg), у Романа — знак школы из docs/BRAND.md; нет фото — инициалы */
   var mark=ph?'<span class="bw">'+kAvH(me)+'<img class="bph" src="'+ph+'" alt="" onload="var a=this.previousElementSibling;if(a)a.style.visibility=\'hidden\'" onerror="this.remove()"></span>':'<svg class="blg" viewBox="0 0 64 64" aria-hidden="true">'+[[0,0],[22,0],[44,0],[0,22],[44,22],[0,44],[22,44],[44,44]].map(function(p,k){return '<rect x="'+p[0]+'" y="'+p[1]+'" width="20" height="20" rx="3" fill="'+(k===2?'#c9a2ff':'#fff')+'"/>'}).join('')+'</svg>';
-  N.innerHTML='<div class="brand">'+mark+'<div><b>'+(ph?esc(me):'Кабинет куратора')+'</b><small>'+(ph?'Кабинет куратора':'OduvanovSchool')+'</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+nv('mo','Ещё',b.rv,1)
-    +'<div class="nsub">'+kMore().map(function(k){return '<button data-go="'+k+'"'+(t===k?' class="on"':'')+'>'+kLabel(k)+(k==='rv'&&b.rv?'<em class="n">'+b.rv+'</em>':'')+'</button>'}).join('')+'</div>'
+  N.innerHTML='<div class="brand">'+mark+'<div><b>'+(ph?esc(me):'Кабинет куратора')+'</b><small>'+(ph?'Кабинет куратора':'OduvanovSchool')+'</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+nv('mo','Ещё',b.rv,1).replace(/<\/button>$/,'<i class="nch'+(inMo||MOOPEN?' up':'')+'" aria-hidden="true"></i></button>')
+    +'<div class="nsub'+(inMo||MOOPEN?'':' hid')+'">'+kMore().map(function(k){return '<button data-go="'+k+'"'+(t===k?' class="on"':'')+'>'+kLabel(k)+(k==='rv'&&b.rv?'<em class="n">'+b.rv+'</em>':'')+'</button>'}).join('')+'</div>'
     +'<div class="nfoot"><div class="me">'+kAvH(me)+'<div>'+esc(me)+'<br><small style="color:var(--ink3);font-size:12px">'+(kAdm()?'админ':'куратор')+' · '+n+'&nbsp;'+plr(n,'ученик','ученика','учеников')+'</small></div></div>'
     +(c1&&c1.hours?'<span>Рабочие часы '+c1.hours[0]+'–'+c1.hours[1]+' МСК</span>':'')+'<span>'+esc($('upd').textContent||'')+'</span></div>';
   if(B)B.innerHTML=[['td','Сегодня',b.td,''],['st','Ученики',0,''],['hw','ДЗ',b.hw,'n'],['ch','Чаты',b.ch,''],['mo','Ещё',b.rv,'']].map(function(x){var on=x[0]==='mo'?(inMo||t==='bc'):t===x[0];
@@ -875,7 +875,11 @@ function kOn(t){var h='#'+(KT[t]||t)+(DR&&DR.u?'/u='+DR.u+'/'+DR.tab:'');try{if(
 function kInit(){if(!MA)document.documentElement.classList.add('kk');var h=(location.hash||'').replace(/^#/,'').split(/[\/?&]/)[0],t=KH[h]||'td',b=document.querySelector('#tabs [data-t="'+t+'"]');
   if(!b||(b.classList.contains('hid')&&t!=='mo'))t='td';tabGo(t);tdLoad(1);var pm=drHashU(location.hash);if(pm)setTimeout(function(){drOpen(pm.u,{tab:pm.t,noPush:1})},0)}
 $('tabs').addEventListener('click',function(e){var b=e.target.closest('button[data-t]');if(b)kOn(b.getAttribute('data-t'))});
-document.addEventListener('click',function(e){var g=e.target.closest('#kNav [data-go],#kBar [data-go],#moBox [data-go],#hdX [data-go]');if(!g)return;var k=g.getAttribute('data-go');if(k==='hw')kHw();else tabGo(k)});
+/* 04.11 (Роман): в боковом меню «Ещё» — раскрывающийся пункт: подпункты видны, только когда раскрыт или открыт один из них; нажатие на «Ещё» сворачивает/разворачивает */
+var MOOPEN=false;
+document.addEventListener('click',function(e){var g=e.target.closest('#kNav [data-go],#kBar [data-go],#moBox [data-go],#hdX [data-go]');if(!g)return;var k=g.getAttribute('data-go');
+  if(k==='mo'&&g.closest('#kNav')){var t=kTab(),inMo=kMore().indexOf(t)>=0||t==='mo';MOOPEN=!(inMo||MOOPEN);if(inMo&&!MOOPEN){var sub=g.parentNode.querySelector('.nsub');if(sub)sub.classList.add('hid');var c=g.querySelector('.nch');if(c)c.classList.remove('up');return}kNavDraw();return}
+  if(g.closest('#kNav')&&kMore().indexOf(k)<0)MOOPEN=false;if(k==='hw')kHw();else tabGo(k)});
 (function(){var s0=start;start=function(){s0();var n=0,iv=setInterval(function(){if(ME){clearInterval(iv);kInit()}else if(++n>300)clearInterval(iv)},50)}})();
 (function(){var r0=renderAll;renderAll=function(){r0();kNavDraw();if(!$('t-td').classList.contains('hid')){$('hSub').textContent=tdSub();tdDraw()}}})();
 (function(){var b0=rvBadge;rvBadge=function(j){b0(j);kNavDraw()}})();
