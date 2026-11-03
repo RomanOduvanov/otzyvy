@@ -451,7 +451,9 @@ function aiBc(improve){var bw=$('bAiW'),bi=$('bAiI'),R=rcpt(),d=improve?$('bcTex
 $('bAiW').onclick=function(){aiBc(false)};$('bAiI').onclick=function(){aiBc(true)};
 var RECS=null;
 function siteGo(u){u=SITE+u;if(MA){try{parent.postMessage({maGo:u},'*')}catch(e){}return}if(EMB){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
-function recLoad(fresh){if(RECS&&!fresh){recDraw();return}$('bcRecs').innerHTML='<span class="muted">Смотрю, кому стоит написать…</span>';api('ai/recs?c='+CUR+(fresh?'&fresh=1':'')).then(function(j){RECS=j.recs||[];recDraw()}).catch(function(){$('bcRecs').innerHTML='<span class="muted">Не получилось загрузить рекомендации</span>'})}
+/* 03.11 (Роман: «Кому стоит написать» появляется через несколько секунд): рекомендации качаем сразу при входе в пульт (recPre), «Рассылки» берут готовые */
+var RECP=null,RECC=null;function recPre(){if(!ME)return null;if(!RECP||RECC!==CUR){RECC=CUR;RECP=api('ai/recs?c='+CUR).then(function(j){if(j&&j.recs&&RECC===CUR)RECS=j.recs;return j}).catch(function(){RECP=null})}return RECP}
+function recLoad(fresh){if(RECS&&!fresh){recDraw();return}$('bcRecs').innerHTML='<span class="muted">Смотрю, кому стоит написать…</span>';(fresh?api('ai/recs?c='+CUR+'&fresh=1'):(recPre()||api('ai/recs?c='+CUR))).then(function(j){RECS=(j&&j.recs)||RECS||[];recDraw()}).catch(function(){$('bcRecs').innerHTML='<span class="muted">Не получилось загрузить рекомендации</span>'})}
 function recDraw(){var L=RECS||[];$('bcRecs').innerHTML=L.length?L.map(function(r,i){var b=r.kind==='hw'?'Проверить ДЗ':r.aud==='wait'?'Открыть чаты':'Составить рассылку';
   return '<div class="rec '+r.kind+'"><b>'+esc(r.title)+'</b><span class="why">'+esc(r.why||'')+'</span>'+(r.tip?'<span class="tip"><i class="spk" aria-hidden="true"></i>'+esc(r.tip)+'</span>':'')+'<button class="sb" data-rec="'+i+'">'+b+'</button></div>'}).join(''):'<span class="muted">Всё спокойно: все заходят, ДЗ проверены, никто не ждёт ответа.</span>'}
 $('bcRecs').onclick=function(e){var x=e.target.closest('[data-rec]');if(!x)return;var r=RECS[+x.getAttribute('data-rec')];if(!r)return;
@@ -551,7 +553,7 @@ function start(){api('me').then(function(m){ME=m;$('login').classList.add('hid')
     sg.innerHTML='<button data-c="all">Все</button>'+m.curators.map(function(c){return '<button data-c="'+c.id+'">'+esc(c.full.split(' ')[0])+'</button>'}).join('')+'<button data-c="none">Без куратора</button>';$('tabCu').classList.remove('hid');$('tabMs').textContent='Статистика';
     sg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-c')===CUR);b.onclick=function(){CUR=b.getAttribute('data-c');SEL={};sg.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b)});view()}})}
   else{CUR=m.cid;$('hTitle').textContent='Пульт куратора';$('hSub').textContent=(m.name||'')+' · твои ученики, ответы и рассылки'}
-  xLoad().then(load);setInterval(function(){xLoad().then(load)},120000);if(m.role==='admin')setTimeout(function(){rapi('/rev/data?days=7').then(function(j){if(j&&j.ok!==false&&!j.nf)rvBadge(j)}).catch(function(){})},1500)}).catch(function(){})}
+  xLoad().then(load);setTimeout(recPre,300);setInterval(function(){xLoad().then(load)},120000);if(m.role==='admin')setTimeout(function(){rapi('/rev/data?days=7').then(function(j){if(j&&j.ok!==false&&!j.nf)rvBadge(j)}).catch(function(){})},1500)}).catch(function(){})}
 $('login').classList.add('hid');
 /* 27.10: пульт внутри мини-приложения (?ma=1) — вход по staff-сессии приложения, ссылки Telegram открывает приложение */
 if(MA){document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';if(/^(https?:\/\/(t\.me|telegram\.me)\/|tg:)/.test(h)){e.preventDefault();e.stopPropagation();try{parent.postMessage({maGo:h},'*')}catch(x){}}},true);
