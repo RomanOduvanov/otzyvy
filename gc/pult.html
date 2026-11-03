@@ -1107,12 +1107,12 @@ $('stCards').onclick=function(e){var b=e.target.closest('[data-stc]'),c=e.target
 (function(){var f=$('bcSr');if(!f)return;var R2=$('bcSrR'),seq=0;
   var href=function(h){if(h.kind==='page'||(h.href&&!h.id))return /^https?:/.test(h.href||'')?h.href:SITE+(h.href||'/teach/control/stream');return SITE+(h.kind==='efir'?'/teach/control/stream?fs=efir&e='+h.id:'/pl/teach/control/lesson/view?id='+h.id+(h.sec!=null?'#ecoSec='+h.sec:''))};
   var mmss=function(s){s=+s||0;return Math.floor(s/60)+':'+('0'+s%60).slice(-2)};
-  f.onsubmit=function(e){e.preventDefault();var v=$('bcSrQ').value.trim();if(v.length<3){R2.innerHTML='<div class="m">Напиши подлиннее: что ученик должен открыть</div>';return}var my=++seq;R2.innerHTML='<div class="sk"></div><div class="sk"></div>';
+  /* 04.11 (Роман): выбранная ссылка не висела под поиском — после выбора результаты прячутся, пустое поле их тоже прячет */$('bcSrQ').addEventListener('input',function(){if(!this.value.trim()){seq++;R2.innerHTML=''}});f.onsubmit=function(e){e.preventDefault();var v=$('bcSrQ').value.trim();if(v.length<3){R2.innerHTML='<div class="m">Напиши подлиннее: что ученик должен открыть</div>';return}var my=++seq;R2.innerHTML='<div class="sk"></div><div class="sk"></div>';
     rapi('/srch/ask',{method:'POST',body:JSON.stringify({q:v})}).then(function(j){if(my!==seq)return;var H=(j&&j.hits)||[];if(!j||!j.ok){R2.innerHTML='<div class="m">'+esc((j&&j.err)||'Поиск сейчас недоступен — попробуй ещё раз')+'</div>';return}
       if(!H.length){R2.innerHTML='<div class="m">Ничего не нашлось — переформулируй</div>';return}
       R2.innerHTML=H.slice(0,5).map(function(h,i){return '<button type="button" data-h="'+i+'"><small>'+esc(h.module||'')+(h.sec!=null?' · с '+mmss(h.sec):'')+'</small><b>'+esc(h.title||'Урок')+'</b></button>'}).join('');
       R2.onclick=function(ev){var b=ev.target.closest('[data-h]');if(!b)return;var h=H[+b.getAttribute('data-h')];[].forEach.call(R2.children,function(x){x.classList.toggle('on',x===b)});
-        var t=String(h.title||'Открыть урок');bcPut(t.length>30?(h.kind==='efir'?'Смотреть эфир':h.kind==='page'?'Открыть':'Открыть урок'):t,href(h))}})
+        var t=String(h.title||'Открыть урок');bcPut(t.length>30?(h.kind==='efir'?'Смотреть эфир':h.kind==='page'?'Открыть':'Открыть урок'):t,href(h));seq++;R2.innerHTML='';$('bcSrQ').value='';toast('Кнопка добавлена: '+t.slice(0,40))}})
     .catch(function(){if(my===seq)R2.innerHTML='<div class="m">Нет связи — попробуй ещё раз</div>'})}})();
 })();
 /* 03.11 (Роман): поле сообщения в чате растёт по высоте текста (до 240 px, дальше прокрутка); ловим и ввод, и подстановку текста кодом (шаблоны, очистка после отправки) */
