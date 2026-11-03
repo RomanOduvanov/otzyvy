@@ -2091,9 +2091,9 @@ function srchHit(R, sec, why) { const href = R.kind === 'module' || R.kind === '
 /* точное совпадение по названиям (без ИИ) — модуль/часть/урок, где встречаются слова запроса */
 function srchLocal(q, ref, max) { const st = w => w.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]/gu, '').slice(0, Math.max(3, Math.min(6, w.length - 1)));
   const W = String(q).split(/\s+/).map(st).filter(w => w.length >= 3 && !/^(моду|урок|част|ссыл|стра|курс|откр)/.test(w)); if (!W.length) return [];
-  const out = []; for (const k in ref) { const R = ref[k], t = (R.title + ' ' + (R.kind === 'lesson' ? R.module : '')).toLowerCase().replace(/ё/g, 'е'), tt = R.title.toLowerCase().replace(/ё/g, 'е'), n = W.filter(w => t.indexOf(w) >= 0).length; if (!n) continue;
-    out.push({ k, sc: n / W.length * 10 + (W.filter(w => tt.indexOf(w) >= 0).length ? 1 : 0) + (R.kind === 'module' ? 3 : R.kind === 'part' ? 2 : 0) }) }
-  return out.sort((a, b) => b.sc - a.sc).filter(x => x.sc >= 10).slice(0, max || 20).map(x => x.k) }
+  const out = []; for (const k in ref) { const R = ref[k], t = (R.title + ' ' + (R.kind === 'module' ? '' : R.module)).toLowerCase().replace(/ё/g, 'е'), n = W.filter(w => t.indexOf(w) >= 0).length; if (!n) continue;
+    out.push({ k, i: out.length, sc: n / W.length * 10 + (R.kind === 'module' ? 3 : R.kind === 'part' ? 2 : 0) }) }
+  return out.sort((a, b) => b.sc - a.sc || a.i - b.i).filter(x => x.sc >= 10).slice(0, max || 20).map(x => x.k) }
 async function srchCorpus(env) { const D = await loadData(env), X = (await kvGet(env, 'srchidx')) || {}, L = [], ref = {};
   for (const c of SRCH_STREAMS) { const k = 'S' + c.id; ref[k] = { kind: 'module', id: c.id, module: 'Курс целиком', title: c.t }; L.push(k + ' | Курс целиком | ' + c.t + ' | ' + c.k) }
   for (const m of D.modules || []) { const mk = 'M' + m.id, n = (m.parts || []).reduce((s, p) => s + (p.lessons || []).length, 0); ref[mk] = { kind: 'module', id: String(m.id), module: 'Модуль целиком · ' + n + ' ' + pl(n, ['урок', 'урока', 'уроков']), title: m.name };
@@ -2213,9 +2213,9 @@ async function srchApi(env, req, path) { const u = new URL(req.url); let o = {};
     const X = (await kvGet(env, 'srchidx')) || {}, it = o.items || {}; let n = 0;
     for (const id of Object.keys(it).slice(0, 400)) { if (!/^\d{5,12}$/.test(id)) continue; const v = it[id] || {};
       X[id] = { a: (Array.isArray(v.a) ? v.a : []).map(x => bStr(x, 160)).filter(Boolean).slice(0, 12), tc: (Array.isArray(v.tc) ? v.tc : []).map(t => [Math.max(0, +t[0] | 0), bStr(t[1], 120)]).filter(t => t[1]).slice(0, 30), m: (Array.isArray(v.m) ? v.m : []).map(x => bStr(x, 80)).filter(Boolean).slice(0, 10) }; n++ }
-    await kvPut(env, 'srchidx', X); await kvPut(env, 'srchcache3', {}); return json(req, { ok: true, n, total: Object.keys(X).length }) }
+    await kvPut(env, 'srchidx', X); await kvPut(env, 'srchcache4', {}); return json(req, { ok: true, n, total: Object.keys(X).length }) }
   if (path === '/srch/ask' && req.method === 'POST') { const q = String(o.q || '').replace(/\s+/g, ' ').trim().slice(0, 200); if (q.length < 3) return json(req, { ok: false, err: 'Напиши вопрос подлиннее' }, 400);
-    const LINK = o.mode === 'link' && !!W.s, key = (LINK ? 'L:' : '') + q.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim(), C = (await kvGet(env, 'srchcache3')) || {};
+    const LINK = o.mode === 'link' && !!W.s, key = (LINK ? 'L:' : '') + q.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim(), C = (await kvGet(env, 'srchcache4')) || {};
     if (C[key] && msNow() - C[key].at < 7 * 864e5) return json(req, Object.assign({ ok: true, cached: 1 }, C[key].r));
     const dk = 'srchn:' + (W.uid || W.me) + ':' + dayStr(), dn = +((await kvGet(env, dk)) || 0); if (W.me === 'student' && dn >= SRCH_DAY) return json(req, { ok: false, err: 'На сегодня вопросов хватит — спроси Нейро в чате' }, 429);
     const { text, ref } = await srchCorpus(env), ME = await srchMe(env, W.uid);
@@ -2238,7 +2238,7 @@ async function srchApi(env, req, path) { const u = new URL(req.url); let o = {};
     hits.length = 0; all.slice(0, LINK ? 30 : 8).forEach(x => hits.push(x));
     const fact = out.fact && out.fact.big ? { big: bStr(out.fact.big, 30), small: bStr(out.fact.small || '', 90) } : null;
     const res = { answer: bStr(out.answer, 600), fact, hits }, priv = !!out.personal || !!fact || hits.some(x => x.kind === 'page');
-    if (!priv) { C[key] = { at: msNow(), r: res }; const ks = Object.keys(C); if (ks.length > 300) for (const k of ks.sort((a, b) => C[a].at - C[b].at).slice(0, ks.length - 300)) delete C[k]; await kvPut(env, 'srchcache3', C) }
+    if (!priv) { C[key] = { at: msNow(), r: res }; const ks = Object.keys(C); if (ks.length > 300) for (const k of ks.sort((a, b) => C[a].at - C[b].at).slice(0, ks.length - 300)) delete C[k]; await kvPut(env, 'srchcache4', C) }
     await kvPut(env, dk, dn + 1); await logIt(env, 'srch', W.uid || 0, q.slice(0, 120));
     return json(req, Object.assign({ ok: true }, res)) }
   return json(req, { ok: false, err: 'not found' }, 404) }
