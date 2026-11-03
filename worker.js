@@ -1931,8 +1931,9 @@ const WDF = ['в воскресенье', 'в понедельник', 'во в�
 function curOn(h, days, now = msk()) { return days.includes(now.getUTCDay()) && now.getUTCHours() >= h[0] && now.getUTCHours() < h[1] }
 function curNext(h, days, now = msk()) { if (curOn(h, days, now)) return null; const d0 = now.getUTCDay(), hr = now.getUTCHours();
   for (let i = 0; i < 8; i++) { const d = (d0 + i) % 7; if (!days.includes(d)) continue; if (i === 0 && hr >= h[0]) continue; return 'ответит ' + (i === 0 ? 'сегодня' : i === 1 ? 'завтра' : WDF[d]) + ' с ' + h[0] + ':00 МСК' } return null }
+const CCC = {}; async function curCardC(env, cid) { const c = CCC[cid]; if (c && Date.now() - c.at < 60e3) return c.v; const v = await curCard(env, cid); CCC[cid] = { at: Date.now(), v }; return v }
 async function curCard(env, cid) { const c = CURATORS.find(x => x.id === cid); if (!c) return null; const now = msk(), from = (msNow() / 1000 | 0) - 30 * 86400;
-  const [h, days, photo, tgu] = [await curHours(env, cid), await curDays(env, cid), await kvGet(env, 'curphoto:' + cid), await curTg(env, cid)];
+  const [h, days, photo, tgu] = await Promise.all([curHours(env, cid), curDays(env, cid), kvGet(env, 'curphoto:' + cid), curTg(env, cid)]);
   const [rs, st] = await env.DB.batch([env.DB.prepare('SELECT wsec FROM cresp WHERE cid=? AND answered>=?').bind(cid, from), env.DB.prepare('SELECT AVG(stars) a, COUNT(*) n FROM chat_rate WHERE cid=?').bind(cid)]);
   const med = medOf((rs.results || []).map(r => r.wsec).filter(x => x > 0)), sr = (st.results || [])[0] || {};
   return { cid, name: c.full, short: c.name, about: c.about, photo: photo || 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + cid + '.jpg', tg: tgu, hours: { from: h[0], to: h[1], days, txt: daysTxt(days), next: curNext(h, days, now) },
@@ -1989,7 +1990,7 @@ const CR_LOW = ['Долго отвечал', 'Не помог', 'Отписка,
 async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.slice(0, 1500)) : '📎 ' + (msg.file && /pdf/.test(msg.file.mime || '') ? 'файл' : 'фото');
   if (o.dir === 'in') { if (!o.cid) return; const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(o.cid).first(); if (!ct || !ct.tg_id) return;
     const nm = await stuName(env, o.uid), via = o.via === 'bot' ? ' в боте' : '';
-    const j = await tgSend(env, ct.tg_id, '💬 <b>' + th(nm) + ' написал' + fem(nm) + via + '</b>\n' + body, [[{ text: 'Открыть чат', url: maLink(env, 'chat_' + o.uid) }], [{ text: 'Ответить здесь', callback_data: 'chr:' + o.uid }]]);
+    const j = await tgSend(env, ct.tg_id, '💬 <b>' + th(nm) + ' написал' + fem(nm) + via + '</b>\n' + body, [[{ text: 'Ответить в чате', callback_data: 'chr:' + o.uid }], [{ text: 'Ответить в приложении', url: maLink(env, 'chat_' + o.uid) }], [{ text: 'Ответить на сайте', url: SITE + '/teach/control/stream?fs=chat&u=' + o.uid }]] /* 03.11 (Роман): куратор выбирает, где отвечать */);
     return frAdd(env, ct.tg_id, j, { uid: o.uid, as: 'out' }) }
   if (o.dir === 'out') { const st = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(o.uid).first(); if (!st || !st.tg_chat) return;
     let quote = ''; if (!o.mass) { const qm = o.reply_to ? await env.DB.prepare("SELECT text FROM chat_msg WHERE id=? AND uid=?").bind(o.reply_to, o.uid).first() : await env.DB.prepare("SELECT text FROM chat_msg WHERE uid=? AND dir='in' AND id<? AND del=0 ORDER BY id DESC LIMIT 1").bind(o.uid, msg.id).first(); if (qm && qm.text) quote = '<blockquote>' + th(qm.text.slice(0, 200)) + '</blockquote>\n' }
@@ -2105,21 +2106,24 @@ async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt
       env.DB.prepare("SELECT uid, cid, since FROM cwait WHERE chat LIKE 'app%'"),
       /* QA раунд 3 (Н5): ожидания из Telegram-лички куратора (те же cwait, что считает пульт) — строкой «ждёт ответа в Telegram» */
       adm ? env.DB.prepare("SELECT w.cid, w.chat, w.uid, w.since, s.name sname, u.username, u.name uname FROM cwait w LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.chat NOT LIKE 'app%'")
-        : env.DB.prepare("SELECT w.cid, w.chat, w.uid, w.since, s.name sname, u.username, u.name uname FROM cwait w LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.chat NOT LIKE 'app%' AND w.cid=?").bind(s.cid)]);
+        : env.DB.prepare("SELECT w.cid, w.chat, w.uid, w.since, s.name sname, s.curator scur, u.username, u.name uname FROM cwait w LEFT JOIN student s ON s.uid=w.uid LEFT JOIN tg_user u ON u.chat=w.chat WHERE w.chat NOT LIKE 'app%' AND w.cid=?").bind(s.cid)]);
     const L = {}, U = {}, Wt = {}; for (const x of lr.results || []) L[x.uid] = x; for (const x of ur.results || []) U[x.uid] = x.n; for (const x of wr.results || []) Wt[x.uid] = x.since * 1000;
     const N = await nameMap(env), out = [];
     for (const x of sr.results || []) { if (isStaffUid(env, x.uid)) continue; if (adm && !L[x.uid] && f === 'all' && !Wt[x.uid]) continue; if (f === 'wait' && !Wt[x.uid]) continue; const l = L[x.uid];
       out.push({ uid: x.uid, name: N[x.uid] || x.name || null, cid: x.curator || null, last: l ? { text: l.text || (l.file_id ? '📎 файл' : ''), at: l.at, dir: l.dir } : null, unread: U[x.uid] || 0, wait_since: Wt[x.uid] || null }) }
-    let wtg = 0; for (const w of tr.results || []) { if (w.uid && isStaffUid(env, w.uid)) continue; if (!CURATORS.some(c => c.id === w.cid)) continue; wtg++;
-      out.push({ uid: w.uid || null, name: (w.uid && N[w.uid]) || w.sname || w.uname || (w.username ? '@' + w.username : null), cid: w.cid, cname: (CURATORS.find(c => c.id === w.cid) || {}).name || null, src: 'tg', tg: w.username || null, chat: String(w.chat), last: null, unread: 0, wait_since: w.since * 1000 }) }
+    let wtg = 0; for (const w of tr.results || []) { if (w.uid && isStaffUid(env, w.uid)) continue; if (!CURATORS.some(c => c.id === w.cid)) continue; if (!adm && w.uid && w.scur && w.scur !== s.cid) continue; /* 03.11 (Роман): ученик другого куратора написал в личку — в «Сообщениях» не показываем */ wtg++;
+      out.push({ uid: w.uid || null, name: (w.uid && N[w.uid]) || w.sname || w.uname || (w.username ? '@' + w.username : null), cid: w.cid, cname: (CURATORS.find(c => c.id === w.cid) || {}).name || null, src: 'tg', mine: adm || (!!w.uid && w.scur === s.cid), tg: w.username || null, chat: String(w.chat), last: null, unread: 0, wait_since: w.since * 1000 }) }
     out.sort((a, b) => (!!b.wait_since - !!a.wait_since) || (a.wait_since && b.wait_since ? a.wait_since - b.wait_since : 0) || ((b.last ? b.last.at : 0) - (a.last ? a.last.at : 0)) || String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
     return json(req, { ok: true, me: s.role, f, dialogs: out, wait: out.filter(x => x.wait_since).length, wait_tg: wtg }, 200, { 'Cache-Control': 'no-store' }) }
   const uid = W.uid; if (!uid) return json(req, { ok: false, err: 'Укажи ученика' }, 400);
-  if (path === '/chat/list') { const before = +u.searchParams.get('before') || 0, st = await env.DB.prepare('SELECT curator, name FROM student WHERE uid=?').bind(uid).first() || {};
-    const ms = await qAll(env.DB.prepare('SELECT m.*, r.stars, fb.at fb_at, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN chat_fb fb ON fb.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before));
-    { const RE = await reactsFor(env, ms.map(m => m.id), reactKey(W)); for (const m of ms) m.re = RE[m.id] || []; if (W.me !== 'student') for (const m of ms) m.fb_at = null }
-    const un = await env.DB.prepare('SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir=? AND read_at IS NULL AND del=0').bind(uid, W.me === 'student' ? 'out' : 'in').first();
-    return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: await stuName(env, uid), tg: W.me === 'student' ? undefined : await stuTg(env, uid) }, curator: st.curator ? await curCard(env, st.curator) : null, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/chat/list') { const before = +u.searchParams.get('before') || 0; /* 03.11 (Роман: «переписки грузятся очень долго»): запросы параллельно, карточка куратора — из памяти на 60 с */
+    const [st0, ms, un] = await Promise.all([env.DB.prepare('SELECT curator, name FROM student WHERE uid=?').bind(uid).first(),
+      qAll(env.DB.prepare('SELECT m.*, r.stars, fb.at fb_at, f.name fname, f.mime fmime FROM chat_msg m LEFT JOIN chat_rate r ON r.mid=m.id LEFT JOIN chat_fb fb ON fb.mid=m.id LEFT JOIN bank_file f ON f.id=m.file_id WHERE m.uid=? AND m.del=0 AND (?=0 OR m.id<?) ORDER BY m.id DESC LIMIT 60').bind(uid, before, before)),
+      env.DB.prepare('SELECT COUNT(*) n FROM chat_msg WHERE uid=? AND dir=? AND read_at IS NULL AND del=0').bind(uid, W.me === 'student' ? 'out' : 'in').first()]);
+    const st = st0 || {};
+    const [RE, nm, tgn, cc] = await Promise.all([reactsFor(env, ms.map(m => m.id), reactKey(W)), stuName(env, uid), W.me === 'student' ? undefined : stuTg(env, uid), st.curator ? curCardC(env, st.curator) : null]);
+    for (const m of ms) m.re = RE[m.id] || []; if (W.me !== 'student') for (const m of ms) m.fb_at = null;
+    return json(req, { ok: true, me: W.me, ro: !!W.ro, student: { uid, name: nm, tg: tgn }, curator: cc, msgs: ms.reverse().map(chatPub), unread: un ? un.n : 0, more: ms.length === 60 }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/chat/file') { const f = await env.DB.prepare("SELECT name, mime, data FROM bank_file WHERE id=? AND uid=? AND kind='chat'").bind(+u.searchParams.get('id'), uid).first(); if (!f) return new Response('нет файла', { status: 404, headers: cors(req) });
     return new Response(Uint8Array.from(atob(f.data), c => c.charCodeAt(0)), { headers: Object.assign({ 'Content-Type': f.mime, 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(f.name), 'Cache-Control': 'private, max-age=3600' }, cors(req)) }) }
   if (req.method !== 'POST') return json(req, { ok: false, err: 'not found' }, 404);
