@@ -160,7 +160,7 @@ html.kk .hd h1{font-size:40px;line-height:1;letter-spacing:-.04em}
 #kNav{--ink2:rgba(255,255,255,.62);position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:1px solid var(--hair);flex-direction:column;gap:4px;padding:22px 14px}
 html.kk #kNav{display:flex}
 #kNav .brand{display:flex;align-items:center;gap:10px;padding:0 8px 18px}
-#kNav .brand i{width:30px;height:30px;border-radius:8px;background:conic-gradient(from 90deg,#fff 0 25%,#c38bff 0 50%,#fff 0 75%,#fff 0);flex:none}
+#kNav .brand .bw{position:relative;width:36px;height:36px;flex:none}#kNav .brand .bw .av{position:absolute;inset:0;width:36px;height:36px}#kNav .brand .bph{position:absolute;inset:0;width:36px;height:36px;border-radius:50%;object-fit:cover}#kNav .brand .blg{width:30px;height:30px;flex:none}#kNav .brand .av{width:36px;height:36px;flex:none}
 #kNav .brand b{font-weight:500;font-size:15px;display:block;line-height:1.15}#kNav .brand small{color:var(--ink3);font-size:12px}
 #kNav button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
 #kNav .nv{height:42px;border-radius:12px;padding:0 10px;display:flex;align-items:center;gap:10px;font-size:15px;color:var(--ink2);width:100%;text-align:left}
@@ -297,7 +297,8 @@ a.b1,a.b2{text-decoration:none}
   .stc .r1 .t b{font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stc .r1 .t small{font-size:12px;color:var(--ink3)}
   .stc .sgs{gap:5px}.stc .pi>.b2.sm{align-self:stretch;height:38px}
   .stc .emp{color:var(--ink2);text-align:center;padding:30px 12px}}
-</style></head><body>
+/* 03.11: значок ИИ — свой, цветом текста (эмодзи ✨ не видно на светлых кнопках) */.spk{display:inline-block;width:1.05em;height:1.05em;vertical-align:-.15em;margin-right:.3em;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 2l1.9 5.6L17.5 9.5l-5.6 1.9L10 17l-1.9-5.6L2.5 9.5l5.6-1.9z'/%3E%3Cpath d='M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 2l1.9 5.6L17.5 9.5l-5.6 1.9L10 17l-1.9-5.6L2.5 9.5l5.6-1.9z'/%3E%3Cpath d='M18.5 13l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z'/%3E%3C/svg%3E") center/contain no-repeat;flex:none}</style><script>/* 03.11: цветные эмодзи Noto на Windows/Android (на Mac/iPhone — системные) */(function(){try{if(/Mac|iPhone|iPad|iPod/i.test((navigator.platform||'')+' '+navigator.userAgent))return;var l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap';document.head.appendChild(l);var st=document.createElement('style');st.textContent='body,button,input,textarea{font-family:"Inter Tight",Inter,"Noto Color Emoji",system-ui,sans-serif}';document.head.appendChild(st)}catch(e){}})();</script>
+</head><body>
 <div id="login" class="login hid"><div class="lg">
 <span class="mk"><svg width="26" height="26" viewBox="0 0 64 64"><rect width="20" height="20" rx="3" fill="#fff"/><rect x="22" width="20" height="20" rx="3" fill="#fff"/><rect x="44" width="20" height="20" rx="3" fill="#c38bff"/><rect y="22" width="20" height="20" rx="3" fill="#fff"/><rect x="44" y="22" width="20" height="20" rx="3" fill="#fff"/><rect y="44" width="20" height="20" rx="3" fill="#fff"/><rect x="22" y="44" width="20" height="20" rx="3" fill="#fff"/><rect x="44" y="44" width="20" height="20" rx="3" fill="#fff"/></svg>Oduvanov<b>School</b></span>
 <h1>Пульт куратора</h1><p class="ink2" style="margin:0">Вход через Telegram: нажми кнопку, в&nbsp;боте нажми «Старт»&nbsp;— и&nbsp;вернись сюда.</p>
@@ -319,12 +320,12 @@ a.b1,a.b2{text-decoration:none}
 </section>
 
 <section id="t-bc" class="tab hid"><div id="bcGrid">
-<div class="card bcE"><div class="row" style="justify-content:space-between"><b style="font-weight:500;font-size:18px">✨ Кому стоит написать</b><button class="sb" id="bRecR" style="height:32px">Обновить</button></div><div id="bcRecs" class="recs"><span class="muted">Смотрю, кому стоит написать…</span></div></div>
+<div class="card bcE"><div class="row" style="justify-content:space-between"><b style="font-weight:500;font-size:18px"><i class="spk" aria-hidden="true"></i>Кому стоит написать</b><button class="sb" id="bRecR" style="height:32px">Обновить</button></div><div id="bcRecs" class="recs"><span class="muted">Смотрю, кому стоит написать…</span></div></div>
 <div class="card bcA" style="display:flex;flex-direction:column;gap:14px">
 <b style="font-weight:500;font-size:18px">Сообщение ученикам в&nbsp;Telegram</b>
 <div><span class="muted" style="font-size:13px;display:block;margin-bottom:6px">Кому</span><div class="seg sx" id="bcTo"><button data-r="all" class="on">Все</button><button data-r="idle">Не заходили 5+ дн</button><button data-r="stall">Не продвигаются</button><button data-r="sel">Выбранные</button></div></div>
 <textarea class="inp" id="bcText" rows="6" maxlength="3000" placeholder="Например: «Завтра в 19:00 эфир по колористике — присылайте работы на разбор до 23:59»"></textarea>
-<div class="bcAi"><input class="inp" id="bcGoal" maxlength="600" placeholder="Задача для ИИ (необязательно): «напомни про эфир завтра в 19:00»"><button class="sb ai" id="bAiW">✨ Составить с ИИ</button><button class="sb hid" id="bAiI">Улучшить мой текст</button></div>
+<div class="bcAi"><input class="inp" id="bcGoal" maxlength="600" placeholder="Задача для ИИ (необязательно): «напомни про эфир завтра в 19:00»"><button class="sb ai" id="bAiW"><i class="spk" aria-hidden="true"></i>Составить с ИИ</button><button class="sb hid" id="bAiI">Улучшить мой текст</button></div>
 <span class="muted" style="font-size:12.5px;margin-top:-6px">{имя} в тексте заменится на имя каждого ученика</span>
 <div><span class="muted" style="font-size:13px;display:block;margin-bottom:6px">Кнопка под сообщением</span><div id="bcLinks" class="row" style="flex-wrap:wrap"></div></div>
 <div class="bcIn"><input class="inp" id="bcBtn" placeholder="Текст кнопки"><input class="inp" id="bcLink" placeholder="https://… (необязательно)"></div></div>
@@ -451,7 +452,7 @@ var RECS=null;
 function siteGo(u){u=SITE+u;if(MA){try{parent.postMessage({maGo:u},'*')}catch(e){}return}if(EMB){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
 function recLoad(fresh){if(RECS&&!fresh){recDraw();return}$('bcRecs').innerHTML='<span class="muted">Смотрю, кому стоит написать…</span>';api('ai/recs?c='+CUR+(fresh?'&fresh=1':'')).then(function(j){RECS=j.recs||[];recDraw()}).catch(function(){$('bcRecs').innerHTML='<span class="muted">Не получилось загрузить рекомендации</span>'})}
 function recDraw(){var L=RECS||[];$('bcRecs').innerHTML=L.length?L.map(function(r,i){var b=r.kind==='hw'?'Проверить ДЗ':r.aud==='wait'?'Открыть чаты':'Составить рассылку';
-  return '<div class="rec '+r.kind+'"><b>'+esc(r.title)+'</b><span class="why">'+esc(r.why||'')+'</span>'+(r.tip?'<span class="tip">✨ '+esc(r.tip)+'</span>':'')+'<button class="sb" data-rec="'+i+'">'+b+'</button></div>'}).join(''):'<span class="muted">Всё спокойно: все заходят, ДЗ проверены, никто не ждёт ответа.</span>'}
+  return '<div class="rec '+r.kind+'"><b>'+esc(r.title)+'</b><span class="why">'+esc(r.why||'')+'</span>'+(r.tip?'<span class="tip"><i class="spk" aria-hidden="true"></i>'+esc(r.tip)+'</span>':'')+'<button class="sb" data-rec="'+i+'">'+b+'</button></div>'}).join(''):'<span class="muted">Всё спокойно: все заходят, ДЗ проверены, никто не ждёт ответа.</span>'}
 $('bcRecs').onclick=function(e){var x=e.target.closest('[data-rec]');if(!x)return;var r=RECS[+x.getAttribute('data-rec')];if(!r)return;
   if(r.kind==='hw'){kHw();return}if(r.aud==='wait'){tabGo('ch');return}
   setR(r.aud);if(r.draft){$('bcText').value=r.draft;upPrev()}else aiBc(false);$('bcText').scrollIntoView({behavior:'smooth',block:'center'})};
@@ -801,7 +802,10 @@ function kAvH(n,cls){return '<span class="av'+(cls?' '+cls:'')+'" style="backgro
 function kNavDraw(){var N=$('kNav'),B=$('kBar');if(!N||!ME||!document.documentElement.classList.contains('kk'))return;var t=kTab(),b=kBadges(),inMo=kMore().indexOf(t)>=0||t==='mo';
   var nv=function(k,lab,n,red){var on=k==='mo'?inMo:t===k;return '<button class="nv'+(on?' on':'')+'" data-go="'+k+'"'+(k==='hw'&&!HWIN?' title="Лента ответов на сайте школы"':'')+'>'+KI[k]+'<span>'+lab+'</span>'+(n?'<em class="n'+(red?' r':'')+'">'+n+'</em>':'')+'</button>'};
   var st=(STATS&&STATS.curators)||[],c1=st.length===1?st[0]:null,me=kAdm()?'Роман':String(ME.name||'Куратор').split(' ')[0],n=DATA?DATA.students.length:0;
-  N.innerHTML='<div class="brand"><i></i><div><b>Кабинет куратора</b><small>OduvanovSchool</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+nv('mo','Ещё',b.rv,1)
+  var cid=!kAdm()&&(ME.cid||((ME.curators||[])[0]||{}).id)||'',ph=cid?'https://romanoduvanov.github.io/otzyvy/gc/curators/'+encodeURIComponent(cid)+'.jpg':'';
+  /* 03.11 (Роман): в шапке меню — фото куратора (gc/curators/<cid>.jpg), у Романа — знак школы из docs/BRAND.md; нет фото — инициалы */
+  var mark=ph?'<span class="bw">'+kAvH(me)+'<img class="bph" src="'+ph+'" alt="" onerror="this.remove()"></span>':'<svg class="blg" viewBox="0 0 30 30" aria-hidden="true">'+[0,1,2].map(function(r){return [0,1,2].map(function(c){return '<rect x="'+(c*10+1)+'" y="'+(r*10+1)+'" width="8" height="8" rx="1.6" fill="'+(r===0&&c===2?'#c9a2ff':'#fff')+'"/>'}).join('')}).join('')+'</svg>';
+  N.innerHTML='<div class="brand">'+mark+'<div><b>'+(ph?esc(me):'Кабинет куратора')+'</b><small>'+(ph?'Кабинет куратора':'OduvanovSchool')+'</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+nv('mo','Ещё',b.rv,1)
     +'<div class="nsub">'+kMore().map(function(k){return '<button data-go="'+k+'"'+(t===k?' class="on"':'')+'>'+kLabel(k)+(k==='rv'&&b.rv?'<em class="n">'+b.rv+'</em>':'')+'</button>'}).join('')+'</div>'
     +'<div class="nfoot"><div class="me">'+kAvH(me)+'<div>'+esc(me)+'<br><small style="color:var(--ink3);font-size:12px">'+(kAdm()?'админ':'куратор')+' · '+n+'&nbsp;'+plr(n,'ученик','ученика','учеников')+'</small></div></div>'
     +(c1&&c1.hours?'<span>Рабочие часы '+c1.hours[0]+'–'+c1.hours[1]+' МСК</span>':'')+'<span>'+esc($('upd').textContent||'')+'</span></div>';
@@ -845,7 +849,7 @@ function tdIt(x,dn){var A=dn?x.sig:tdAct(x),k=x.k,w=A.filter(function(s){return 
   var when=w?'<span class="when'+(Date.now()/1000-w.since>7200?' late':'')+'">с '+(kDay(w.since*1000)==='Сегодня'?kTm(w.since*1000):kWhen(w.since*1000))+'</span>':'<span class="when'+(x.lvl?' k'+x.lvl:'')+'" title="'+esc(tdRkT(x))+'">риск '+x.risk+'</span>';
   var ctx=(adm?curName(x.cur).split(' ')[0]+' · ':'')+(x.ctx?((k==='gone'||k==='cool')?'Последний урок: ':'')+x.ctx:[x.tar,x.place?x.place+' место':'',x.lessons!=null&&TD.total?x.lessons+'/'+TD.total+' уроков':''].filter(Boolean).join(' · '));
   var tgH=w&&w.src==='tg'?((w.tun||x.tgu)?'https://t.me/'+encodeURIComponent(w.tun||x.tgu):w.tchat?'tg://user?id='+encodeURIComponent(w.tchat):''):'';
-  var b1=k==='wait'&&tgH?'<a class="b1" target="_blank" rel="noopener" href="'+esc(tgH)+'">Ответить в&nbsp;Telegram</a>':chat?'<button class="b1" data-a="chat">'+(k==='wait'?'Ответить':'Написать в&nbsp;чат')+'</button>':'<button class="b1" data-a="ai">✨ Написать с&nbsp;ИИ</button>';
+  var b1=k==='wait'&&tgH?'<a class="b1" target="_blank" rel="noopener" href="'+esc(tgH)+'">Ответить в&nbsp;Telegram</a>':chat?'<button class="b1" data-a="chat">'+(k==='wait'?'Ответить':'Написать в&nbsp;чат')+'</button>':'<button class="b1" data-a="ai"><i class="spk" aria-hidden="true"></i>Написать с&nbsp;ИИ</button>';
   var b2=k==='wait'&&tgH?'':k==='wait'&&x.tgu?'<a class="b2 sm" target="_blank" rel="noopener" href="https://t.me/'+esc(x.tgu)+'">Открыть в&nbsp;Telegram</a>':!chat?'<button class="b2 sm" data-a="chat">Чат</button>':'';
   var ac=dn?'<span class="sp"></span><span class="ex">'+(x.ack&&x.ack.until?'отложено до '+kWhen(x.ack.until)+(kDay(x.ack.until)==='Сегодня'?'':' '+kTm(x.ack.until)):'обработано'+(x.ack&&x.ack.at?' · '+kWhen(x.ack.at):''))+'</span><button class="b3" data-a="undo">Вернуть</button>'
     :'<span class="sp"></span><button class="b3" data-a="done"><span class="lgT">Обработано</span><span class="shr">Готово</span></button><button class="b3" data-a="snz" aria-haspopup="menu"><span class="lgT">'+(k==='gone'?'Знаю, в&nbsp;отпуске до…':'Отложить')+' ▾</span><span class="shr" aria-label="Отложить">⏰</span></button>';
@@ -996,14 +1000,14 @@ $('tdList').addEventListener('click',function(e){var nm=e.target.closest('.it .h
 
 /* ========== 03.11 Кабинет куратора, этап 3 (макет docs/mockups/kabinet-kuratora).
    ИИ «Что происходит» в «Сводке» панели ученика: POST /app/api/ai/student только при открытии закладки (кэш на сервере 12 ч), пока ждём — скелет, если ИИ не ответил — блока нет.
-   «✨ Черновик сообщения» кладёт текст в поле чата панели, ничего не отправляет. «Сегодня» → «ИИ подготовил черновики» (TD.drafts, готовятся утром кроном): клик — панель на закладке «Чат» с черновиком в поле.
+   «<i class="spk" aria-hidden="true"></i>Черновик сообщения» кладёт текст в поле чата панели, ничего не отправляет. «Сегодня» → «ИИ подготовил черновики» (TD.drafts, готовятся утром кроном): клик — панель на закладке «Чат» с черновиком в поле.
    «Чаты»: фильтр «Telegram» и строки ожиданий из Telegram с «Открыть в Telegram» (как tgRow в «Сообщениях» сайта); «Ответить» в «Сегодня» для них ведёт в Telegram.
    «Ученики» на ≤767 — карточки вместо таблицы. ========== */
 var DRAI=null;
 function drAiH(){var A=DRAI;if(!A||A.u!==DR.u||A.st==='err')return '';
-  if(A.st==='load')return '<div class="aib" id="drAi" aria-busy="true"><div class="h"><span>✨ Что&nbsp;происходит</span><small>ИИ смотрит сигналы, чат и&nbsp;ДЗ…</small></div><i class="skel" style="width:88%"></i><i class="skel" style="width:62%"></i></div>';
-  var j=A.j||{};return '<div class="aib" id="drAi"><div class="h"><span>✨ Что&nbsp;происходит</span><small>'+(j.at?'ИИ · '+kAgoS(j.at):'ИИ')+'</small></div><p>'+esc(j.what||'')+(j.step?' <b>Шаг:</b> '+esc(j.step):'')+'</p>'
-    +'<div class="r">'+(j.draft?'<button class="b1 sm" data-ai="draft">✨ Черновик сообщения</button>':'')+'<button class="b3" data-ai="fresh">Обновить</button></div></div>'}
+  if(A.st==='load')return '<div class="aib" id="drAi" aria-busy="true"><div class="h"><span><i class="spk" aria-hidden="true"></i>Что&nbsp;происходит</span><small>ИИ смотрит сигналы, чат и&nbsp;ДЗ…</small></div><i class="skel" style="width:88%"></i><i class="skel" style="width:62%"></i></div>';
+  var j=A.j||{};return '<div class="aib" id="drAi"><div class="h"><span><i class="spk" aria-hidden="true"></i>Что&nbsp;происходит</span><small>'+(j.at?'ИИ · '+kAgoS(j.at):'ИИ')+'</small></div><p>'+esc(j.what||'')+(j.step?' <b>Шаг:</b> '+esc(j.step):'')+'</p>'
+    +'<div class="r">'+(j.draft?'<button class="b1 sm" data-ai="draft"><i class="spk" aria-hidden="true"></i>Черновик сообщения</button>':'')+'<button class="b3" data-ai="fresh">Обновить</button></div></div>'}
 function drAiPaint(){if(!DRAI||DR.u!==DRAI.u||DR.tab!=='sum')return;var e=$('drAi'),h=drAiH(),B=$('drB');if(e){if(h)e.outerHTML=h;else e.parentNode.removeChild(e)}else if(h&&B)B.insertAdjacentHTML('afterbegin',h)}
 function drAiGo(u,fresh){if(!u||!ME)return;if(!fresh&&DRAI&&DRAI.u===u)return;DRAI={u:u,st:'load'};drAiPaint();
   setTimeout(function(){if(!DRAI||DRAI.u!==u||DR.u!==u)return;
@@ -1017,7 +1021,7 @@ function tdDrK(k,n){var a=fem(n)?'а':'';return {wait:'ждёт ответа',ra
 function tdDrL(){if(!TD||!TD.drafts)return [];var on={};TD.items.forEach(function(x){if(tdMine(x)&&tdAct(x).length)on[x.uid]=x});
   return TD.drafts.filter(function(d){return on[d.uid]&&(!kAdm()||CUR==='all'||d.cid===CUR)})}
 function tdDrafts(){var S=$('tdSide');if(!S||!TD)return;var L=tdDrL(),o=S.querySelector('.drP');if(o)o.parentNode.removeChild(o);if(!L.length)return;
-  S.insertAdjacentHTML('afterbegin','<div class="panel drP"><h4><span>✨ ИИ подготовил черновики</span><i class="mk">'+L.length+'</i></h4><span class="ex">Утром, по&nbsp;сигналам слева. Ничего не&nbsp;уходит без&nbsp;тебя: черновик откроется в&nbsp;чате ученика.</span>'
+  S.insertAdjacentHTML('afterbegin','<div class="panel drP"><h4><span><i class="spk" aria-hidden="true"></i>ИИ подготовил черновики</span><i class="mk">'+L.length+'</i></h4><span class="ex">Утром, по&nbsp;сигналам слева. Ничего не&nbsp;уходит без&nbsp;тебя: черновик откроется в&nbsp;чате ученика.</span>'
     +L.map(function(d){var x=TDRK[d.uid]||{};return '<button type="button" class="dr" data-dru="'+d.uid+'"><span class="t"><b>'+esc(x.name||d.name||'Ученик')+'</b><span>'+esc(tdDrK(x.k||d.k,x.name||d.name))+'</span></span><p>'+esc(d.draft)+'</p></button>'}).join('')+'</div>')}
 (function(){var d0=tdDraw;tdDraw=function(){d0();tdDrafts()}})();
 $('tdSide').addEventListener('click',function(e){var b=e.target.closest('[data-dru]');if(!b)return;var u=+b.getAttribute('data-dru'),d=tdDrL().filter(function(z){return +z.uid===u})[0];if(!d)return;
