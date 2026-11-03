@@ -44,6 +44,9 @@
       L.querySelector('.st').addEventListener('click', function (e) { if (e.target === this) close() });
       L.addEventListener('touchstart', function (e) { x0 = e.touches[0] ? [e.touches[0].clientX, e.touches[0].clientY] : null }, { passive: true });
       L.addEventListener('touchend', function (e) { if (!x0 || !e.changedTouches[0]) return; var dx = e.changedTouches[0].clientX - x0[0], dy = e.changedTouches[0].clientY - x0[1]; x0 = null; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1); else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) close() }, { passive: true }) };
+    /* 04.11 (Роман): файлы работы (pdf, zip, psd…) не открываем пустой вкладкой — качаем сразу через загрузчик GetCourse скрытым iframe */
+    document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a.doc[href]'); if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return; var m = a.getAttribute('href').match(/\/h\/([0-9a-f]{32}(?:\.\w{1,6})?)/i); if (!m) return;
+      e.preventDefault(); e.stopImmediatePropagation(); var f = document.createElement('iframe'); f.style.display = 'none'; f.src = (window.__fdSite || location.origin) + '/pl/fileservice/user/file/download/h/' + m[1]; document.body.appendChild(f); setTimeout(function () { f.remove() }, 6e4) }, true);
     document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (!a || !a.querySelector('img') || e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); e.stopImmediatePropagation(); open(a) }, true);
   })();
   function make(O) {
