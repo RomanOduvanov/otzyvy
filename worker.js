@@ -958,12 +958,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay', 'crask'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1997,6 +1997,16 @@ async function chatFbDo(env, uid, r, reasons0, text0) { const reasons = (reasons
     for (const a of await admins(env)) await tgSend(env, a, txt) } catch (e) {} }
 /* кнопки оценки под ответом куратора в боте */
 const crStars = (mid, n) => [1, 2, 3, 4, 5].map(i => ({ text: (i <= n ? '⭐ ' : '☆ ') + i, callback_data: 'crt:' + mid + ':' + i }));
+/* 04.11 (Роман: «почти никто не ставит оценку»): через час после ответа куратора в чате, если ученик не оценил и куратор больше не писал, бот один раз просит оценить ответ (не чаще раза в 3 дня одному ученику, только 10–22 МСК) */
+async function crAskJob(env, B) { const now = msNow(), hr = msk().getUTCHours(); if (hr < 10 || hr >= 22) return { skip: 'night' };
+  const R = await qAll(env.DB.prepare("SELECT m.id, m.uid, m.cid, m.text, m.who, s.tg_chat FROM chat_msg m JOIN student s ON s.uid=m.uid WHERE m.dir='out' AND m.cid IS NOT NULL AND m.del=0 AND m.at BETWEEN ? AND ? AND s.tg_chat IS NOT NULL"
+    + " AND NOT EXISTS (SELECT 1 FROM chat_rate r WHERE r.mid=m.id) AND NOT EXISTS (SELECT 1 FROM chat_msg n WHERE n.uid=m.uid AND n.id>m.id AND n.dir='out' AND n.del=0)"
+    + " AND EXISTS (SELECT 1 FROM chat_msg q WHERE q.uid=m.uid AND q.dir='in' AND q.del=0 AND q.id<m.id AND q.at>m.at-259200000) ORDER BY m.id LIMIT 40").bind(now - 20 * 36e5, now - 36e5));
+  let sent = 0; for (const m of R) { if (isStaffUid(env, m.uid)) continue; if (B && !B.ok(2)) break; const k = 'crask:' + m.uid, last = await kvGet(env, k); if (last && (last.mid === m.id || now - (last.at || 0) < 3 * 864e5)) continue;
+    const c = CURATORS.find(x => x.id === m.cid), who = m.who || (c ? c.name : 'Куратор'), q = m.text ? '<blockquote>' + th(String(m.text).slice(0, 160)) + '</blockquote>\n' : '';
+    try { await tgSend(env, m.tg_chat, '⭐ <b>' + nbt('Оцени ответ куратора') + '</b>\n' + q + th(who) + ' ответил' + fem(who) + ' тебе в' + NB + 'чате. Поставь оценку — это одна секунда, а' + NB + 'нам помогает делать поддержку лучше.', [crStars(m.id, 0)]); sent++; if (B) B.use(1) } catch (e) {}
+    await kvPut(env, k, { mid: m.id, at: now }); await logIt(env, 'chat-rask', m.uid, m.cid + ' ' + m.id) }
+  return { sent } }
 const CR_LOW = ['Долго отвечал', 'Не помог', 'Отписка, без разбора', 'Непонятно объяснил', 'Грубо'];
 async function chatNotify(env, o, msg) { const body = msg.text ? th(msg.text.slice(0, 1500)) : '📎 ' + (msg.file && /pdf/.test(msg.file.mime || '') ? 'файл' : 'фото');
   if (o.dir === 'in') { if (!o.cid) return; const ct = await env.DB.prepare('SELECT tg_id FROM cur_tg WHERE cid=?').bind(o.cid).first(); if (!ct || !ct.tg_id) return;
@@ -2190,6 +2200,13 @@ async function stuTg(env, uid) { const a = await env.DB.prepare('SELECT username
 async function chatApi(env, req, path) { const u = new URL(req.url); await bksSt(env);
   const o = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, W = await chatWho(env, req, u, o); if (!W) return deny(req);
   if (W.forbidden) return json(req, { ok: false, err: 'Это не твой ученик' }, 403);
+  /* 04.11 (Роман: галочка «вопрос решён» в чатах пульта): куратор снимает ожидание сам — диалог уходит из «Ждут» (сайт/приложение: chat=app<uid>, личка Telegram: chat=<id чата>) */
+  if (path === '/chat/done' && req.method === 'POST') { if (!W.s || W.ro) return json(req, { ok: false, err: 'Только для кураторов' }, 403); const adm = W.s.role === 'admin', chat = o.chat ? String(o.chat) : o.u ? CW(+o.u) : '';
+    if (!chat) return json(req, { ok: false, err: 'Нет диалога' }, 400);
+    const w = adm ? await env.DB.prepare('SELECT * FROM cwait WHERE chat=?').bind(chat).first() : await env.DB.prepare('SELECT * FROM cwait WHERE cid=? AND chat=?').bind(W.s.cid, chat).first();
+    if (!w) return json(req, { ok: true, gone: 1 });
+    await env.DB.batch([env.DB.prepare('DELETE FROM cwait WHERE cid=? AND chat=?').bind(w.cid, w.chat), env.DB.prepare('INSERT INTO cack (cid, chat, uid, kind, since, at) VALUES (?,?,?,?,?,?)').bind(w.cid, w.chat, w.uid, 'done', w.since, Date.now() / 1000 | 0)]);
+    await logIt(env, 'cw-done', w.uid || 0, w.cid + ' ' + w.chat); return json(req, { ok: true }) }
   if (path === '/chat/dialogs') { if (!W.s) return json(req, { ok: false, err: 'Только для кураторов' }, 403); const s = W.s, adm = s.role === 'admin', f = u.searchParams.get('f') === 'wait' ? 'wait' : 'all';
     const [sr, lr, ur, wr, tr] = await env.DB.batch([adm ? env.DB.prepare('SELECT uid, curator, name FROM student WHERE uid IN (SELECT DISTINCT uid FROM chat_msg) OR curator IS NOT NULL') : env.DB.prepare('SELECT uid, curator, name FROM student WHERE curator=?').bind(s.cid),
       env.DB.prepare('SELECT m.uid, m.text, m.at, m.dir, m.file_id FROM chat_msg m JOIN (SELECT uid, MAX(id) mid FROM chat_msg WHERE del=0 GROUP BY uid) x ON x.mid=m.id'),
