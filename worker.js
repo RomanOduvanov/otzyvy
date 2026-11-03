@@ -958,7 +958,7 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
+const CRON_JOBS = { '5 * * * *': ['efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['prep', 'efir', 'pay', 'names', 'cpay'], '45 * * * *': ['efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
@@ -2097,6 +2097,7 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
   await ensure(env); const k = String(o.k || u.searchParams.get('k') || ''), ss = k ? null : await staffSess(env, req, u); /* 03.11: и Роман из пульта (сессия admin) */
   if (!(k && same(k, await cpayKey(env))) && !(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
   /* проверка ключа записи без создания объектов: импорт заказа без почты → GetCourse отвечает ошибкой проверки (ключ верный) или «ключ неверный» */
+  if (path === '/pay/run') { if (!(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Только Роман' }, 403); return json(req, { ok: true, r: await cpayJob(env, budget(30)) }) }
   if (path === '/pay/ping') { if (!env.GC_KEY_W) return json(req, { ok: false, key: false }); const j = await gcImport(env, 'deals', { user: {}, system: {}, deal: {} }); return json(req, { ok: true, key: true, gc: { success: j.success, err: String(j.error_message || (j.result && j.result.error_message) || '').slice(0, 200) } }) }
   if (path === '/pay/catalog') return json(req, { ok: true, items: CPAY_ITEMS.map(x => ({ id: x.id, t: x.t, k: x.k })), terms: Object.entries(CPAY_TERMS).map(([id, v]) => ({ id, t: v[1], days: v[0] })), key: !!env.GC_KEY_W });
   if (path === '/pay/list') { const L = await qAll(env.DB.prepare('SELECT id, num, email, name, items, days, sum, note, link, st, at, paid, paid_at, until FROM cpay ORDER BY id DESC LIMIT 50')); return json(req, { ok: true, list: L.map(x => Object.assign(x, { items: JSON.parse(x.items || '[]') })) }) }
@@ -2119,6 +2120,8 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
   return json(req, { ok: false, err: 'not found' }, 404) }
 /* cron: оплата (в т. ч. частичная) по заказу → группы и срок; срок вышел → админам, что снять */
 async function cpayJob(env, B) { const out = { granted: 0, expired: 0 }; let L = []; try { L = await qAll(env.DB.prepare("SELECT * FROM cpay WHERE st IN ('new','granted') ORDER BY id DESC LIMIT 200")) } catch (e) { return { skip: 'no table' } }
+  /* 04.11: есть неоплаченные свежие ссылки — сами подтягиваем платежи за 2 дня (не ждём часовую выгрузку) */
+  if (L.some(x => x.st === 'new' && Date.now() - Date.parse(x.at || 0) < 30 * 864e5)) { try { const r = await syncPay(env, addDays(dayStr(), -2), dayStr(), B, 3); out.pay = r && (r.n != null ? r.n : r.pending ? 'pending' : null) } catch (e) { out.payErr = e.message } }
   for (const c of L.filter(x => x.st === 'new')) { const p = await env.DB.prepare("SELECT SUM(sum) s, MIN(created) at FROM pay WHERE status='Получен' AND (deal=? OR deal=?)").bind(c.num || -1, c.did || -1).first();
     if (!p || !(p.s > 0)) continue; if (!env.GC_KEY_W) { out.nokey = 1; break }
     const G = JSON.parse(c.items || '[]').map(id => (CPAY_ITEMS.find(x => x.id === id) || {}).g).filter(Boolean);
