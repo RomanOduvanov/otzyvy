@@ -1376,6 +1376,8 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
     env.DB.prepare('SELECT uid, MIN(since) since FROM cwait GROUP BY uid')]);
   const T = {}, L = {}, U = {}, W = {}; for (const x of ts.results || []) T[x.uid] = x.t | 0; for (const x of ls.results || []) L[x.uid] = x.d;
   for (const x of us.results || []) U[x.chat] = x.username; for (const x of ws.results || []) if (x.uid) W[x.uid] = x.since;
+  /* 04.11 (Роман): поиск по e-mail во вкладке «Ученики» — почта из выгрузки пользователей GetCourse (gc_name.email, обновляется раз в день) */
+  const EM = {}; try { for (const x of await qAll(env.DB.prepare('SELECT uid, email FROM gc_name WHERE email IS NOT NULL'))) EM[x.uid] = x.email } catch (e) {}
   const out = [];
   const priv = !!(D.rows.length && D.rows[0].uid != null), byU = {}; if (priv) for (const r of D.rows) byU[String(r.uid)] = r;
   const MU = {}; for (const m of (D.hw_multi || [])) if (m.status !== 'accepted') MU[+m.uid] = (MU[+m.uid] || 0) + 1;
@@ -1385,7 +1387,7 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
   for (const s of SR) { const r = (priv ? byU[String(s.uid)] : byH[await hashUid(s.uid)]) || null; if (cid === 'all' && !r && !s.curator) continue; /* «Все» у админа = текущий поток (рейтинг) + все, у кого есть куратор; старые потоки из базы не показываем */
     out.push({ uid: s.uid, name: (r && r.name) || s.name || ('id ' + s.uid), cur: s.curator, tar: r && r.tar || null, acc: r && r.acc || null,
       place: r && r.place || null, pts: r ? r.pts | 0 : null, week: r ? r.week | 0 : null, lessons: r ? r.lessons | 0 : null, hw: r ? r.hw | 0 : null, ontime: r && r.ontime != null ? r.ontime : null,
-      t7: T[s.uid] || 0, last: L[s.uid] || null, tg: !!s.tg_chat, tgu: s.tg_chat && U[s.tg_chat] || null, tgid: s.tg_chat || null, wait: W[s.uid] || null, multi: MU[s.uid] || 0 }) }
+      t7: T[s.uid] || 0, last: L[s.uid] || null, tg: !!s.tg_chat, tgu: s.tg_chat && U[s.tg_chat] || null, tgid: s.tg_chat || null, wait: W[s.uid] || null, multi: MU[s.uid] || 0, em: EM[s.uid] || null }) }
   return { n: D.n, total: D.total_lessons, students: out };
 }
 async function appApi(env, req, path) {
