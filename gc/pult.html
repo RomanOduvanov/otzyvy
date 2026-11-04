@@ -437,7 +437,7 @@ $('bCsv').onclick=function(){if(!DATA)return;var q=function(v){v=v==null?'':Stri
 $('bSelMsg').onclick=function(){setR('sel');document.querySelector('#tabs [data-t=bc]').click()};
 /* 04.11 (Роман): список получателей виден всегда. «Кому» — фильтр списка: нажал категорию — в списке её люди, все отмечены; галочки можно снять/поставить.
    Поиск ищет по всем ученикам — так можно добавить человека не из категории. Получают только отмеченные (BSEL, отдельно от выбора в таблице «Ученики»). «Выбранные» — кто сейчас отмечен */
-var BSEL={},BSI=0;
+var BSEL={},BSI=0,BCS='';
 function catOf(r){var S=DATA?DATA.students:[];return r==='nocur'?S.filter(function(s){return !s.cur}):r==='idle'?S.filter(idle):r==='stall'?S.filter(stall):r==='sel'?S.filter(function(s){return BSEL[s.uid]}):S}
 function setR(r){RCPT=r;document.querySelectorAll('#bcTo button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-r')===r)});
   if(DATA){BSI=1;if(r==='sel'){if(Object.keys(SEL).length){BSEL={};Object.keys(SEL).forEach(function(u){BSEL[u]=1})}}else{BSEL={};catOf(r).forEach(function(s){BSEL[s.uid]=1})}}$('bcPkQ').value='';pkDraw();upPrev()}
