@@ -3475,6 +3475,9 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   const id = +(o.id || u.searchParams.get('id') || 0);
   /* 04.11: список учеников для «Кто видит → Выбрать учеников»: куратору — его, админу — весь поток */
   if (path === '/efir/host/students') { const A = await appStudents(env, W.adm ? 'all' : W.cid); return json(req, { ok: true, students: (A.students || []).map(x => ({ uid: +x.uid, name: x.name, cur: x.cur || null, tar: x.tar || null, last: x.last || null, week: x.week, place: x.place || null })), curators: CURATORS.map(c => ({ cid: c.id, name: c.full })) }) }
+  /* 04.11: проверка Kinescope Speak (админ): ?id=<эфир> — создать/показать комнату сцены */
+  if (path === '/efir/host/speak') { if (!W.adm) return json(req, { ok: false, err: 'Только Роман' }, 403); const ee = u.searchParams.get('id') === 'test' ? { id: 'test', title: 'Проверка сцены' } : await efGet(env, u.searchParams.get('id')); if (!ee) return json(req, { ok: false, err: 'Эфир не найден' }, 404);
+    const x = await efSpeak(env, ee, u.searchParams.get('force') === '1'); return json(req, typeof x === 'string' ? { ok: true, link: x } : { ok: false, res: x }) }
   if (path === '/efir/host/list') { const L = await qAll(W.adm ? env.DB.prepare('SELECT * FROM efir WHERE del=0 ORDER BY start DESC LIMIT 200') : env.DB.prepare('SELECT * FROM efir WHERE del=0 AND host_cid=? ORDER BY start DESC LIMIT 200').bind(W.cid));
     const ids = L.map(e => e.id), C = {}; if (ids.length) { const ph = ids.map(() => '?').join(','), [rg, sn, ld] = await env.DB.batch([env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_reg WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids), env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n, SUM(CASE WHEN last>? AND sess>=0 THEN 1 ELSE 0 END) live FROM efir_seen WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(now - 9e4, ...ids), env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_lead WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids)]);
       for (const x of rg.results || []) (C[x.efir_id] = C[x.efir_id] || {}).reg = x.n; for (const x of sn.results || []) Object.assign(C[x.efir_id] = C[x.efir_id] || {}, { came: x.n, now: x.live }); for (const x of ld.results || []) (C[x.efir_id] = C[x.efir_id] || {}).leads = x.n }
@@ -3607,7 +3610,16 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     return json(req, { ok: true, scen: { id: r.id, ver: ver + 1, items: items.length, junk, msgs: items.filter(x => x.t === 'msg').length, events: items.filter(x => x.t !== 'msg').length } }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 /* 31.10 (Роман: «на эфире невозможно подключиться, говорить, включить камеру/демку»): Kinescope — трансляция в одну сторону, поэтому сцена — отдельная комната. Если ссылку не вставили, сервер сам даёт комнату Jitsi на эфир (имя с подписью, чтобы не угадали). */
-const efStageUrl = async (env, e, cfg) => cfg.stage_url || ('https://meet.jit.si/OduvanovSchool-efir' + e.id + '-' + (await hmacHex(env, 'stage|' + e.id)).slice(0, 10));
+/* 04.11 (Роман): сцена — комната Kinescope Speak (своя на каждый эфир, создаётся при первом обращении; kv speak:<id>). Ведущий держит окно Speak в OBS — гость попадает в трансляцию.
+   Нет ключа / API не дал комнату — запасной Jitsi, как раньше. Ошибку запоминаем на 10 минут, чтобы не долбить API на каждом опросе. */
+const SPK = {};
+async function efSpeak(env, e, force) { if (!env.KINESCOPE_KEY) return null; if (!force && SPK[e.id]) return SPK[e.id]; const kk = 'speak:' + e.id, kv = await kvGet(env, kk);
+  if (!force && kv && kv.link) return SPK[e.id] = kv.link; if (!force && kv && kv.err && msNow() - kv.at < 10 * 6e4) return null;
+  const r = await fetch(KIN_API + '/v1/speak/rooms', { method: 'POST', headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ('Эфир · ' + String(e.title || e.id)).slice(0, 90), waiting_room: false }) });
+  const t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (x) {} const d = j && (j.data || j), link = d && (d.link || (d.code ? 'https://speak.kinescope.io/' + d.code : null));
+  if (!r.ok || !link || !/^https:\/\//.test(link)) { await kvPut(env, kk, { err: r.status, msg: String(t).slice(0, 300), at: msNow() }); return force ? { err: r.status, msg: String(t).slice(0, 300) } : null }
+  await kvPut(env, kk, { id: d.id || null, link, at: msNow() }); return SPK[e.id] = link }
+const efStageUrl = async (env, e, cfg) => cfg.stage_url || (await efSpeak(env, e).catch(() => null)) || ('https://meet.jit.si/OduvanovSchool-efir' + e.id + '-' + (await hmacHex(env, 'stage|' + e.id)).slice(0, 10));
 const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null, uids: c.uids || [] } };
 async function efScenAdd(env, sid, item) { const r = await env.DB.prepare('SELECT items FROM efir_scen WHERE id=?').bind(sid).first(); if (!r) return 0; const L = efJ(r.items, []); L.push(item); L.sort((a, b) => a.sec - b.sec);
   await env.DB.prepare('UPDATE efir_scen SET items=? WHERE id=?').bind(JSON.stringify(L), sid).run(); EFSC.delete(sid); return 1 }
