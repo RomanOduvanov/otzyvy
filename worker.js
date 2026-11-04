@@ -1570,10 +1570,14 @@ async function appApi(env, req, path) {
     const goal = String(o.goal || '').trim().slice(0, 600), draft = String(o.draft || '').trim().slice(0, 3000);
     const user = (draft ? 'Улучши черновик куратора: сделай живее, короче и понятнее, сохрани смысл и все факты. Черновик:\n' + draft : 'Напиши сообщение-рассылку.') + (goal ? '\nЗадача куратора: ' + goal : draft ? '' : '\nЗадачи нет — напиши мягкое сообщение, чтобы вернуть учеников к урокам и ДЗ.')
       + '\n\n' + audInfo(A, o.aud, o.uids, D.total_lessons) + (o.mail ? '\n\nСообщение уйдёт и письмом. Первой строкой напиши тему письма в формате «Тема: …» (до 60 символов, без кавычек и эмодзи, цепляет и понятна без письма), затем пустая строка и текст сообщения.' : '\n\nВерни только текст сообщения.');
-    const r = await aiText(env, AI_BC_SYS, user, 760); if (r.err) return ajson({ ok: false, err: r.err }); await logIt(env, 'ai-bc', 0, cc + ' ' + (o.aud || 'all') + (o.mail ? ' mail' : ''));
-    /* 04.11 (Роман): одно задание для ИИ — и тема письма, и текст */
-    let txt = String(r.text || ''), subj = null; const sm = txt.match(/^\s*\**\s*Тема(?: письма)?\s*:\s*\**\s*(.+)\n+/i); if (sm) { subj = sm[1].replace(/[«»"*]/g, '').trim().slice(0, 120); txt = txt.slice(sm[0].length) }
-    return ajson({ ok: true, text: cleanAi(txt), subj }) }
+    /* 04.11 (Роман): одно задание для ИИ — и тема письма, и текст. Пустой ответ (бывает в режиме «с темой») — до 2 повторов */
+    let txt = '', subj = null;
+    for (let i = 0; i < 3 && !txt; i++) { const r = await aiText(env, AI_BC_SYS, user, 900); if (r.err) { if (i === 2) return ajson({ ok: false, err: r.err }); continue }
+      let t = String(r.text || '').replace(/^\s+/, ''); subj = null; const sm = t.match(/^\**\s*Тема(?: письма)?\s*:\s*\**\s*([^\n]+)\n*/i); if (sm) { subj = sm[1].replace(/[«»"*]/g, '').trim().slice(0, 120); t = t.slice(sm[0].length) }
+      txt = cleanAi(t); if (!txt) await logIt(env, 'ai-bc-empty', 0, String(r.text || '').slice(0, 200)) }
+    await logIt(env, 'ai-bc', 0, cc + ' ' + (o.aud || 'all') + (o.mail ? ' mail' : ''));
+    if (!txt) return ajson({ ok: false, err: 'Нейросеть ответила пустым текстом — нажми ещё раз' });
+    return ajson({ ok: true, text: txt, subj }) }
   return ajson({ ok: false, err: 'not found' }, 404);
 }
 
