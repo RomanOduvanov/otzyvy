@@ -387,13 +387,13 @@ var st=document.createElement('style');st.textContent='body,button,input,textare
 <button data-t="bank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></svg><em>Банк</em></button>
 <button data-t="more"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><em>Ещё</em></button>
 </nav>
-<script src="efir.js?v=24"></script>
+<script src="efir.js?v=25"></script>
 <script src="bank.js?v=20"></script>
 <script>
 (function(){
 /* 01.11 (Роман: «в апке не изменилось») — Telegram держит старую копию приложения в кэше. При запуске сверяем версию с сервером:
    если вышла новая — один раз перезагружаемся на неё (адрес с ?v=, хеш Telegram с данными входа сохраняем). APPV меняется при каждой выкладке. */
-var APPV='202611041543';(function(){try{var k='maV',done=sessionStorage.getItem(k);fetch('app.html?vc='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){var m=t.match(/var APPV='(\d{12})'/);if(!m||m[1]<=APPV||done===m[1])return;sessionStorage.setItem(k,m[1]);var q=location.search.replace(/([?&])v=\d+&?/,'$1').replace(/[?&]$/,'');location.replace(location.pathname+(q?q+'&':'?')+'v='+m[1]+location.hash)}).catch(function(){})}catch(e){}})();
+var APPV='202611041645';(function(){try{var k='maV',done=sessionStorage.getItem(k);fetch('app.html?vc='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){var m=t.match(/var APPV='(\d{12})'/);if(!m||m[1]<=APPV||done===m[1])return;sessionStorage.setItem(k,m[1]);var q=location.search.replace(/([?&])v=\d+&?/,'$1').replace(/[?&]$/,'');location.replace(location.pathname+(q?q+'&':'?')+'v='+m[1]+location.hash)}).catch(function(){})}catch(e){}})();
 var API='https://oduvanov-api.romanoduvanov52.workers.dev', GC='https://oduvanovroman.getcourse.ru', TGW=window.Telegram&&Telegram.WebApp, T=null, HOME=null, TOP=null, IMG=null, BUSY=false, CUR='learn';
 var MCOV={935917160:'ma/m01.jpg',935917165:'ma/m02.jpg',935917169:'ma/m03.jpg',935917170:'ma/m04.jpg'}, RIMG={'Новичок':'r1','Джуниор':'r2','Фрилансер':'r3','Арт-директор':'r4','Владелец студии':'r5','Дизайнер-миллионер':'r6'};
 var MON=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],MS=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'],WD=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
