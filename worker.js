@@ -1497,6 +1497,9 @@ async function appApi(env, req, path) {
   if (path.startsWith('/app/api/neuro/')) return neuroAdmin(env, s, path, req, u, ajson);
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
+  /* 04.11: диагностика «был на сайте» (админ) */
+  if (path === '/app/api/dbg/seen') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const id = +u.searchParams.get('u'); const [a1, t1, s1] = await env.DB.batch([env.DB.prepare('SELECT * FROM authuid WHERE uid=?').bind(id), env.DB.prepare('SELECT COUNT(*) n, MAX(day) d, SUM(site) s FROM time WHERE uid=?').bind(id), env.DB.prepare('SELECT uid, curator, tg_chat IS NOT NULL tg FROM student WHERE uid=?').bind(id)]);
+    return ajson({ ok: true, auth: (a1.results || [])[0] || null, time: (t1.results || [])[0] || null, st: (s1.results || [])[0] || null }) }
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
   if (path === '/app/api/stats') { const st = await curStats(env, Math.min(90, Math.max(1, +u.searchParams.get('days') || 14))); return ajson({ ok: true, c, curators: c === 'all' ? st.curators : st.curators.filter(x => x.id === c) }) }
   if (path === '/app/api/hours' && req.method === 'POST') { const o = await req.json().catch(() => ({})); const cc = appScope(s, o.c);
