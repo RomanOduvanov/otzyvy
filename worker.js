@@ -3275,7 +3275,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
       const p = efPub(e, now, { reg: R[e.id] }); p.reg = R[e.id] ? 1 : 0; if (R[e.id] && R[e.id].sess) p.my_sess = R[e.id].sess;
       if (p.state === 'live') live.push(p); else if (p.state === 'soon') soon.push(p);
       /* 04.11: эфир прошёл, запись Kinescope ещё обрабатывается — карточка в «Записях» с «Запись скоро появится» (неделю) */ if (e.kind !== 'auto' && p.state === 'done' && !p.rec && p.kin && !p.rec_lost && (e.at_end || e.start || 0) > now - 7 * 864e5) p.rec_wait = 1;
-      if (e.kind !== 'auto' && p.state === 'done' && (p.rec || p.rec_wait)) { const pr = P[e.id] || {}; p.seen = { pos: pr.pos || 0, max: pr.mx || 0, done: pr.done || 0 }; rec.push(p) } }
+      if (e.kind !== 'auto' && p.state === 'done' && (p.rec || p.rec_wait || (p.rec_lost && W.s))) { const pr = P[e.id] || {}; p.seen = { pos: pr.pos || 0, max: pr.mx || 0, done: pr.done || 0 }; rec.push(p) } }
     if (live.length) { const ids = live.filter(x => x.kind !== 'auto').map(x => x.id); if (ids.length) { const vr = await qAll(env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_seen WHERE last>? AND sess=0 AND efir_id IN (' + ids.map(() => '?').join(',') + ') GROUP BY efir_id').bind(now - 9e4, ...ids)); for (const v of vr) { const x = live.find(y => y.id === v.efir_id); if (x) x.viewers = v.n } } }
     soon.sort((a, b) => a.start - b.start); rec.sort((a, b) => (b.at_end || b.start) - (a.at_end || a.start));
     return json(req, { ok: true, now, me: { role: W.me, can_host: !!W.s, ro: !!W.ro }, live, soon: soon.slice(0, 30), rec: rec.slice(0, 40), regs: Object.keys(R).length }) }
