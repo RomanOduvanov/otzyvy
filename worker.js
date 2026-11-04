@@ -516,7 +516,8 @@ async function curRemind(env, B) { const now = Date.now() / 1000 | 0, out = [];
     if (sec >= 7200 && w.reminded < 1) { await tgSend(env, w.tg_id, '⏰ ' + who + ' ждёт твоего ответа с ' + sinceT + ' МСК (' + hrs(sec) + ' рабочего времени). Цель — ответить за 1–2 часа.\nЕсли уже ответил или ответ не нужен — нажми кнопку ниже.', btn);
       await env.DB.prepare('UPDATE cwait SET reminded=1 WHERE cid=? AND chat=?').bind(w.cid, w.chat).run(); out.push([w.cid, 1]); if (B) B.use(1) } }
   return out }
-async function curStats(env, days) { const from = (Date.now() / 1000 | 0) - days * 86400, now = Date.now() / 1000 | 0, res = [];
+async function curStats(env, days) { return memo(env, 'cst:' + days, 120, () => curStats0(env, days)) }
+async function curStats0(env, days) { const from = (Date.now() / 1000 | 0) - days * 86400, now = Date.now() / 1000 | 0, res = [];
   for (const c of CURATORS) { const ct = await env.DB.prepare('SELECT username, enabled FROM cur_tg WHERE cid=?').bind(c.id).first();
     const rs = ((await env.DB.prepare('SELECT wsec, sec, day FROM cresp WHERE cid=? AND answered>=? ORDER BY wsec').bind(c.id, from).all()).results || []);
     const med = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) / 2)] : null, h = await curHours(env, c.id);
@@ -702,7 +703,7 @@ async function syncNames(env, B, force) { if (!env.GC_KEY) return null; const to
     const nm = (I.fn >= 0 ? [r[I.fn], I.ln >= 0 ? r[I.ln] : ''].join(' ') : String(r[I.full] || '')).replace(/\s+/g, ' ').trim(); const em = I.em >= 0 ? String(r[I.em] || '').trim().toLowerCase() : ''; if (nm) rows.push(stm.bind(uid, nm.slice(0, 80), now, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) ? em : null)) }
   for (let i = 0; i < rows.length; i += 90) await env.DB.batch(rows.slice(i, i + 90));
   await env.DB.prepare("UPDATE student SET name=(SELECT g.name FROM gc_name g WHERE g.uid=student.uid) WHERE (name IS NULL OR name='') AND uid IN (SELECT uid FROM gc_name)").run();
-  await kvPut(env, 'names_day', today); for (const k in APPC) delete APPC[k]; await logIt(env, 'names', 0, rows.length + ' имён из ' + info.items.length); return { n: rows.length, all: info.items.length } }
+  await kvPut(env, 'names_day', today); await memoClear(env, 'stu:'); await logIt(env, 'names', 0, rows.length + ' имён из ' + info.items.length); return { n: rows.length, all: info.items.length } }
 async function syncSoon(env, minGap = 30) { if (!env.GC_KEY) return null;
   const last = await kvGet(env, 'pay_try'); if (last && Date.now() - +last < minGap * 1000) return null;
   await kvPut(env, 'pay_try', String(Date.now()));
@@ -1460,7 +1461,15 @@ async function bcPlanTick(env, B) { let P = null; try { P = await env.DB.prepare
   return { id: P.id, part: part.length, r } }
 function appScope(s, c) { if (s.role === 'admin') return CURATORS.find(x => x.id === c) ? c : (c === 'all' ? 'all' : CURATORS[0].id); return s.cid }
 const APPC = {}; /* кэш списка в памяти изолята на 30 с: переключение и повторные запросы мгновенные */
-async function appStudents(env, cid) { const ck = APPC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v; const v = await appStudents0(env, cid); APPC[cid] = { at: Date.now(), v }; return v }
+/* 04.11 (D1 на 93% дневного лимита чтения): тяжёлые сводки (ученики куратора, «Сегодня», скорость ответов) считаются раз в ~90 с на всю школу,
+   а не в каждом изоляте: готовый результат лежит одной строкой в kv (чтение = 1 строка вместо тысяч). */
+const MEMO = {};
+async function memo(env, key, ttl, fn) { const now = Date.now(), m = MEMO[key]; if (m && now - m.at < ttl * 1e3) return m.v;
+  try { const r = await env.DB.prepare('SELECT v FROM kv WHERE k=?').bind('memo:' + key).first(); if (r) { const o = JSON.parse(r.v); if (now - o.at < ttl * 1e3) { MEMO[key] = o; return o.v } } } catch (e) {}
+  const v = await fn(); const o = { at: now, v }; MEMO[key] = o;
+  try { await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('memo:' + key, JSON.stringify(o)).run() } catch (e) {} return v }
+async function memoClear(env, pre) { for (const k in MEMO) if (k.startsWith(pre)) delete MEMO[k]; try { await env.DB.prepare('DELETE FROM kv WHERE k LIKE ?').bind('memo:' + pre + '%').run() } catch (e) {} }
+async function appStudents(env, cid) { return memo(env, 'stu:' + cid, 90, () => appStudents0(env, cid)) }
 async function appStudents0(env, cid) { /* D1 на бесплатном тарифе — до 50 запросов за вызов, поэтому всё одним набором запросов */
   const D = await loadData(env); const byH = {}; for (const r of D.rows) byH[r.h] = r;
   const q = cid === 'all' ? env.DB.prepare('SELECT * FROM student') : env.DB.prepare('SELECT * FROM student WHERE curator=?').bind(cid);
@@ -2580,7 +2589,8 @@ function sigWhy(it, k) { const g = it.sig.find(x => x.k === k) || {}, P = (n, a,
   if (k === 'cool') return nb(P(g.days, 'день', 'дня', 'дней') + ' без заходов. Напиши пару тёплых слов, пока ученик не выпал из ритма.');
   if (k === 'drop') return nb('За неделю место в рейтинге — с ' + g.from + '-го на ' + g.to + '-е. Подскажи, где быстро добрать баллы: ДЗ в окне ×2.');
   return '' }
-async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() - ck.at < 30e3) return ck.v;
+async function todayBase(env, cid) { return memo(env, 'tod:' + cid, 90, () => todayBase0(env, cid)) }
+async function todayBase0(env, cid) {
   const st = (await appStudents(env, cid)).students || [], D = await loadData(env), today = dayStr(), now = msNow(), d0 = Date.parse(today + 'T00:00:00Z');
   const dd = s => s ? Math.round((d0 - Date.parse(String(s).slice(0, 10) + 'T00:00:00Z')) / 864e5) : null;
   const Q = [env.DB.prepare('SELECT uid, MAX(day) d FROM ev WHERE day>=? GROUP BY uid').bind(addDays(today, -60)),
@@ -2612,7 +2622,7 @@ async function todayBase(env, cid) { const ck = TODC[cid]; if (ck && Date.now() 
     items.push({ uid: x.uid, name: x.name, cur: x.cur, tar: x.tar, tg: !!x.tgid, tgu: x.tgu, place: x.place, lessons: x.lessons, last, days: d, risk, lvl: risk >= 60 ? 'r' : risk >= 35 ? 'w' : '', rk: K, sig: S,
       ctx: lm ? [lm.mod, lm.t ? '«' + lm.t + '»' : '', L && L.at ? (dt => +dt.slice(8) + '\u00a0' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'нояб', 'дек'][+dt.slice(5, 7) - 1])(dayStr(new Date(L.at))) : ''].filter(Boolean).join(' · ') : null }) }
   const q = (await hwQueues(env))[cid] || null, v = { at: now, n: st.length, total: D.total_lessons || null, items, hw: q ? { n: q.n, old48: q.old48 || 0, at: q.at } : null };
-  TODC[cid] = { at: Date.now(), v }; return v }
+  return v }
 async function todayOut(env, cid) { const B = await todayBase(env, cid); await sigAckEnsure(env);
   const A = {}; for (const a of ((await env.DB.prepare('SELECT uid, k, until, at, sv FROM sig_ack WHERE cid=?').bind(cid).all()).results || [])) A[a.uid + ':' + a.k] = a;
   const now = msNow(), items = [], done = [], prim = L => L.slice().sort((a, b) => SIG_ORD[a.k] - SIG_ORD[b.k])[0].k;
@@ -2835,7 +2845,7 @@ async function curApi(env, req, path) { const u = new URL(req.url); await bksSt(
     const iso = new Date().toISOString(), c = cid && CURATORS.find(x => x.id === cid), q = [];
     for (const id of uids) { q.push(env.DB.prepare('INSERT INTO student (uid, tg_token, curator, cur_at) VALUES (?,?,?,?) ON CONFLICT(uid) DO UPDATE SET curator=excluded.curator, cur_at=excluded.cur_at').bind(id, rnd(), cid, iso));
       if (c && (prev[id] || {}).curator !== cid) q.push(env.DB.prepare("INSERT INTO chat_msg (uid, cid, dir, text, via, at) VALUES (?,?,'sys',?,'app',?)").bind(id, cid, 'Твой куратор — ' + c.full, now)) }
-    for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80)); for (const k in APPC) delete APPC[k];
+    for (let i = 0; i < q.length; i += 80) await env.DB.batch(q.slice(i, i + 80)); await memoClear(env, 'stu:');
     let sent = 0, left = 0; if (c) { const card = await curCard(env, cid), cap = '👋 ' + nbt('<b>Твой куратор — ' + th(c.full) + '</b>\n' + th(c.about || '') + '\nНа связи ' + daysTxt(card.hours.days) + ' с ' + card.hours.from + ':00 до ' + card.hours.to + ':00 МСК. Пиши в чат на платформе — ответ придёт сюда же.'), kb = [[{ text: 'Написать ' + datv(c.name), url: maLink(env, 'chat') }]], ph = await kvGet(env, 'curphoto:' + cid);
       for (const id of uids) { const p = prev[id]; if (!p || !p.tg_chat || p.curator === cid) continue; if (sent >= 30) { left++; continue }
         const j = ph ? await tg(env, 'sendPhoto', { chat_id: p.tg_chat, photo: ph, caption: cap, parse_mode: 'HTML', reply_markup: { inline_keyboard: kb } }) : await tgSend(env, p.tg_chat, cap, kb); if (j && j.ok) sent++ } }
