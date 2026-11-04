@@ -2264,14 +2264,14 @@ async function gcImport(env, kind, params) { if (!env.GC_KEY_W) throw new Error(
   const body = new URLSearchParams({ key: env.GC_KEY_W, action: 'add', params: b64u(JSON.stringify(params)) });
   const r = await fetch(GC_HOST + '/pl/api/' + kind, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
   if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + ')'); return j }
-async function cpayNew(env, { email, name, phone, items, term, sum, note, mgr }) {
+async function cpayNew(env, { email, name, phone, items, term, sum, note, mgr, days, tt }) { const TD = days || CPAY_TERMS[term][0], TT = tt || CPAY_TERMS[term][1];
     const title = 'Индивидуальный доступ: ' + items.map(x => x.t.replace(/^Бонус: /, '')).join(', ');
-    const comm = 'Создано менеджером через pay.oduvanovschool.pro · срок ' + CPAY_TERMS[term][1] + (note ? ' · ' + note : '');
+    const comm = 'Создано менеджером через pay.oduvanovschool.pro · срок ' + TT + (note ? ' · ' + note : '');
     const j = await gcImport(env, 'deals', { user: { email, first_name: name || undefined, phone: phone || undefined }, system: { refresh_if_exists: 0, return_payment_link: 1, return_deal_number: 1 },
       deal: { product_title: title.slice(0, 250), product_description: comm.slice(0, 500), deal_cost: sum, deal_status: 'new', quantity: 1, deal_comment: comm.slice(0, 500) } });
     const R = j.result || {}; if (!(j.success === true || j.success === 'true') || !(R.success === true || R.success === 'true') || !R.deal_id) { await logIt(env, 'cpay-err', 0, JSON.stringify(j).slice(0, 400)); return { ok: false, err: 'GetCourse не создал заказ: ' + (R.error_message || j.error_message || 'неизвестная ошибка') } }
     const link = R.payment_link || null;
-    const ins = await env.DB.prepare('INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, mgr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(+R.deal_number || null, +R.deal_id, email, name || null, phone || null, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], sum, note || null, link, 'new', new Date().toISOString(), mgr || null).first();
+    const ins = await env.DB.prepare('INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, mgr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(+R.deal_number || null, +R.deal_id, email, name || null, phone || null, JSON.stringify(items.map(x => x.id)), TD, sum, note || null, link, 'new', new Date().toISOString(), mgr || null).first();
     await logIt(env, 'cpay-new', 0, email + ' ' + sum + ' ' + items.map(x => x.id).join(','));
     return { ok: true, id: ins && ins.id, link, num: +R.deal_number || null, deal_id: +R.deal_id } }
 async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
@@ -2307,6 +2307,8 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
    в рейтинг и не выбирает куратора (/cur, /fin/demo для сборщика рейтинга). */
 const DEMO_ITEMS = { zg: 'Закрытая группа 3.0 (старт 25 ноября)', sprint: 'Спринт', practicum: 'Практикум по дизайну карточек', camp: 'Design Camp' };
 const DEMO_FULL = { sprint: 'sprint', practicum: 'practicum', camp: 'camp' }; /* → CPAY_ITEMS */
+/* 05.11 (Роман): срок «по умолчанию» — как в обычной покупке: Спринт 183 дня, Практикум 31 день, Design Camp — бессрочно (10 лет) */
+const DEMO_DEF = { sprint: 183, practicum: 31, camp: 3650 };
 const demoOffer = (k, d) => 'demo_' + k + '_' + d;
 async function demoOf(env, uid) { if (!uid) return null; try { const r = await env.DB.prepare("SELECT until, items FROM demo_claim WHERE uid=? AND st='ok' ORDER BY id DESC LIMIT 1").bind(+uid).first(); return r || null } catch (e) { return null } }
 async function demoApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
@@ -2333,10 +2335,11 @@ async function demoApi(env, req, path) { const u = new URL(req.url); let o = {};
     const until = new Date(Date.now() + days * 864e5).toISOString();
     /* полный доступ к Спринту / Практикуму / Кэмпу */
     const full = Object.keys(c.add || {}).filter(k => c.add[k] === 'full' && DEMO_FULL[k]).map(k => DEMO_FULL[k]); let pay_link = null, cid = null;
-    if (full.length) { const term = CPAY_TERMS[c.term] ? c.term : '6m', items = full.map(id => CPAY_ITEMS.find(x => x.id === id)).filter(Boolean), sum = Math.max(0, Math.round(+c.sum || 0));
-      if (sum >= 1) { const r = await cpayNew(env, { email, name, phone, items, term, sum, note: 'вместе с демо-доступом', mgr: L.mgr }); if (r.ok) { pay_link = r.link; cid = r.id } else errs.push('full: ' + r.err) }
+    if (full.length) { const def = !CPAY_TERMS[c.term], term = def ? '6m' : c.term, items = full.map(id => CPAY_ITEMS.find(x => x.id === id)).filter(Boolean), sum = Math.max(0, Math.round(+c.sum || 0));
+      const dOf = x => def ? (DEMO_DEF[x.id] || 183) : CPAY_TERMS[term][0], dMax = Math.max(...items.map(dOf));
+      if (sum >= 1) { const r = await cpayNew(env, { email, name, phone, items, term, sum, note: 'вместе с демо-доступом', mgr: L.mgr, days: dMax, tt: def ? 'по умолчанию (' + items.map(x => x.t.replace(/^Бонус: /, '') + ' — ' + (dOf(x) >= 3650 ? 'бессрочно' : dOf(x) + ' дн.')).join(', ') + ')' : null }); if (r.ok) { pay_link = r.link; cid = r.id } else errs.push('full: ' + r.err) }
       else { const G = items.map(x => x.g); const j = await gcImport(env, 'users', { user: { email, first_name: name, phone, group_name: G }, system: { refresh_if_exists: 1 } }).catch(e => ({ error_message: e.message }));
-        if (j && (j.success === true || j.success === 'true')) { const un = new Date(Date.now() + CPAY_TERMS[term][0] * 864e5).toISOString(); const ins = await env.DB.prepare("INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, paid, paid_at, until, mgr) VALUES (NULL,NULL,?,?,?,?,?,0,?,NULL,'granted',?,0,?,?,?) RETURNING id").bind(email, name, phone, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], 'бесплатно вместе с демо-доступом', new Date().toISOString(), new Date().toISOString(), un, L.mgr || null).first(); cid = ins && ins.id }
+        if (j && (j.success === true || j.success === 'true')) { for (const x of def ? items.map(i => [i]) : [items]) { const dd = Math.max(...x.map(dOf)), un = new Date(Date.now() + dd * 864e5).toISOString(); const ins = await env.DB.prepare("INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, paid, paid_at, until, mgr) VALUES (NULL,NULL,?,?,?,?,?,0,?,NULL,'granted',?,0,?,?,?) RETURNING id").bind(email, name, phone, JSON.stringify(x.map(i => i.id)), dd, 'бесплатно вместе с демо-доступом', new Date().toISOString(), new Date().toISOString(), un, L.mgr || null).first(); cid = cid || (ins && ins.id) } }
         else errs.push('full: ' + String((j && j.error_message) || 'ошибка').slice(0, 120)) } }
     const ins = await env.DB.prepare("INSERT INTO demo_claim (code, email, name, phone, uid, days, items, until, at, ip, cpay_id, pay_link, st) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok') RETURNING id").bind(code, email, name, phone, uid, days, JSON.stringify(keys.concat(full.map(x => 'full:' + x))), until, new Date().toISOString(), ip, cid, pay_link).first();
     await env.DB.prepare('UPDATE demo_link SET n=n+1 WHERE code=?').bind(code).run(); await logIt(env, 'demo', uid || 0, email + ' ' + keys.join(',') + ' ' + days + 'd' + (errs.length ? ' ERR ' + errs.join(' | ') : ''));
@@ -2347,7 +2350,7 @@ async function demoApi(env, req, path) { const u = new URL(req.url); let o = {};
   if (!(k && same(k, await cpayKey(env))) && !(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
   if (path === '/demo/link' && req.method === 'POST') { const days = [1, 2, 3].includes(+o.days) ? +o.days : 1, add = {};
     for (const x of ['sprint', 'practicum', 'camp']) { const v = o.add && o.add[x]; if (v === 'demo' || v === 'full') add[x] = v }
-    const sum = Math.max(0, Math.round(+o.sum || 0)), term = CPAY_TERMS[o.term] ? o.term : '6m'; if (sum > 1e6) return json(req, { ok: false, err: 'Сумма — до 1 000 000 ₽' }, 400);
+    const sum = Math.max(0, Math.round(+o.sum || 0)), term = o.term === 'def' || !o.term ? 'def' : CPAY_TERMS[o.term] ? o.term : 'def'; if (sum > 1e6) return json(req, { ok: false, err: 'Сумма — до 1 000 000 ₽' }, 400);
     const cfg = { days, add, sum: Object.values(add).includes('full') ? sum : 0, term }, key = JSON.stringify(cfg), mgr = bStr(o.mgr, 40) || null;
     let ex = await env.DB.prepare('SELECT code FROM demo_link WHERE cfg=? AND COALESCE(mgr,\'\')=? AND off=0').bind(key, mgr || '').first();
     if (!ex) { const code = [...crypto.getRandomValues(new Uint8Array(6))].map(b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join(''); await env.DB.prepare('INSERT INTO demo_link (code, cfg, mgr, at) VALUES (?,?,?,?)').bind(code, key, mgr, new Date().toISOString()).run(); ex = { code } }
