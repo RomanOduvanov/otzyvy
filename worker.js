@@ -3614,9 +3614,9 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
 /* 04.11 (Роман): сцена — комната Kinescope Speak (своя на каждый эфир, создаётся при первом обращении; kv speak:<id>). Ведущий держит окно Speak в OBS — гость попадает в трансляцию.
    Нет ключа / API не дал комнату — запасной Jitsi, как раньше. Ошибку запоминаем на 10 минут, чтобы не долбить API на каждом опросе. */
 const SPK = {};
-/* владелец комнат: env.SPEAK_OWNER или kv speak_owner (uuid пользователя Kinescope; берём из уже созданной комнаты) */
+/* владелец комнат: env.SPEAK_OWNER или kv speak_owner — uuid пользователя Kinescope из GET /v1/users (аккаунт Романа) */
 async function spkOwner(env) { if (env.SPEAK_OWNER) return env.SPEAK_OWNER; const k = await kvGet(env, 'speak_owner'); if (k) return k;
-  try { const r = await fetch(KIN_API + '/v1/speak/rooms', { headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY } }); const j = await r.json(); const L = j && (j.data || j.items || []); const o = Array.isArray(L) && L.map(x => x && x.owner_id).find(Boolean); if (o) { await kvPut(env, 'speak_owner', o); return o } } catch (e) {} return undefined }
+  try { const r = await fetch(KIN_API + '/v1/users', { headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY } }); const j = await r.json(); const L = (j && j.data) || []; const o = Array.isArray(L) && L.length && L[0].id; if (o) { await kvPut(env, 'speak_owner', o); return o } } catch (e) {} return undefined }
 async function efSpeak(env, e, force) { if (!env.KINESCOPE_KEY) return null; if (!force && SPK[e.id]) return SPK[e.id]; const kk = 'speak:' + e.id, kv = await kvGet(env, kk);
   if (!force && kv && kv.link) return SPK[e.id] = kv.link; if (!force && kv && kv.err && msNow() - kv.at < 10 * 6e4) return null;
   const r = await fetch(KIN_API + '/v1/speak/rooms', { method: 'POST', headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: ('Эфир · ' + String(e.title || e.id)).slice(0, 90), type: 'permanent_meeting', owner_id: await spkOwner(env), waiting_room: false }) });
