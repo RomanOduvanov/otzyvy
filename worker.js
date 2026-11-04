@@ -1007,7 +1007,7 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay'],
+const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
@@ -3229,10 +3229,10 @@ async function efHostTg(env, e) { const c = CURATORS.find(x => x.id === e.host_c
 const efOwn = (W, e) => !!(W && W.s && (W.adm || (e && e.host_cid && e.host_cid === W.cid)));
 function efHost(e) { const c = CURATORS.find(x => x.id === e.host_cid); return c ? { cid: c.id, name: c.full, short: c.name, photo: 'https://romanoduvanov.github.io/otzyvy/gc/curators/' + c.id + '.jpg' } : { cid: 'admin', name: e.host_name || 'Роман Одуванов', short: (e.host_name || 'Роман').split(' ')[0], photo: null } }
 /* публичная карточка эфира (без чужих данных) */
-function efPub(e, now, x) { x = x || {}; const cfg = efJ(e.cfg, {}), S = efState(e, now, x.reg), v = efVideo(efJ(e.video, null) || e.video), rv = efVideo(efJ(e.rec, null) || e.rec) || (S.st === 'done' ? v : null);
+function efPub(e, now, x) { x = x || {}; const cfg = efJ(e.cfg, {}), S = efState(e, now, x.reg), v = efVideo(efJ(e.video, null) || e.video), rv = efVideo(efJ(e.rec, null) || e.rec) || (S.st === 'done' && !cfg.kin ? v : null); /* 04.11: плеер трансляции Kinescope (cfg.kin) — не запись: пока запись не подтянулась, «Запись скоро появится» */
   const st = S.sess || e.start || 0, lead = cfg.lead && cfg.lead.on !== 0 && cfg.lead.title ? { title: cfg.lead.title, sub: cfg.lead.sub || '', btn: cfg.lead.btn || 'Оставить заявку', timer: +cfg.lead.timer || 0, url: cfg.lead.url || null, min: cfg.lead.min != null ? +cfg.lead.min : null } : null;
   return { id: e.id, title: e.title, about: e.about || '', kind: e.kind, access: e.tariff || 'all', status: e.status, state: S.st, start: st, next: S.next || null, dur: e.dur || 60, host: efHost(e), cover: e.cover || null,
-    video: x.full ? v : (v ? { provider: v.provider } : null), rec: x.full ? rv : (rv ? { provider: rv.provider } : null), chapters: efJ(e.chapters, []), at_live: e.at_live || null, at_end: e.at_end || null,
+    video: x.full ? v : (v ? { provider: v.provider } : null), rec: x.full ? rv : (rv ? { provider: rv.provider } : null), chapters: efJ(e.chapters, []), at_live: e.at_live || null, at_end: e.at_end || null, kin: cfg.kin ? 1 : 0,
     stage: !!cfg.stage, label: e.kind === 'auto' && cfg.label ? 'Запись эфира от ' + human(dayStr(new Date(cfg.orig_at || e.created || now))) : null, lead: x.full ? lead : !!lead, work: cfg.work !== 0, room_open: S.st === 'live' || (S.st === 'soon' && st - now < 15 * 6e4) } }
 async function efGet(env, id) { return id ? env.DB.prepare('SELECT * FROM efir WHERE id=? AND del=0').bind(+id).first() : null }
 async function efPts(env, W, eid, kind, n) { if (!W || !W.uid || W.staff || W.ro) return 0; const r = await env.DB.prepare('INSERT OR IGNORE INTO efir_pts (k, uid, efir_id, kind, n, pts, at) VALUES (?,?,?,?,?,?,?)').bind(W.k, W.uid, eid, kind, n | 0, EF_PTS[kind] || 0, msNow()).run(); return r.meta && r.meta.changes ? EF_PTS[kind] : 0 }
@@ -3437,6 +3437,7 @@ async function kinAutoLive(env, now) { const L = await qAll(env.DB.prepare("SELE
 async function kinRecJob(env, B) { if (!env.KINESCOPE_KEY) return { skip: 'nokey' }; const now = msNow();
   const L = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind!='auto' AND status IN ('done','rec') AND (rec IS NULL OR rec='' OR rec='null') AND at_end>? ORDER BY at_end DESC LIMIT 8").bind(now - 7 * 864e5)); if (!L.length) return { n: 0 };
   let n = 0; const VV = {}; for (const e of L) { const h = kinHost(e.host_cid), K = await kinGet(env, h); if (!K || !K.id || !kinIsMine(K, e)) continue;
+    { const c0 = efJ(e.cfg, {}); if (!c0.kin) { c0.kin = 1; await env.DB.prepare('UPDATE efir SET cfg=? WHERE id=?').bind(JSON.stringify(c0), e.id).run() } }
     if (!VV[K.id]) { const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos'); VV[K.id] = r.ok ? (Array.isArray(r.data) ? r.data : (r.data && (r.data.items || r.data.videos)) || []).map(v => ({ id: v.id, at: Date.parse(v.created_at || v.started_at || '') || 0, st: String(v.status || '').toLowerCase(), dur: +v.duration || 0 })).filter(v => v.id) : [] }
     const t0 = (e.at_live || e.start || 0) - 15 * 6e4, t1 = (e.at_end || now) + 30 * 6e4;
     const v = VV[K.id].filter(x => x.at >= t0 && x.at <= t1 && (!x.st || /done|ready|processed|uploaded/.test(x.st))).sort((a, b) => b.dur - a.dur)[0]; if (!v) continue;
@@ -3450,6 +3451,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     return json(req, { ok: true, id: r.id, url: new URL(req.url).origin + '/efir/cover?id=' + r.id }) }
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
   /* 1.11: разбор, почему запись не подтянулась (только админ; ключей не отдаём) */
+  if (path === '/efir/kin/run') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); return json(req, { ok: true, r: await kinRecJob(env, budget(30)) }) }
   if (path === '/efir/kin/recdbg') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const e = await env.DB.prepare('SELECT * FROM efir WHERE id=?').bind(+u.searchParams.get('id')).first(); if (!e) return json(req, { ok: false, err: 'нет эфира' });
     const K = await kinGet(env, kinHost(e.host_cid)), r = K && K.id ? await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos') : null;
     const raw = r && r.ok ? (Array.isArray(r.data) ? r.data : (r.data && (r.data.items || r.data.videos)) || []) : null;
@@ -3508,6 +3510,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     /* Kinescope подключён и ссылку не вписали (или стоял плеер трансляции прежнего ведущего) — ставится плеер трансляции ведущего этого эфира; сменили ведущего — плеер переезжает */
     const oldIsKin = !!(old && Kold && kinIsMine(Kold, old)), sameAsOld = vIn && oldV && vIn.id && vIn.id === oldV.id;
     const v = (vIn && !(oldIsKin && sameAsOld)) ? vIn : (K0 && K0.play && (!oldV || oldIsKin) ? efVideo({ url: K0.play }) : (oldIsKin ? null : vIn)), rv = efVideo(o.rec), ch = (Array.isArray(o.chapters) ? o.chapters : []).map(x => ({ t: Math.max(0, +x.t | 0), title: bStr(x.title, 120) })).filter(x => x.title).sort((a, b) => a.t - b.t).slice(0, 60);
+    cfg.kin = v && K0 && K0.play && (efVideo({ url: K0.play }) || {}).id === v.id ? 1 : 0;
     const host = W.adm ? (CURATORS.find(c => c.id === o.host) ? o.host : 'admin') : W.cid, hc = CURATORS.find(c => c.id === host), cover = /^https:\/\/[^\s"'<>]+$/.test(o.cover || '') ? bStr(o.cover, 400) : null;
     const status = ['draft', 'plan'].includes(o.status) ? o.status : (old ? old.status : 'plan'), dur = Math.min(600, Math.max(10, +o.dur | 0 || 60));
     const vals = [title, bStr(o.about, 1000), host, hc ? hc.uid : efAdminUid(env), hc ? hc.full : 'Роман Одуванов', start || null, dur, kind, acc, old && ['live', 'done', 'rec'].includes(old.status) && ['draft', 'plan'].includes(status) && !o.reopen ? old.status : status, v ? JSON.stringify(v) : null, rv ? JSON.stringify(rv) : null, cover, JSON.stringify(ch), JSON.stringify(cfg), now];
