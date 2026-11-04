@@ -3465,7 +3465,7 @@ async function kinRecJob(env, B) { if (!env.KINESCOPE_KEY) return { skip: 'nokey
     if (!VV[K.id]) { const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos'); VV[K.id] = r.ok ? (Array.isArray(r.data) ? r.data : (r.data && (r.data.items || r.data.videos)) || []).map(v => ({ id: v.id, at: Date.parse(v.created_at || v.started_at || '') || 0, st: String(v.status || '').toLowerCase(), dur: +v.duration || 0 })).filter(v => v.id) : [] }
     const t0 = (e.at_live || e.start || 0) - 15 * 6e4, t1 = (e.at_end || now) + 30 * 6e4;
     const v = VV[K.id].filter(x => x.at >= t0 && x.at <= t1 && (!x.st || /done|ready|processed|uploaded/.test(x.st))).sort((a, b) => b.dur - a.dur)[0]; if (!v) continue;
-    const rv = efVideo({ id: String(v.id), provider: 'kinescope', dur: v.dur }); if (!rv) continue; /* 04.11: длительность записи — из Kinescope (dur, с) */
+    const rv = efVideo({ id: String(v.id), provider: 'kinescope', dur: v.dur }); if (!rv) continue; /* 04.11: длительность записи — из Kinescope (dur, секунды) */
     await env.DB.prepare('UPDATE efir SET rec=?, upd=? WHERE id=?').bind(JSON.stringify(rv), now, e.id).run(); await logIt(env, 'efir-rec-kin', 0, e.id + ' ' + v.id); n++ }
   return { n } }
 async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json(req, { ok: false, err: 'Только для команды школы' }, 403);
