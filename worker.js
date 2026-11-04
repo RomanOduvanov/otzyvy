@@ -3164,7 +3164,7 @@ const EFIR_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS efir_pollv (ev TEXT NOT NULL, k TEXT NOT NULL, sess INTEGER NOT NULL DEFAULT 0, opt INTEGER, PRIMARY KEY (ev, k, sess))'];
 let EFIR_OK = false;
 async function efirEnsure(env) { await ensure(env); await bankEnsure(env); if (EFIR_OK) return; await env.DB.batch(EFIR_SCHEMA.map(s => env.DB.prepare(s))); EFIR_OK = true }
-const EF_PTS = { live30: 10, live15: 5, rec: 10, q: 2, stage: 15 } /* 1.11 (Роман): 5 баллов за каждые 15 мин в эфире; 10 — за открытие записи, если на эфире не был. live30 — старые начисления */, EF_QMAX = 3, EF_KINDS = ['live', 'open', 'auto'], EF_ACC = ['all', 'amz', 'cur', 'open'];
+const EF_PTS = { live30: 10, live15: 5, rec: 10, q: 2, stage: 15 } /* 1.11 (Роман): 5 баллов за каждые 15 мин в эфире; 10 — за открытие записи, если на эфире не был. live30 — старые начисления */, EF_QMAX = 3, EF_KINDS = ['live', 'open', 'auto'], EF_ACC = ['all', 'amz', 'cur', 'open', 'sel'];
 const efJ = (v, d) => { try { return v ? JSON.parse(v) : d } catch (e) { return d } };
 const efShort = n => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 && p[1] ? p[0] + ' ' + p[1][0].toUpperCase() + '.' : (p[0] || 'Зритель') };
 const efAdminUid = env => +String(env.ADMIN_UIDS || '499631257').split(/[\s,]+/)[0];
@@ -3210,8 +3210,10 @@ async function efName(env, W) { if (W.nm) return W.nm; if (W.me === 'admin') ret
   EFN.set(W.k, n); return (W.nm = n) }
 /* может ли смотреть: команда — всё; ученик — по доступу эфира; гость — только открытые */
 async function efCan(env, e, W) { if (!e || e.del) return false; if (W.staff) return true; const acc = e.tariff || 'all'; if (acc === 'open') return true; if (W.me === 'guest') return false;
-  /* 1.11 (Роман): ученик видит эфиры своего куратора + общие эфиры Романа. Эфир куратора — только его ученикам, даже если отмечен «всем» */
-  if (CURATORS.some(c => c.id === e.host_cid) && acc !== 'amz') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
+  /* 04.11 (Роман): «Выбранные ученики» — список uid в cfg.uids (индивидуальный тариф, отдельные ученики) */
+  if (acc === 'sel') { const L = efJ(e.cfg, {}).uids || []; return L.indexOf(+W.uid) >= 0 }
+  /* 1.11 (Роман): ученик видит эфиры своего куратора + общие эфиры Романа. Эфир куратора — только его ученикам, кроме явно выбранного «Весь поток» (04.11) */
+  if (CURATORS.some(c => c.id === e.host_cid) && acc === 'cur') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
   if (acc === 'all') return true;
   if (acc === 'cur') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
   if (acc === 'amz') { try { const r = await rowFor(await loadData(env), W.uid); return !!(r && r.tar === 'Премиум Амазон') } catch (e2) { return false } } return false }
@@ -3471,6 +3473,8 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const r = await kinSetup(env, h, !!o.force); if (!r.ok) return json(req, { ok: false, err: r.err }, 502);
     return json(req, { ok: true, host: h, ready: true, created: r.created, kin: kinPub(r.K, true) }, 200, { 'Cache-Control': 'no-store' }) }
   const id = +(o.id || u.searchParams.get('id') || 0);
+  /* 04.11: список учеников для «Кто видит → Выбрать учеников»: куратору — его, админу — весь поток */
+  if (path === '/efir/host/students') { const A = await appStudents(env, W.adm ? 'all' : W.cid); return json(req, { ok: true, students: (A.students || []).map(x => ({ uid: +x.uid, name: x.name, cur: x.cur || null, tar: x.tar || null, last: x.last || null, week: x.week, place: x.place || null })), curators: CURATORS.map(c => ({ cid: c.id, name: c.full })) }) }
   if (path === '/efir/host/list') { const L = await qAll(W.adm ? env.DB.prepare('SELECT * FROM efir WHERE del=0 ORDER BY start DESC LIMIT 200') : env.DB.prepare('SELECT * FROM efir WHERE del=0 AND host_cid=? ORDER BY start DESC LIMIT 200').bind(W.cid));
     const ids = L.map(e => e.id), C = {}; if (ids.length) { const ph = ids.map(() => '?').join(','), [rg, sn, ld] = await env.DB.batch([env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_reg WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids), env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n, SUM(CASE WHEN last>? AND sess>=0 THEN 1 ELSE 0 END) live FROM efir_seen WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(now - 9e4, ...ids), env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_lead WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids)]);
       for (const x of rg.results || []) (C[x.efir_id] = C[x.efir_id] || {}).reg = x.n; for (const x of sn.results || []) Object.assign(C[x.efir_id] = C[x.efir_id] || {}, { came: x.n, now: x.live }); for (const x of ld.results || []) (C[x.efir_id] = C[x.efir_id] || {}).leads = x.n }
@@ -3480,11 +3484,15 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   if (path === '/efir/host/save' && req.method === 'POST') { const old = id ? await efGet(env, id) : null; if (id && !old) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (old && !efOwn(W, old)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
     const title = bStr(o.title, 140); if (!title) return json(req, { ok: false, err: 'Напиши тему эфира' }, 400);
     let kind = EF_KINDS.includes(o.kind) ? o.kind : 'live', acc = EF_ACC.includes(o.access) ? o.access : 'all';
-    if (!W.adm) { if (kind !== 'live') return json(req, { ok: false, err: 'Открытые эфиры и автовебинары создаёт Роман' }, 403); acc = 'cur' }
+    if (!W.adm) { if (kind !== 'live') return json(req, { ok: false, err: 'Открытые эфиры и автовебинары создаёт Роман' }, 403); if (!['all', 'cur', 'sel'].includes(acc)) acc = 'cur' }
     if (kind === 'open') acc = 'open';
     let start = +o.start || 0; if (!start && /^\d{4}-\d{2}-\d{2}$/.test(o.day || '') && /^\d{1,2}:\d{2}$/.test(o.time || '')) start = Date.parse(o.day + 'T' + o.time.padStart(5, '0') + ':00+03:00');
     if (kind !== 'auto' && !(start > 0)) return json(req, { ok: false, err: 'Укажи дату и время (МСК)' }, 400);
     const c0 = old ? efJ(old.cfg, {}) : {}, ci = o.cfg || {}, cfg = Object.assign({}, c0, { stage: ci.stage ? 1 : 0, stage_url: /^https:\/\//.test(ci.stage_url || '') ? bStr(ci.stage_url, 300) : null, work: ci.work === 0 ? 0 : 1, label: ci.label ? 1 : 0 });
+    /* 04.11: выбранные ученики — куратор может отметить только своих */
+    if (acc === 'sel') { let ids = [...new Set((Array.isArray(ci.uids) ? ci.uids : []).map(x => +x).filter(x => x > 0))].slice(0, 1000);
+      if (!W.adm && ids.length) { const mine = new Set(((await appStudents(env, W.cid)).students || []).map(x => +x.uid)); ids = ids.filter(x => mine.has(x)) }
+      if (!ids.length) return json(req, { ok: false, err: 'Отметь хотя бы одного ученика' }, 400); cfg.uids = ids } else delete cfg.uids;
     cfg.lead = W.adm && ci.lead && bStr(ci.lead.title, 100) ? { on: 1, title: bStr(ci.lead.title, 100), sub: bStr(ci.lead.sub, 160), btn: bStr(ci.lead.btn, 40) || 'Оставить заявку', timer: Math.min(180, Math.max(0, +ci.lead.timer | 0)), url: /^https:\/\//.test(ci.lead.url || '') ? bStr(ci.lead.url, 400) : null, min: ci.lead.min != null && ci.lead.min !== '' ? Math.max(0, +ci.lead.min | 0) : null } : null;
     if (kind === 'auto') { const sd = ci.sched || {}; cfg.sched = { days: (Array.isArray(sd.days) ? sd.days : []).map(Number).filter(x => x >= 0 && x <= 6), times: (Array.isArray(sd.times) ? sd.times : String(sd.times || '').split(/[\s,;]+/)).filter(t => /^\d{1,2}:\d{2}$/.test(t)).slice(0, 6), every: Math.max(0, +sd.every | 0), after: Math.max(0, +sd.after | 0) };
       if (ci.scen != null) { const sc = +ci.scen ? await env.DB.prepare('SELECT id, src_id FROM efir_scen WHERE id=?').bind(+ci.scen).first() : null; cfg.scen = sc ? sc.id : null; if (sc && sc.src_id) { const src = await efGet(env, sc.src_id); if (src) cfg.orig_at = src.at_live || src.start } } }
@@ -3600,7 +3608,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   return json(req, { ok: false, err: 'not found' }, 404) }
 /* 31.10 (Роман: «на эфире невозможно подключиться, говорить, включить камеру/демку»): Kinescope — трансляция в одну сторону, поэтому сцена — отдельная комната. Если ссылку не вставили, сервер сам даёт комнату Jitsi на эфир (имя с подписью, чтобы не угадали). */
 const efStageUrl = async (env, e, cfg) => cfg.stage_url || ('https://meet.jit.si/OduvanovSchool-efir' + e.id + '-' + (await hmacHex(env, 'stage|' + e.id)).slice(0, 10));
-const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null } };
+const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null, uids: c.uids || [] } };
 async function efScenAdd(env, sid, item) { const r = await env.DB.prepare('SELECT items FROM efir_scen WHERE id=?').bind(sid).first(); if (!r) return 0; const L = efJ(r.items, []); L.push(item); L.sort((a, b) => a.sec - b.sec);
   await env.DB.prepare('UPDATE efir_scen SET items=? WHERE id=?').bind(JSON.stringify(L), sid).run(); EFSC.delete(sid); return 1 }
 /* сценарии (админ): GET /efir/scen?id= — события; POST /efir/scen {id, items, as_new} — правка (as_new — новая версия); центр модерации GET /efir/mod */
