@@ -761,8 +761,22 @@ async function finData(env, from, to, pfrom, pto) {
   return { ok: true, synced: c.synced, days: c.days, odays: c.odays, list, plist, plans };
 }
 
+/* 04.11 (письмо Cloudflare «D1 daily limit 93%»): учёт строк D1 по запросам — какие запросы съедают лимит. Счётчики в памяти изолята,
+   раз в 5 минут одной строкой в таблицу d1s; смотреть /app/api/dbg/d1?h=24 (админ). */
+const DBS = {}; let DBT = Date.now(), DBK = false;
+function dbTrack(sql, m) { if (!m) return; const k = String(sql).replace(/\s+/g, ' ').slice(0, 150); const o = DBS[k] || (DBS[k] = [0, 0, 0]); o[0] += m.rows_read || 0; o[1] += m.rows_written || 0; o[2]++ }
+function dbStmt(st, sql) { return { _st: st, _sql: sql, bind: (...a) => dbStmt(st.bind(...a), sql), raw: (...a) => st.raw(...a),
+  all: async () => { const r = await st.all(); dbTrack(sql, r.meta); return r }, run: async () => { const r = await st.run(); dbTrack(sql, r.meta); return r },
+  first: async (c) => { const r = await st.all(); dbTrack(sql, r.meta); const row = (r.results || [])[0]; if (row === undefined) return null; return c ? (row[c] ?? null) : row } } }
+function dbWrap(env, ctx) { const db = env.DB; if (!db || db._w) return env;
+  const W = { _w: 1, prepare: (sql) => dbStmt(db.prepare(sql), sql), exec: (q) => db.exec(q),
+    batch: async (a) => { const r = await db.batch(a.map(x => x._st || x)); r.forEach((x, i) => dbTrack((a[i] && a[i]._sql) || '?', x && x.meta)); return r } };
+  if (ctx && Date.now() - DBT > 300e3 && Object.keys(DBS).length) { DBT = Date.now(); const j = JSON.stringify(DBS); for (const k in DBS) delete DBS[k];
+    ctx.waitUntil((async () => { try { if (!DBK) { await db.prepare('CREATE TABLE IF NOT EXISTS d1s (at INTEGER, j TEXT)').run(); DBK = true } await db.prepare('INSERT INTO d1s (at, j) VALUES (?, ?)').bind(Date.now(), j).run() } catch (e) {} })()) }
+  return new Proxy(env, { get: (t, k) => k === 'DB' ? W : t[k] }) }
 export default {
   async fetch(req, env, ctx) {
+    env = dbWrap(env, ctx);
     const u = new URL(req.url), path = u.pathname.replace(/\/+$/, '') || '/';
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
@@ -1000,7 +1014,7 @@ export default {
       return json(req, { ok: false, err: 'not found' }, 404);
     } catch (e) { return json(req, { ok: false, err: String(e && e.message || e) }, 500) }
   },
-  async scheduled(ev, env, ctx) { ctx.waitUntil(cronRun(env, ev && ev.cron)) }
+  async scheduled(ev, env, ctx) { env = dbWrap(env, ctx); ctx.waitUntil(cronRun(env, ev && ev.cron)) }
 };
 
 /* ---------- cron (CODE-05): у каждого запуска свой лимит ~50 внешних запросов ----------
@@ -1501,10 +1515,12 @@ async function appApi(env, req, path) {
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
   /* 04.11: диагностика «был на сайте» (админ) */
-  if (path === '/app/api/dbg/d1') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const acc = env.CF_ACCOUNT || '3544f71e7e7fd1a3544f2f335165a199'; const h = +(u.searchParams.get('h') || 24); const e = new Date(), st = new Date(Date.now() - h * 3600e3);
-    const q = 'query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){d1AnalyticsAdaptiveGroups(limit:200,filter:{datetimeHour_geq:$s,datetimeHour_leq:$e},orderBy:[datetimeHour_ASC]){sum{readQueries writeQueries rowsRead rowsWritten} dimensions{datetimeHour}} d1QueriesAdaptiveGroups(limit:60,filter:{datetime_geq:$s,datetime_leq:$e},orderBy:[sum_rowsRead_DESC]){sum{rowsRead rowsWritten} count dimensions{query}}}}}';
-    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', { method: 'POST', headers: { Authorization: 'Bearer ' + env.CF_API_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { a: acc, s: st.toISOString(), e: e.toISOString() } }) });
-    return ajson(await r.json()); }
+  if (path === '/app/api/dbg/d1') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const h = +(u.searchParams.get('h') || 24);
+    const rs = (await env.DB.prepare('SELECT at, j FROM d1s WHERE at > ?').bind(Date.now() - h * 3600e3).all()).results || []; const T = {}; let from = 0;
+    for (const x of rs) { if (!from || x.at < from) from = x.at; const o = JSON.parse(x.j); for (const q in o) { const t = T[q] || (T[q] = [0, 0, 0]); for (let i = 0; i < 3; i++) t[i] += o[q][i] } }
+    for (const q in DBS) { const t = T[q] || (T[q] = [0, 0, 0]); for (let i = 0; i < 3; i++) t[i] += DBS[q][i] }
+    const L = Object.entries(T).map(([q, v]) => ({ q, r: v[0], w: v[1], n: v[2] })); const by = u.searchParams.get('by') === 'w' ? 'w' : 'r'; L.sort((a, b) => b[by] - a[by]);
+    return ajson({ ok: true, from: from ? new Date(from).toISOString() : null, rows: rs.length, read: L.reduce((t, x) => t + x.r, 0), written: L.reduce((t, x) => t + x.w, 0), top: L.slice(0, 40) }) }
   if (path === '/app/api/dbg/seen') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const id = +u.searchParams.get('u'); const [a1, t1, s1] = await env.DB.batch([env.DB.prepare('SELECT * FROM authuid WHERE uid=?').bind(id), env.DB.prepare('SELECT COUNT(*) n, MAX(day) d, SUM(site) s FROM time WHERE uid=?').bind(id), env.DB.prepare('SELECT uid, curator, tg_chat IS NOT NULL tg FROM student WHERE uid=?').bind(id)]);
     return ajson({ ok: true, auth: (a1.results || [])[0] || null, time: (t1.results || [])[0] || null, st: (s1.results || [])[0] || null }) }
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
