@@ -1450,12 +1450,14 @@ async function appStudents0(env, cid) { /* D1 на бесплатном тари
   const D = await loadData(env); const byH = {}; for (const r of D.rows) byH[r.h] = r;
   const q = cid === 'all' ? env.DB.prepare('SELECT * FROM student') : env.DB.prepare('SELECT * FROM student WHERE curator=?').bind(cid);
   const today = dayStr(), wk = addDays(today, -6);
-  const [rs, ts, ls, us, ws] = await env.DB.batch([q,
+  const [rs, ts, ls, us, ws, as] = await env.DB.batch([q,
     env.DB.prepare('SELECT uid, SUM(site)+SUM(video) t FROM time WHERE day>=? GROUP BY uid').bind(wk),
     env.DB.prepare('SELECT uid, MAX(day) d FROM time WHERE site>0 OR video>0 GROUP BY uid'),
     env.DB.prepare('SELECT chat, username FROM tg_user'),
-    env.DB.prepare('SELECT uid, MIN(since) since FROM cwait GROUP BY uid')]);
-  const T = {}, L = {}, U = {}, W = {}; for (const x of ts.results || []) T[x.uid] = x.t | 0; for (const x of ls.results || []) L[x.uid] = x.d;
+    env.DB.prepare('SELECT uid, MIN(since) since FROM cwait GROUP BY uid'),
+    /* 04.11 (Роман: «баллы за неделю есть, а "был" пусто»): у части учеников учёт времени до сервера не доходит (блокировщики sendBeacon, кабинет внутри приложения) — «был» = позднее из учёта времени и последнего входа с ключом (authuid.seen) */
+    env.DB.prepare('SELECT uid, seen FROM authuid WHERE seen IS NOT NULL')]);
+  const T = {}, L = {}, U = {}, W = {}; for (const x of ts.results || []) T[x.uid] = x.t | 0; for (const x of ls.results || []) L[x.uid] = x.d; for (const x of (as && as.results) || []) { const t = Date.parse(x.seen); if (!t) continue; const d = dayStr(new Date(t)); if (!L[x.uid] || d > L[x.uid]) L[x.uid] = d }
   for (const x of us.results || []) U[x.chat] = x.username; for (const x of ws.results || []) if (x.uid) W[x.uid] = x.since;
   /* 04.11 (Роман): поиск по e-mail во вкладке «Ученики» — почта из выгрузки пользователей GetCourse (gc_name.email, обновляется раз в день) */
   const EM = {}; try { for (const x of await qAll(env.DB.prepare('SELECT uid, email FROM gc_name WHERE email IS NOT NULL'))) EM[x.uid] = x.email } catch (e) {}
