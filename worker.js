@@ -1574,7 +1574,7 @@ async function appApi(env, req, path) {
     let txt = '', subj = null, raw = '';
     for (let i = 0; i < 3 && !txt; i++) { const r = await aiText(env, AI_BC_SYS, user, 900); if (r.err) { if (i === 2) return ajson({ ok: false, err: r.err }); continue }
       raw = String(r.text || ''); let t = String(r.text || '').replace(/^\s+/, ''); subj = null; const sm = t.match(/^\**\s*Тема(?: письма)?\s*:\s*\**\s*([^\n]+)\n*/i); if (sm) { subj = sm[1].replace(/[«»"*]/g, '').trim().slice(0, 120); t = t.slice(sm[0].length) }
-      txt = cleanAi(t); if (!txt) await logIt(env, 'ai-bc-empty', 0, String(r.text || '').slice(0, 200)) }
+      txt = cleanAi(t); if (txt.length < 20) { await logIt(env, 'ai-bc-empty', 0, String(r.text || '').slice(0, 200)); if (i < 2) txt = '' } }
     await logIt(env, 'ai-bc', 0, cc + ' ' + (o.aud || 'all') + (o.mail ? ' mail' : ''));
     if (!txt) return ajson({ ok: false, err: 'Нейросеть ответила пустым текстом — нажми ещё раз' });
     return ajson(Object.assign({ ok: true, text: txt, subj }, o.dbg ? { raw: raw.slice(0, 600) } : {})) }
