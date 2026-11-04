@@ -3628,7 +3628,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   /* 04.11 (Роман): «Рассылка участникам» — кому доступен эфир (пульт → Рассылки, «Выбранные»), ссылка на эфир подставляется в кнопку */
   if (path === '/efir/host/roomlink') { const L = await efRoomLinks(env, e, W);
     /* ведущий вошёл в комнату — эфир у учеников начинается (с 30 минут до старта), как старт OBS у трансляции */
-    if (L && !L.err && e.kind !== 'auto' && ['plan', 'draft'].includes(e.status) && now >= (e.start || 0) - 30 * 6e4) { await env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=? WHERE id=?").bind(now, now, e.id).run(); await logIt(env, 'efir-room-live', W.uid, e.id) }
+    if (L && !L.err && u.searchParams.get('peek') !== '1' && e.kind !== 'auto' && ['plan', 'draft'].includes(e.status) && now >= (e.start || 0) - 30 * 6e4) { await env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=? WHERE id=?").bind(now, now, e.id).run(); await logIt(env, 'efir-room-live', W.uid, e.id) }
     if (!L || L.err) return json(req, { ok: false, err: L ? 'Комната Kinescope не создалась — сохрани эфир ещё раз или напиши Роману' : 'Это эфир-трансляция, не комната' }); return json(req, { ok: true, link: L.host || L.link, admin: L.admin }) }
   if (path === '/efir/host/aud') { const cf = efJ(e.cfg, {}), acc = e.tariff || 'all'; let uids = null;
     if (acc === 'sel') uids = cf.uids || []; else if (acc === 'open') uids = (await qAll(env.DB.prepare('SELECT DISTINCT uid FROM efir_reg WHERE efir_id=? AND uid>0').bind(e.id))).map(x => +x.uid);
