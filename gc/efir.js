@@ -578,9 +578,9 @@
       else if (h === 'edit') { H.edit = JSON.parse(JSON.stringify(E(id))); setTab('edit') } else if (h === 'tab') { setTab(b.getAttribute('data-t')) }
       else if (h === 'live' || h === 'stats') { setTab(h, id) } else if (h === 'mod') { setTab('mod') } else if (h === 'build') { build(id) } else if (h === 'kin') { kin() } else if (h === 'save') { save(b.getAttribute('data-s'), b) }
       /* 04.11 (Роман): рассылка всем, кому доступен эфир — в пульте «Рассылки»: получатели уже отмечены, кнопка «Подключиться к эфиру» со ссылкой, тема и текст — ИИ */
-      else if (h === 'ebc') { var eid = +b.getAttribute('data-id'); if (O.bc) { O.bc(eid); return }
+      else if (h === 'ebc') { var eid = +b.getAttribute('data-id'); /* 04.11 (Роман): рассылка — в новой вкладке, пульт ведущего остаётся открытым */
         var po = 'https://oduvanovroman.getcourse.ru'; try { var ao = location.ancestorOrigins && location.ancestorOrigins[0]; if (ao && /^https:\/\/(oduvanovroman\.getcourse\.ru|(www\.)?oduvanovschool\.pro)$/.test(ao)) po = ao; else if (/^https:\/\/(oduvanovroman\.getcourse\.ru|(www\.)?oduvanovschool\.pro)\//.test(document.referrer)) po = new URL(document.referrer).origin } catch (x) {}
-        var go = po + '/teach/control/stream?fs=pult&bc=ef' + eid + '#bc'; try { (window.top || window).location.href = go } catch (x) { window.open(go, '_blank') } }
+        var go = po + '/teach/control/stream?fs=pult&bc=ef' + eid + '#bc', w = null; try { w = window.open(go, '_blank') } catch (x) {} if (!w) { if (O.bc) O.bc(eid); else try { (window.top || window).location.href = go } catch (x) {} } }
       else if (h === 'lnk') { var le = (H.j.efirs || []).filter(function (z) { return z.id === +b.getAttribute('data-id') })[0]; if (!le) return;
         /* 31.10: открытый эфир — ссылка на бота с регистрацией (работает у любого человека); эфир для учеников — страница эфира в кабинете */
         kCopy(le.access === 'open' || le.kind === 'open' ? 'https://t.me/oduvanov_school_bot?start=e' + le.id : 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&e=' + le.id) }
