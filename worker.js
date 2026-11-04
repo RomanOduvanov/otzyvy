@@ -3274,7 +3274,8 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     for (const e of er.results || []) { if (!(await efCan(env, e, W))) { if (W.me === 'student' && e.tariff === 'amz') { const p = efPub(e, now); if (p.state === 'soon') soon.push(Object.assign(p, { locked: 1 })) } continue }
       const p = efPub(e, now, { reg: R[e.id] }); p.reg = R[e.id] ? 1 : 0; if (R[e.id] && R[e.id].sess) p.my_sess = R[e.id].sess;
       if (p.state === 'live') live.push(p); else if (p.state === 'soon') soon.push(p);
-      if (e.kind !== 'auto' && p.state === 'done' && p.rec) { const pr = P[e.id] || {}; p.seen = { pos: pr.pos || 0, max: pr.mx || 0, done: pr.done || 0 }; rec.push(p) } }
+      /* 04.11: эфир прошёл, запись Kinescope ещё обрабатывается — карточка в «Записях» с «Запись скоро появится» (неделю) */ if (e.kind !== 'auto' && p.state === 'done' && !p.rec && p.kin && (e.at_end || e.start || 0) > now - 7 * 864e5) p.rec_wait = 1;
+      if (e.kind !== 'auto' && p.state === 'done' && (p.rec || p.rec_wait)) { const pr = P[e.id] || {}; p.seen = { pos: pr.pos || 0, max: pr.mx || 0, done: pr.done || 0 }; rec.push(p) } }
     if (live.length) { const ids = live.filter(x => x.kind !== 'auto').map(x => x.id); if (ids.length) { const vr = await qAll(env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_seen WHERE last>? AND sess=0 AND efir_id IN (' + ids.map(() => '?').join(',') + ') GROUP BY efir_id').bind(now - 9e4, ...ids)); for (const v of vr) { const x = live.find(y => y.id === v.efir_id); if (x) x.viewers = v.n } } }
     soon.sort((a, b) => a.start - b.start); rec.sort((a, b) => (b.at_end || b.start) - (a.at_end || a.start));
     return json(req, { ok: true, now, me: { role: W.me, can_host: !!W.s, ro: !!W.ro }, live, soon: soon.slice(0, 30), rec: rec.slice(0, 40), regs: Object.keys(R).length }) }
@@ -3413,9 +3414,16 @@ const kinHostName = h => h === 'admin' ? 'Роман Одуванов' : ((CURAT
 const kinPub = (K, withKey) => K ? Object.assign({ id: K.id, play: K.play || null, rtmp: K.rtmp || null, at: K.at || null, warn: K.warn || null }, withKey ? { key: K.key || null } : {}) : null;
 async function kinGet(env, host) { if (!env.KINESCOPE_KEY) return null; const h = kinHost(host); const K = await kvGet(env, 'efir_kin:' + h); return K || (h === 'admin' ? await kvGet(env, 'efir_kin') : null) }
 const kinPut = (env, host, K) => kvPut(env, 'efir_kin:' + kinHost(host), K);
+/* 04.11 (Роман: «эфир закончился, записи нет»): без record.parent_id Kinescope не сохраняет запись трансляции. Папка для записей — kv efir_kin_folder, иначе первый проект аккаунта (запоминаем) */
+async function kinFolder(env) { const f = await kvGet(env, 'efir_kin_folder'); if (f) return String(f);
+  const r = await kinCall(env, 'GET', '/v1/projects?per_page=20'); const L = r.ok ? (Array.isArray(r.data) ? r.data : (r.data && r.data.items) || []) : []; const p = L.find(x => x && x.id); if (!p) return null; await kvPut(env, 'efir_kin_folder', p.id); return p.id }
+/* включить сохранение записи у уже созданных трансляций ведущих (PUT меняет только переданные поля; Kinescope разрешает правку, пока поток в статусе pending) */
+async function kinRecFix(env) { const folder = await kinFolder(env); if (!folder) return { ok: false, err: 'нет проекта в Kinescope' }; const out = {};
+  for (const h of ['admin'].concat(CURATORS.map(c => c.id))) { const K = await kinGet(env, h); if (!K || !K.id) continue; const r = await kinCall(env, 'PUT', '/v2/live/events/' + K.id, { record: { parent_id: folder } }); out[h] = r.ok ? 'ok' : (r.st || 0) + ' ' + String(r.err || '').slice(0, 120) }
+  return { ok: true, folder, out } }
 /* создать трансляцию ведущего (один раз; force — заново, новый ключ). Поля сверх name/type Kinescope может не знать — тогда повтор с минимальным телом */
 async function kinSetup(env, host, force) { const h = kinHost(host), old = await kinGet(env, h); if (old && old.id && !force) return { ok: true, K: old, created: false };
-  const base = { name: 'OduvanovSchool · эфиры · ' + kinHostName(h), type: 'recurring' }, folder = await kvGet(env, 'efir_kin_folder');
+  const base = { name: 'OduvanovSchool · эфиры · ' + kinHostName(h), type: 'recurring' }, folder = await kinFolder(env);
   const full = Object.assign({}, base, { auto_start: true, chat_active: false }, folder ? { record: { parent_id: String(folder) } } : {});
   let r = await kinCall(env, 'POST', '/v2/live/events', full); if (!r.ok && (r.st === 400 || r.st === 422)) r = await kinCall(env, 'POST', '/v2/live/events', base);
   if (!r.ok) return r; const d = r.data || {};
@@ -3456,6 +3464,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     return json(req, { ok: true, id: r.id, url: new URL(req.url).origin + '/efir/cover?id=' + r.id }) }
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
   /* 1.11: разбор, почему запись не подтянулась (только админ; ключей не отдаём) */
+  if (path === '/efir/kin/recfix') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); return json(req, await kinRecFix(env)) }
   if (path === '/efir/kin/run') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); return json(req, { ok: true, r: await kinRecJob(env, budget(30)) }) }
   if (path === '/efir/kin/recdbg') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const e = await env.DB.prepare('SELECT * FROM efir WHERE id=?').bind(+u.searchParams.get('id')).first(); if (!e) return json(req, { ok: false, err: 'нет эфира' });
     const K = await kinGet(env, kinHost(e.host_cid)), r = K && K.id ? await kinCall(env, 'GET', '/v2/live/events/' + K.id + '/videos') : null;
@@ -3602,7 +3611,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   if (path === '/efir/host/stats') { const [rg, sn, ld, qn, pt] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n, SUM(CASE WHEN sess>0 THEN 1 ELSE 0 END) a FROM efir_reg WHERE efir_id=?').bind(e.id),
       env.DB.prepare('SELECT k, sess, t0, scen, min, first, last, maxsec, rec_max, rec_done FROM efir_seen WHERE efir_id=?').bind(e.id), env.DB.prepare('SELECT sess, COUNT(*) n FROM efir_lead WHERE efir_id=? GROUP BY sess').bind(e.id),
       env.DB.prepare("SELECT kind, COUNT(*) n FROM efir_msg WHERE efir_id=? AND role='stu' GROUP BY kind").bind(e.id), env.DB.prepare('SELECT kind, COUNT(*) n, SUM(pts) p FROM efir_pts WHERE efir_id=? GROUP BY kind').bind(e.id)]);
-    const SN = (sn.results || []).filter(x => x.sess >= 0), RC = (sn.results || []).filter(x => x.sess === -1), D = (e.dur || 60) * 60, B = Math.ceil(D / 300), ret = new Array(B).fill(0);
+    const SN = (sn.results || []).filter(x => x.sess >= 0), RC = (sn.results || []).filter(x => x.sess === -1), D = e.kind !== 'auto' && e.at_live && e.at_end && e.at_end > e.at_live ? Math.max(300, Math.round((e.at_end - e.at_live) / 1000)) : (e.dur || 60) * 60 /* 04.11: прошедший эфир — шкала по фактической длительности */, B = Math.ceil(D / 300), ret = new Array(B).fill(0);
     for (const x of SN) { const a = Math.max(0, Math.floor(((x.first || 0) - (x.t0 || x.first || 0)) / 1000)), b = Math.max(a, x.maxsec || Math.floor(((x.last || 0) - (x.t0 || x.first || 0)) / 1000)); for (let i = Math.floor(a / 300); i <= Math.min(B - 1, Math.floor(b / 300)); i++) ret[i]++ }
     const came = new Set(SN.map(x => x.k)).size, done = SN.filter(x => (x.maxsec || 0) >= D * 0.8).length, leads = (ld.results || []).reduce((s, x) => s + x.n, 0), Q = {}; for (const x of qn.results || []) Q[x.kind] = x.n;
     let lsec = null; if (e.kind === 'auto') { const sc = await efScen(env, cfg.scen); const l = sc && sc.items.find(x => x.t === 'lead'); lsec = l ? l.sec : null } else { const l = await env.DB.prepare("SELECT MIN(sec) s FROM efir_ev WHERE efir_id=? AND kind='lead'").bind(e.id).first(); lsec = l && l.s }
