@@ -1501,6 +1501,10 @@ async function appApi(env, req, path) {
   if (path === '/app/api/me') return ajson({ ok: true, role: s.role, cid: s.cid, name: s.name, curators: CURATORS.map(c => ({ id: c.id, full: c.full })), bot: BOT(env) });
   const c = appScope(s, u.searchParams.get('c') || '');
   /* 04.11: диагностика «был на сайте» (админ) */
+  if (path === '/app/api/dbg/d1') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const acc = env.CF_ACCOUNT || '3544f71e7e7fd1a3544f2f335165a199'; const h = +(u.searchParams.get('h') || 24); const e = new Date(), st = new Date(Date.now() - h * 3600e3);
+    const q = 'query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){d1AnalyticsAdaptiveGroups(limit:200,filter:{datetimeHour_geq:$s,datetimeHour_leq:$e},orderBy:[datetimeHour_ASC]){sum{readQueries writeQueries rowsRead rowsWritten} dimensions{datetimeHour}} d1QueriesAdaptiveGroups(limit:60,filter:{datetime_geq:$s,datetime_leq:$e},orderBy:[sum_rowsRead_DESC]){sum{rowsRead rowsWritten} count dimensions{query}}}}}';
+    const r = await fetch('https://api.cloudflare.com/client/v4/graphql', { method: 'POST', headers: { Authorization: 'Bearer ' + env.CF_API_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, variables: { a: acc, s: st.toISOString(), e: e.toISOString() } }) });
+    return ajson(await r.json()); }
   if (path === '/app/api/dbg/seen') { if (s.role !== 'admin') return ajson({ ok: false }, 403); const id = +u.searchParams.get('u'); const [a1, t1, s1] = await env.DB.batch([env.DB.prepare('SELECT * FROM authuid WHERE uid=?').bind(id), env.DB.prepare('SELECT COUNT(*) n, MAX(day) d, SUM(site) s FROM time WHERE uid=?').bind(id), env.DB.prepare('SELECT uid, curator, tg_chat IS NOT NULL tg FROM student WHERE uid=?').bind(id)]);
     return ajson({ ok: true, auth: (a1.results || [])[0] || null, time: (t1.results || [])[0] || null, st: (s1.results || [])[0] || null }) }
   if (path === '/app/api/students') return ajson(Object.assign({ ok: true, c }, await appStudents(env, c)));
