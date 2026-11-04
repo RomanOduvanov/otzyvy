@@ -33,6 +33,21 @@ const rnd = () => [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toS
 const hrs = sec => { const m = Math.round(sec / 60); if (m < 60) return m + ' мин'; const h = Math.floor(m / 60), r = m % 60; return h + ' ч' + (r ? ' ' + r + ' мин' : '') };
 const hrsShort = sec => { const h = sec / 3600; return h >= 10 ? Math.round(h) + ' ч' : (Math.round(h * 10) / 10).toString().replace('.', ',') + ' ч' };
 
+async function gcDl(req, u) {
+  let x; try { x = new URL(u.searchParams.get('u') || '', 'https://fs01.getcourse.ru') } catch (e) { return new Response('bad url', { status: 400 }) }
+  if (x.protocol !== 'https:' || !/^fs[-a-z]*\d*\.getcourse\.ru$/.test(x.hostname)) return new Response('bad host', { status: 400 });
+  let m = x.pathname.match(/^\/fileservice\/file\/thumbnail\/h\/([0-9a-f]{32}\.[a-z0-9]{2,6})\/s\/[^/]+\/a\/(\d+)\/sc\/(\d+)$/i), h, a, sc;
+  if (m) { h = m[1]; a = m[2]; sc = m[3] } else { m = x.pathname.match(/^\/fileservice\/file\/download\/a\/(\d+)\/sc\/(\d+)\/h\/([0-9a-f]{32}\.[a-z0-9]{2,6})$/i); if (!m) return new Response('bad path', { status: 400 }); a = m[1]; sc = m[2]; h = m[3] }
+  if (a !== '942553') return new Response('forbidden', { status: 403 });
+  const r = await fetch('https://fs01.getcourse.ru/fileservice/file/download/a/' + a + '/sc/' + sc + '/h/' + h, { redirect: 'follow' });
+  if (!r.ok || /getcourse\.ru\/pl\//.test(r.url) || /text\/html/.test(r.headers.get('Content-Type') || '')) return new Response('not found', { status: 404 });
+  let nm = String(u.searchParams.get('n') || '').trim();
+  if (!nm) { const cd = r.headers.get('Content-Disposition') || '', q = cd.match(/filename="([^"]+)"/); if (q) { try { nm = new TextDecoder().decode(Uint8Array.from(q[1], c => c.charCodeAt(0) & 255)) } catch (e) { nm = q[1] } } }
+  const ext = h.split('.').pop(); if (!nm) nm = 'file.' + ext; else if (!/\.[a-z0-9]{2,6}$/i.test(nm)) nm += '.' + ext;
+  nm = nm.replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 150);
+  const H = new Headers({ 'Content-Type': r.headers.get('Content-Type') || 'application/octet-stream', 'Content-Disposition': "attachment; filename=\"" + nm.replace(/[^\x20-\x7e]/g, '_') + "\"; filename*=UTF-8''" + encodeURIComponent(nm), 'Cache-Control': 'private, max-age=600', 'Access-Control-Allow-Origin': '*' });
+  const cl = r.headers.get('Content-Length'); if (cl) H.set('Content-Length', cl);
+  return new Response(r.body, { status: 200, headers: H }) }
 function cors(req) { const o = req.headers.get('Origin'); return { 'Access-Control-Allow-Origin': ORIGINS.includes(o) ? o : ORIGINS[0], 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Vary': 'Origin' } }
 const json = (req, obj, st = 200, hd = {}) => new Response(JSON.stringify(obj), { status: st, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(req), ...hd } });
 const html = (body, st = 200) => new Response(body, { status: st, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
@@ -754,6 +769,10 @@ export default {
       /* пульт живёт и на GitHub Pages (gc/pult.html) — ответы API с CORS для своих доменов */
       if (path.startsWith('/ma/')) return maApi(env, req, path);
       if (path.startsWith('/bank/')) return bankApi(env, req, path);
+      /* 04.11 (Роман: «кнопка Скачать у файлов ученика — сразу на компьютер в хорошем качестве»): файлы работ GetCourse отдаёт только inline и без CORS.
+         Публичные файлы аккаунта (картинки, psd, zip: /fileservice/file/download|thumbnail/…/a/942553/sc/…) сервер скачивает оригиналом и отдаёт с attachment.
+         Защищённые (/pl/fileservice/user/…) требуют вход в GetCourse — их здесь нет. */
+      if (path === '/dl') return gcDl(req, u);
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
       if (path.startsWith('/srch/')) return srchApi(env, req, path);
       if (path.startsWith('/pay/')) return cpayApi(env, req, path);
