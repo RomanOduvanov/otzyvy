@@ -16,7 +16,7 @@
       + '#fdLb .tb{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:12px 12px 8px 16px}#fdLb .ct{flex:1;font-size:14px;color:rgba(255,255,255,.6)}'
       + '#fdLb .bt{flex:none;height:44px;min-width:44px;padding:0 14px;border:0;border-radius:14px;background:rgba(255,255,255,.1);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:inherit;font-size:14px;font-weight:500;line-height:1;cursor:pointer;text-decoration:none!important}#fdLb .bt:hover{background:rgba(255,255,255,.16)}#fdLb .bt.x{padding:0}'
       + '#fdLb .st{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:72px 16px 16px}'
-      + '#fdLb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);opacity:0;transition:opacity .25s}#fdLb img.ok{opacity:1}#fdLb img.lo{filter:blur(6px);width:min(100%,520px);height:auto}'
+      + '#fdLb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);opacity:0;transition:opacity .25s}#fdLb img.ok{opacity:1}#fdLb img.lo{filter:blur(6px);width:min(100%,520px);height:auto}#fdLb img.md{height:100%;width:auto}'
       + '#fdLb .sp{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid rgba(195,139,255,.18);border-top-color:#c38bff;animation:fdLbS .8s linear infinite}@keyframes fdLbS{to{transform:rotate(360deg)}}'
       + '#fdLb .nv{position:absolute;top:50%;margin-top:-24px;width:48px;height:48px;border:0;border-radius:16px;background:rgba(22,22,22,.8);color:#fff;display:grid;place-items:center;cursor:pointer}#fdLb .nv.p{left:16px}#fdLb .nv.n{right:16px}#fdLb .nv[hidden]{display:none}@media(max-width:767px){#fdLb .nv{display:none}#fdLb .bt .l{display:none}}';
     (document.head || document.documentElement).appendChild(css);
@@ -24,10 +24,21 @@
     var L = null, list = [], i = 0, x0 = null;
     var big = function (a) { var h = a.getAttribute('href') || ''; return h.indexOf('//') === 0 ? location.protocol + h : h };
     var nm = function (u) { var m = String(u).split('?')[0].match(/[^\/]+\.(png|jpe?g|webp|gif)$/i); return m ? m[0] : 'rabota.jpg' };
-    var show = function () { var im = L.querySelector('img'), sp = L.querySelector('.sp'), a = list[i], th = a.querySelector('img'), u = big(a), n = i;
-      sp.style.display = ''; if (th && th.complete && th.naturalWidth) { im.src = th.currentSrc || th.src; im.className = 'ok lo' } else { im.className = ''; im.removeAttribute('src') }
-      var pre = new Image(); pre.onload = function () { if (!L || n !== i) return; im.src = u; im.className = 'ok'; sp.style.display = 'none' }; pre.onerror = function () { if (L && n === i) sp.style.display = 'none' }; pre.src = u;
-      L.querySelector('.ct').textContent = list.length > 1 ? (i + 1) + ' из ' + list.length : ''; L.querySelector('.or').href = u; L.querySelector('.nv.p').hidden = i === 0; L.querySelector('.nv.n').hidden = i === list.length - 1 };
+    /* 04.11 (Роман: «картинки очень хуёво грузятся»): картинка начинает качаться при наведении на плитку, соседние — сразу при открытии просмотра */
+    var mid = function (u) { return String(u) }, PRE = {}; /* промежуточные размеры GetCourse нарезает на лету (до 10 с) — берём «lx», он уже лежит в CDN */
+    var warm = function (a) { if (!a) return; var u = mid(big(a)); if (PRE[u]) return; PRE[u] = new Image(); PRE[u].decoding = 'async'; PRE[u].src = u };
+    /* как в «Проверке ДЗ» на сайте (03.11): плитки сразу 200×200, затем фоном 600× для всей ленты по 4 параллельно — подмена по готовности; просмотр открывает уже загруженные 600× мгновенно */
+    var HQ = [], HN = 0, HS = {};
+    var hiOf = function (u) { var m = String(u).match(/^(.*\/fileservice\/file\/thumbnail\/h\/[^/]+\/s\/)200x200(\/.*)$/); return m ? m[1] + '600x' + m[2] : '' };
+    var hRun = function () { while (HN < 4 && HQ.length) (function (im) { var hi = im.getAttribute('data-hi'); if (!hi || !im.isConnected) return; if (HS[hi] === 2) { im.src = hi; im.removeAttribute('data-hi'); return } HN++; var x = new Image(); x.decoding = 'async';
+      x.onload = function () { HS[hi] = 2; HN--; [].forEach.call(document.querySelectorAll('.fd-fl img[data-hi]'), function (y) { if (y.getAttribute('data-hi') === hi) { y.src = hi; y.removeAttribute('data-hi') } }); hRun() }; x.onerror = function () { HS[hi] = 3; HN--; im.removeAttribute('data-hi'); hRun() }; x.src = /^\/\//.test(hi) ? 'https:' + hi : hi })(HQ.shift()) };
+    var hScan = function () { [].forEach.call(document.querySelectorAll('.fd-fl img:not([data-hq])'), function (im) { im.setAttribute('data-hq', '1'); var hi = hiOf(im.getAttribute('src') || ''); if (!hi) return; if (HS[hi] === 2) { im.src = hi; return } im.setAttribute('data-hi', hi); if (!HS[hi]) { HS[hi] = 1; HQ.push(im) } }); hRun() };
+    try { new MutationObserver(function () { clearTimeout(hScan.t); hScan.t = setTimeout(hScan, 60) }).observe(document.documentElement, { childList: true, subtree: true }) } catch (e) {}
+    document.addEventListener('pointerover', function (e) { var a = e.target.closest && e.target.closest('.fd-fl a[href]'); if (a && a.querySelector('img')) warm(a) }, { passive: true });
+    var show = function () { var im = L.querySelector('img'), sp = L.querySelector('.sp'), a = list[i], th = a.querySelector('img'), u = mid(big(a)), n = i;
+      sp.style.display = ''; if (th && th.complete && th.naturalWidth) { im.src = th.currentSrc || th.src; im.className = th.naturalWidth >= 500 ? 'ok md' : 'ok lo' } else { im.className = ''; im.removeAttribute('src') }
+      var pre = new Image(); pre.onload = function () { if (!L || n !== i) return; im.src = u; im.className = 'ok'; sp.style.display = 'none' }; pre.onerror = function () { if (L && n === i) sp.style.display = 'none' }; pre.src = u; warm(list[i + 1]); warm(list[i - 1]); setTimeout(function () { list.forEach(warm) }, 400);
+      L.querySelector('.ct').textContent = list.length > 1 ? (i + 1) + ' из ' + list.length : ''; L.querySelector('.nv.p').hidden = i === 0; L.querySelector('.nv.n').hidden = i === list.length - 1 };
     var close = function () { if (!L) return; var l = L; L = null; l.classList.remove('on'); setTimeout(function () { l.remove() }, 200); document.removeEventListener('keydown', key, true) };
     var go = function (d) { var j = i + d; if (j < 0 || j >= list.length) return; i = j; show() };
     var key = function (e) { if (!L) return; if (e.key === 'Escape') { e.stopPropagation(); close() } else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1) };
@@ -46,7 +57,7 @@
       b.disabled = true; setTimeout(function () { b.disabled = false }, 1500) };
     var open = function (a) { var box = a.closest('.fd-fl') || a.parentNode; list = [].slice.call(box.querySelectorAll('a[href]')).filter(function (x) { return x.querySelector('img') }); i = Math.max(0, list.indexOf(a));
       L = document.createElement('div'); L.id = 'fdLb'; L.setAttribute('role', 'dialog'); L.setAttribute('aria-label', 'Просмотр работы');
-      L.innerHTML = '<div class="tb"><span class="ct"></span><button type="button" class="bt dl" aria-label="Скачать">' + SV('M12 4v11M7 10l5 5 5-5M5 20h14') + '<span class="l">Скачать</span></button><a class="bt or" target="_blank" rel="noopener" aria-label="Открыть оригинал">' + SV('M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5') + '<span class="l">Оригинал</span></a><button type="button" class="bt x" aria-label="Закрыть">' + SV('M6 6l12 12M18 6 6 18') + '</button></div>'
+      L.innerHTML = '<div class="tb"><span class="ct"></span><button type="button" class="bt dl" aria-label="Скачать">' + SV('M12 4v11M7 10l5 5 5-5M5 20h14') + '<span class="l">Скачать</span></button><button type="button" class="bt x" aria-label="Закрыть">' + SV('M6 6l12 12M18 6 6 18') + '</button></div>'
         + '<div class="st"><span class="sp"></span><img alt=""><button type="button" class="nv p" aria-label="Предыдущая">' + SV('M15 6l-6 6 6 6') + '</button><button type="button" class="nv n" aria-label="Следующая">' + SV('M9 6l6 6-6 6') + '</button></div>';
       document.body.appendChild(L); requestAnimationFrame(function () { if (L) L.classList.add('on') }); show(); document.addEventListener('keydown', key, true);
       L.querySelector('.x').onclick = close; L.querySelector('.dl').onclick = function () { dl(this) }; L.querySelector('.nv.p').onclick = function () { go(-1) }; L.querySelector('.nv.n').onclick = function () { go(1) };
