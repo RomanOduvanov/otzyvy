@@ -3514,6 +3514,11 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
       if (nx && nx.id === nid && efVideo({ url: K0.play }).id === v.id) kin_warn = await kinSchedule(env, K0, start) }
     await logIt(env, 'efir-save', W.uid, nid + ' ' + kind + ' ' + (W.cid || 'admin')); return json(req, Object.assign({ ok: true, id: nid }, kin_warn ? { kin_warn } : {})) }
   const e = await efGet(env, id); if (!e) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (!efOwn(W, e)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
+  /* 04.11 (Роман): «Рассылка участникам» — кому доступен эфир (пульт → Рассылки, «Выбранные»), ссылка на эфир подставляется в кнопку */
+  if (path === '/efir/host/aud') { const cf = efJ(e.cfg, {}), acc = e.tariff || 'all'; let uids = null;
+    if (acc === 'sel') uids = cf.uids || []; else if (acc === 'open') uids = (await qAll(env.DB.prepare('SELECT DISTINCT uid FROM efir_reg WHERE efir_id=? AND uid>0').bind(e.id))).map(x => +x.uid);
+    const link = acc === 'open' || e.kind === 'open' ? 'https://t.me/' + BOT(env) + '?start=e' + e.id : SITE + '/teach/control/stream?fs=efir&e=' + e.id;
+    return json(req, { ok: true, id: e.id, title: e.title, start: e.start || null, kind: e.kind, acc, host: e.host_cid || 'admin', uids, link }) }
   const cfg = efJ(e.cfg, {}), S = efState(e, now), sess = e.kind === 'auto' ? +(o.sess || u.searchParams.get('sess') || S.sess || 0) : 0, sec = Math.max(0, Math.floor((now - (e.kind === 'auto' ? sess : (e.at_live || e.start || now))) / 1000));
   if (path === '/efir/host/del' && req.method === 'POST') { await env.DB.prepare('UPDATE efir SET del=1, upd=? WHERE id=?').bind(now, e.id).run(); await logIt(env, 'efir-del', W.uid, e.id); return json(req, { ok: true }) }
   /* пульт ведущего: старт/конец, кнопка заявки, баннер, опрос, «на экран». Каждое событие — с секундой (для сценария) */
