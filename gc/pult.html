@@ -356,7 +356,7 @@ a.b1,a.b2{text-decoration:none}
 <div class="toast" id="toast"></div>
 <div id="tdToast" role="status"><span></span><button class="b2 sm" id="tdUndo">Вернуть</button></div>
 <script src="bank.js?v=20"></script>
-<script src="efir.js?v=16"></script>
+<script src="efir.js?v=17"></script>
 <script src="feed.js?v=10"></script>
 <script>
 (function(){
@@ -483,8 +483,18 @@ $('bcRecs').onclick=function(e){var x=e.target.closest('[data-rec]');if(!x)retur
   if(r.kind==='hw'){kHw();return}if(r.aud==='wait'){tabGo('ch');return}
   setR(r.aud);if(r.draft){$('bcText').value=r.draft;upPrev()}else aiBc(false);$('bcText').scrollIntoView({behavior:'smooth',block:'center'})};
 $('bRecR').onclick=function(){recLoad(true)};
-var BCQ=(location.search.match(/[?&]bc=(idle|stall|all)\b/)||[])[1]||'';
-function bcAuto(){if(!BCQ||!DATA)return;var q=BCQ;BCQ='';tabGo('bc');setR(q);var w=function(){var r=(RECS||[]).filter(function(x){return x.aud===q&&x.draft})[0];if(r&&!$('bcText').value.trim()){$('bcText').value=r.draft;upPrev()}else if(!$('bcText').value.trim())aiBc(false)};if(RECS)w();else api('ai/recs?c='+CUR).then(function(j){RECS=j.recs||[];recDraw();w()}).catch(function(){aiBc(false)})}
+var BCQ=(location.search.match(/[?&]bc=(idle|stall|all|ef\d+)\b/)||[])[1]||'';
+/* 04.11 (Роман): «Рассылка участникам» из эфира — получатели = кому доступен эфир, кнопка «Подключиться к эфиру» со ссылкой, Telegram + почта, текст и тему пишет ИИ */
+function bcEf(id){if(!DATA){BCQ='ef'+id;return}var EA=API.replace(/\/app\/api\/$/,'');tabGo('bc');toast('Собираю участников эфира…');
+  fetch(EA+'/efir/host/aud?id='+(+id),{headers:{Authorization:'Bearer '+T}}).then(function(r){return r.json()}).then(function(j){if(!j||!j.ok){toast((j&&j.err)||'Эфир не найден');return}
+    var S=DATA.students,L=j.acc==='sel'||j.acc==='open'?S.filter(function(x){return (j.uids||[]).indexOf(+x.uid)>=0}):j.acc==='cur'&&ME.role==='admin'?S.filter(function(x){return x.cur===j.host}):j.acc==='amz'?S.filter(function(x){return /амазон/i.test(x.tar||'')}):S;
+    setR('sel');BSEL={};L.forEach(function(x){BSEL[x.uid]=1});$('bcPkQ').value='';pkDraw();
+    var cb=document.querySelector('#bcCh [data-ch="both"]');if(cb)cb.click();
+    var wh=j.start?mskTxt(j.start):'';$('bcGoal').value='Позвать на эфир «'+j.title+'»'+(wh?', '+wh:'')+'. Коротко: о чём эфир и зачем прийти, подключиться по кнопке ниже.';
+    BTNS=[{t:'Подключиться к эфиру',u:j.link}];bcDraw();upPrev();
+    toast(L.length?'Получатели: '+L.length+' — ИИ пишет тему и текст':'Никого из учеников не нашли — проверь «Кто видит» у эфира');if(L.length)aiBc(false);
+    setTimeout(function(){var g=$('bcGoal');if(g)g.scrollIntoView({behavior:'smooth',block:'center'})},60)}).catch(function(){toast('Нет связи — попробуй ещё раз')})}
+function bcAuto(){if(!BCQ||!DATA)return;if(/^ef\d+$/.test(BCQ)){var ei=+BCQ.slice(2);BCQ='';bcEf(ei);return}var q=BCQ;BCQ='';tabGo('bc');setR(q);var w=function(){var r=(RECS||[]).filter(function(x){return x.aud===q&&x.draft})[0];if(r&&!$('bcText').value.trim()){$('bcText').value=r.draft;upPrev()}else if(!$('bcText').value.trim())aiBc(false)};if(RECS)w();else api('ai/recs?c='+CUR).then(function(j){RECS=j.recs||[];recDraw();w()}).catch(function(){aiBc(false)})}
 /* 04.11 (Роман): «Когда» — сейчас или запланировать на день и время по Москве; запланированные — в карточке справа, их можно отменить */
 var BCW='now';document.querySelectorAll('#bcWhen button').forEach(function(x){x.onclick=function(){BCW=x.getAttribute('data-w');document.querySelectorAll('#bcWhen button').forEach(function(y){y.classList.toggle('on',y===x)});$('bcAtW').classList.toggle('hid',BCW!=='plan');
   if(BCW==='plan'&&!$('bcAt').value){var d=new Date(Date.now()+3*36e5+36e5);d.setUTCMinutes(0,0,0);$('bcAt').value=d.toISOString().slice(0,16)}$('bSend').textContent=BCW==='plan'?'Запланировать':'Отправить';upPrev()}});
@@ -748,7 +758,7 @@ function cuTrend(D){if(!D||!D.length)return '';var L=D.slice(-14).map(function(d
 function curPick(c){var sg=$('curSeg');CUR=c;SEL={};sg.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-c')===c)});view()}
 /* 30.10 «Эфиры» (макет 9.7–9.16): создать эфир, пульт ведущего, модерация, автовебинары, статистика, заявки. Модуль efir.js, сервер /efir/* (роль проверяет сервер: куратор — свои эфиры, без продаж) */
 var EFH=null;function efMount(){if(EFH&&$('efBox').firstChild)return;var EA=API.replace(/\/app\/api\/$/,'');
-  EFH=ECOEFIR.host($('efBox'),{api:function(p,o){o=o||{};return fetch(EA+p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body}).then(function(r){if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})},
+  EFH=ECOEFIR.host($('efBox'),{bc:function(id){bcEf(id)},api:function(p,o){o=o||{};return fetch(EA+p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body}).then(function(r){if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})},
     toast:toast,open:function(u){window.open(u,'_blank','noopener')},fileUrl:function(eid,mid){return EA+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+T}})}
 function tabGo(t){var b=document.querySelector('#tabs [data-t="'+t+'"]');if(b)b.click()}
 /* ---- «Моя статистика» (7.2): куратор — свои цифры; админ — выбранного вверху куратора ---- */
