@@ -3753,7 +3753,7 @@ async function efSpeak(env, e, force) { if (!env.KINESCOPE_KEY) return null; if 
   if (!r.ok || !link || !/^https:\/\//.test(link)) { await kvPut(env, kk, { err: r.status, msg: String(t).slice(0, 300), at: msNow() }); return force ? { err: r.status, msg: String(t).slice(0, 300) } : null }
   await kvPut(env, kk, { id: d.id || null, link, at: msNow() }); return SPK[e.id] = link }
 const efStageUrl = async (env, e, cfg) => cfg.stage_url || (await efSpeak(env, e).catch(() => null)) || ('https://meet.jit.si/OduvanovSchool-efir' + e.id + '-' + (await hmacHex(env, 'stage|' + e.id)).slice(0, 10));
-const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null, uids: c.uids || [], rec_days: c.rec_days || 0 } };
+const efEditCfg = e => { const c = efJ(e.cfg, {}); return { stage: c.stage || 0, stage_url: c.stage_url || '', work: c.work === 0 ? 0 : 1, label: c.label || 0, lead: c.lead || null, sched: c.sched || null, scen: c.scen || null, uids: c.uids || [], rec_days: c.rec_days || 0, room: c.room ? 1 : 0 } };
 async function efScenAdd(env, sid, item) { const r = await env.DB.prepare('SELECT items FROM efir_scen WHERE id=?').bind(sid).first(); if (!r) return 0; const L = efJ(r.items, []); L.push(item); L.sort((a, b) => a.sec - b.sec);
   await env.DB.prepare('UPDATE efir_scen SET items=? WHERE id=?').bind(JSON.stringify(L), sid).run(); EFSC.delete(sid); return 1 }
 /* сценарии (админ): GET /efir/scen?id= — события; POST /efir/scen {id, items, as_new} — правка (as_new — новая версия); центр модерации GET /efir/mod */
