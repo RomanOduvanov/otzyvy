@@ -2307,8 +2307,8 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
    в рейтинг и не выбирает куратора (/cur, /fin/demo для сборщика рейтинга). */
 const DEMO_ITEMS = { zg: 'Закрытая группа 3.0 (старт 25 ноября)', sprint: 'Спринт', practicum: 'Практикум по дизайну карточек', camp: 'Design Camp' };
 const DEMO_FULL = { sprint: 'sprint', practicum: 'practicum', camp: 'camp' }; /* → CPAY_ITEMS */
-/* 05.11 (Роман): срок «по умолчанию» — как в обычной покупке: Спринт 183 дня, Практикум 31 день, Design Camp — бессрочно (10 лет) */
-const DEMO_DEF = { sprint: 183, practicum: 31, camp: 3650 };
+/* 05.11 (Роман): срок «по умолчанию» — как в обычной покупке: Спринт 183 дня, Практикум 31 день, Design Camp 60 дней (Роман 05.11) */
+const DEMO_DEF = { sprint: 183, practicum: 31, camp: 60 };
 const demoOffer = (k, d) => 'demo_' + k + '_' + d;
 async function demoOf(env, uid) { if (!uid) return null; try { const r = await env.DB.prepare("SELECT until, items FROM demo_claim WHERE uid=? AND st='ok' ORDER BY id DESC LIMIT 1").bind(+uid).first(); return r || null } catch (e) { return null } }
 async function demoApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
