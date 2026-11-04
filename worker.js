@@ -69,6 +69,10 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS pay (id INTEGER PRIMARY KEY, deal INTEGER, email TEXT, name TEXT, created TEXT, day TEXT, type TEXT, status TEXT, sum REAL, fee REAL, net REAL, title TEXT, synced TEXT)',
   'CREATE INDEX IF NOT EXISTS pay_day ON pay (day)',
   'CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)',
+  /* 05.11 демо-доступ для лидов: ссылка менеджера (что открыть и на сколько) и заявки по ней */
+  'CREATE TABLE IF NOT EXISTS demo_link (code TEXT PRIMARY KEY, cfg TEXT, mgr TEXT, at TEXT, n INTEGER DEFAULT 0, off INTEGER DEFAULT 0)',
+  'CREATE TABLE IF NOT EXISTS demo_claim (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, email TEXT, name TEXT, phone TEXT, uid INTEGER, days INTEGER, items TEXT, until TEXT, at TEXT, ip TEXT, cpay_id INTEGER, pay_link TEXT, st TEXT)',
+  'CREATE INDEX IF NOT EXISTS demo_claim_email ON demo_claim (email)',
   'CREATE TABLE IF NOT EXISTS odeal (id INTEGER PRIMARY KEY, day TEXT, eh TEXT, cost REAL, title TEXT)',
   /* кураторы в личке Telegram (Telegram Business): только время сообщений, без текстов */
   'CREATE TABLE IF NOT EXISTS tg_user (chat TEXT PRIMARY KEY, username TEXT, name TEXT, at TEXT)',
@@ -792,6 +796,7 @@ export default {
       if (path.startsWith('/chat/')) return chatApi(env, req, path);
       if (path.startsWith('/srch/')) return srchApi(env, req, path);
       if (path.startsWith('/pay/')) return cpayApi(env, req, path);
+      if (path.startsWith('/demo/')) return demoApi(env, req, path);
       /* 01.11: запасная раздача файлов сайта (eco/layout/theme), пока GitHub Pages не принимает выкладки. Залить: POST /gc/put?name=… с X-GH-Token (право push в репозиторий) */
       if (path === '/gc/put' && req.method === 'POST') { if (!(await ghOk(env, req))) return deny(req); const nm = u.searchParams.get('name') || ''; if (!/^(eco|layout|theme|appskin)-[0-9a-f]{8}\.(js|css)$/.test(nm)) return json(req, { ok: false, err: 'name' }, 400);
         const body = await req.text(); if (!body || body.length > 1800000) return json(req, { ok: false, err: 'size' }, 400); await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?,?)').bind('gcf:' + nm, body).run(); return json(req, { ok: true, name: nm, bytes: body.length }) }
@@ -923,6 +928,8 @@ export default {
         return html(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f1f7;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#141220;text-align:center;padding:24px"><div><div style="font-size:22px;font-weight:600">${p ? 'Вы отписались от отчётов' : 'Ссылка устарела'}</div><p style="color:#6b6780;max-width:380px;line-height:1.5">${p ? 'Отчёты больше не будут приходить. Если это ошибка — ' + esc(p.student || 'ученик') + ' может снова подключить их в своём профиле.' : 'Если нужна помощь — напишите в службу заботы.'}</p><a href="${CARE}" style="color:#8b45e6">Служба заботы</a></div></body>`);
       }
       /* 29.10: ключ «Статистики» без ввода — тем, у кого в GetCourse есть право «Может видеть статистику» и нет запрета на список заказов (список statUids присылает сборщик рейтинга) */
+      /* 05.11: демо-ученики не попадают в рейтинг — сборщик (gamify.py) берёт список отсюда */
+      if (path === '/fin/demo') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env); return json(req, { ok: true, uids: (await qAll(env.DB.prepare('SELECT DISTINCT uid FROM demo_claim WHERE uid IS NOT NULL'))).map(x => String(x.uid)) }) }
       if (path === '/fin/staff' && req.method === 'POST') { if (!same(u.searchParams.get('k'), await ratingKey(env)) && !(await ghOk(env, req))) return json(req, { ok: false }, 403); await ensure(env);
         let o; try { o = JSON.parse(await req.text() || '{}') } catch (e) { return json(req, { ok: false, err: 'json' }, 400) } const ids = (Array.isArray(o.uids) ? o.uids : []).map(Number).filter(okUid);
         await kvPut(env, 'statUids', ids); const sx = (Array.isArray(o.staff) ? o.staff : []).map(Number).filter(okUid); if (sx.length) { await kvPut(env, 'gcStaff', sx); GC_STAFF = null } await logIt(env, 'stat-staff', 0, ids.join(',') + (sx.length ? ' | staff ' + sx.length : '')); return json(req, { ok: true, n: ids.length }) }
@@ -987,11 +994,13 @@ export default {
         let need_cur = false; if (!r.curator && !isStaffUid(env, uid)) { try { const D = await loadData(env); need_cur = (D.rows || []).some(x => x.uid != null && +x.uid === +uid) } catch (e) {} }
         /* 04.11 (Роман: «индивидуальный доступ показывается бессрочным»): срок доступа по своим ссылкам — из cpay (GetCourse видит только заказ без срока) */
         let cpay = []; try { const em = await env.DB.prepare('SELECT email FROM gc_name WHERE uid=?').bind(uid).first(); if (em && em.email) cpay = (await qAll(env.DB.prepare("SELECT items, until, st FROM cpay WHERE email=? AND st IN ('granted','expired') ORDER BY id DESC LIMIT 10").bind(em.email))).map(c => ({ title: 'Индивидуальный доступ: ' + JSON.parse(c.items || '[]').map(id => (CPAY_ITEMS.find(x => x.id === id) || {}).t || '').filter(Boolean).map(t => t.replace(/^Бонус: /, '')).join(', '), until: c.until, st: c.st })) } catch (e) {}
-        return json(req, { ok: true, auth: true, need_cur, cpay, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
+        const dm = await demoOf(env, uid); if (dm) need_cur = false;
+        return json(req, { ok: true, auth: true, need_cur, cpay, demo: dm ? { until: dm.until, on: Date.parse(dm.until) > Date.now() ? 1 : 0 } : null, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
       if (path === '/cur' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
         const w = await who(env, o.t, 'a'); if (!w.uid && !w.bad) w.uid = await softUid(env, w, +o.u); if (!w.uid || (o.u && +o.u !== w.uid)) return deny(req);
         const uid = w.uid, c = CURATORS.find(x => x.id === o.c); if (!c) return json(req, { ok: false }, 400);
         const r = await studentRow(env, uid); if (r.curator) return json(req, { ok: false, err: 'already', cur: curPub(CURATORS.find(x => x.id === r.curator)) });
+        if (await demoOf(env, uid)) return json(req, { ok: false, err: 'demo', msg: 'Куратора выбирают после покупки обучения — в демо можно посмотреть, кто ведёт поток' });
         await env.DB.prepare('UPDATE student SET curator=?, cur_at=?, name=COALESCE(?, name) WHERE uid=?').bind(c.id, new Date().toISOString(), String(o.name || '').slice(0, 80) || null, uid).run();
         await logIt(env, 'curator', uid, c.id); return json(req, { ok: true, cur: curPub(c) }) }
       /* кураторы в Telegram: ссылки-приглашения, статистика ответов */
@@ -2255,6 +2264,16 @@ async function gcImport(env, kind, params) { if (!env.GC_KEY_W) throw new Error(
   const body = new URLSearchParams({ key: env.GC_KEY_W, action: 'add', params: b64u(JSON.stringify(params)) });
   const r = await fetch(GC_HOST + '/pl/api/' + kind, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (e) {}
   if (!j) throw new Error('GetCourse: ответ не JSON (HTTP ' + r.status + ')'); return j }
+async function cpayNew(env, { email, name, phone, items, term, sum, note, mgr }) {
+    const title = 'Индивидуальный доступ: ' + items.map(x => x.t.replace(/^Бонус: /, '')).join(', ');
+    const comm = 'Создано менеджером через pay.oduvanovschool.pro · срок ' + CPAY_TERMS[term][1] + (note ? ' · ' + note : '');
+    const j = await gcImport(env, 'deals', { user: { email, first_name: name || undefined, phone: phone || undefined }, system: { refresh_if_exists: 0, return_payment_link: 1, return_deal_number: 1 },
+      deal: { product_title: title.slice(0, 250), product_description: comm.slice(0, 500), deal_cost: sum, deal_status: 'new', quantity: 1, deal_comment: comm.slice(0, 500) } });
+    const R = j.result || {}; if (!(j.success === true || j.success === 'true') || !(R.success === true || R.success === 'true') || !R.deal_id) { await logIt(env, 'cpay-err', 0, JSON.stringify(j).slice(0, 400)); return { ok: false, err: 'GetCourse не создал заказ: ' + (R.error_message || j.error_message || 'неизвестная ошибка') } }
+    const link = R.payment_link || null;
+    const ins = await env.DB.prepare('INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, mgr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(+R.deal_number || null, +R.deal_id, email, name || null, phone || null, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], sum, note || null, link, 'new', new Date().toISOString(), mgr || null).first();
+    await logIt(env, 'cpay-new', 0, email + ' ' + sum + ' ' + items.map(x => x.id).join(','));
+    return { ok: true, id: ins && ins.id, link, num: +R.deal_number || null, deal_id: +R.deal_id } }
 async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
   await ensure(env);
   /* 04.11 (Роман: «доступ должен выдаваться сразу»): страница «Оплата прошла» сообщает номер заказа (layout.js) → сразу тянем платежи за сутки и выдаём доступ; без ключа менеджера, повтор — не чаще раза в минуту на заказ */
@@ -2277,15 +2296,64 @@ async function cpayApi(env, req, path) { const u = new URL(req.url); let o = {};
     if (items.filter(x => x.k === 'tariff').length > 1) return json(req, { ok: false, err: 'Тариф — только один' }, 400);
     if (!(sum >= 1 && sum <= 1e6)) return json(req, { ok: false, err: 'Сумма — от 1 до 1 000 000 ₽' }, 400);
     if (!term) return json(req, { ok: false, err: 'Выбери срок доступа' }, 400);
-    const title = 'Индивидуальный доступ: ' + items.map(x => x.t.replace(/^Бонус: /, '')).join(', ');
-    const comm = 'Создано менеджером через pay.oduvanovschool.pro · срок ' + CPAY_TERMS[term][1] + (note ? ' · ' + note : '');
-    const j = await gcImport(env, 'deals', { user: { email, first_name: name || undefined, phone: phone || undefined }, system: { refresh_if_exists: 0, return_payment_link: 1, return_deal_number: 1 },
-      deal: { product_title: title.slice(0, 250), product_description: comm.slice(0, 500), deal_cost: sum, deal_status: 'new', quantity: 1, deal_comment: comm.slice(0, 500) } });
-    const R = j.result || {}; if (!(j.success === true || j.success === 'true') || !(R.success === true || R.success === 'true') || !R.deal_id) { await logIt(env, 'cpay-err', 0, JSON.stringify(j).slice(0, 400)); return json(req, { ok: false, err: 'GetCourse не создал заказ: ' + (R.error_message || j.error_message || 'неизвестная ошибка') }, 502) }
-    const link = R.payment_link || null;
-    await env.DB.prepare('INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, mgr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(+R.deal_number || null, +R.deal_id, email, name || null, phone || null, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], sum, note || null, link, 'new', new Date().toISOString(), bStr(o.mgr, 40) || null).run();
-    await logIt(env, 'cpay-new', 0, email + ' ' + sum + ' ' + items.map(x => x.id).join(','));
-    return json(req, { ok: true, link, num: +R.deal_number || null, deal_id: +R.deal_id }) }
+    const r = await cpayNew(env, { email, name, phone, items, term, sum, note, mgr: bStr(o.mgr, 40) || null }); if (!r.ok) return json(req, { ok: false, err: r.err }, 502);
+    return json(req, { ok: true, link: r.link, num: r.num, deal_id: r.deal_id }) }
+  return json(req, { ok: false, err: 'not found' }, 404) }
+/* ---------- 05.11 (Роман): демо-доступ для лидов ----------
+   Менеджер в кабинете (pay.oduvanovschool.pro/manager/) собирает ссылку: закрытая группа 3.0 на 1–3 дня + по желанию Спринт / Практикум / Design Camp
+   (демо на тот же срок или полный доступ — бесплатно или за сумму). Лид по ссылке (pay.oduvanovschool.pro/demo/?c=…) вводит имя, почту, телефон →
+   сервер создаёт бесплатные заказы в GetCourse на предложения «Демо · … · N дн.» (доступ закрывается сам через N дней — так настроено в предложении).
+   Полный доступ — как своя ссылка на оплату (cpay): с суммой — ссылка на оплату, без суммы — группы сразу. Демо-ученик всё видит, но не попадает
+   в рейтинг и не выбирает куратора (/cur, /fin/demo для сборщика рейтинга). */
+const DEMO_ITEMS = { zg: 'Закрытая группа 3.0 (старт 25 ноября)', sprint: 'Спринт', practicum: 'Практикум по дизайну карточек', camp: 'Design Camp' };
+const DEMO_FULL = { sprint: 'sprint', practicum: 'practicum', camp: 'camp' }; /* → CPAY_ITEMS */
+const demoOffer = (k, d) => 'demo_' + k + '_' + d;
+async function demoOf(env, uid) { if (!uid) return null; try { const r = await env.DB.prepare("SELECT until, items FROM demo_claim WHERE uid=? AND st='ok' ORDER BY id DESC LIMIT 1").bind(+uid).first(); return r || null } catch (e) { return null } }
+async function demoApi(env, req, path) { const u = new URL(req.url); let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) { o = {} } }
+  await ensure(env);
+  /* публично: что откроет ссылка (для страницы формы) */
+  if (path === '/demo/info') { const L = await env.DB.prepare('SELECT cfg, off FROM demo_link WHERE code=?').bind(String(u.searchParams.get('c') || '').slice(0, 40)).first(); if (!L || L.off) return json(req, { ok: false, err: 'Ссылка недействительна — попроси менеджера прислать новую' }, 404);
+    const c = JSON.parse(L.cfg || '{}'); return json(req, { ok: true, days: c.days, items: ['zg'].concat(Object.keys(c.add || {}).filter(k => c.add[k] === 'demo')).map(k => DEMO_ITEMS[k]), full: Object.keys(c.add || {}).filter(k => c.add[k] === 'full').map(k => DEMO_ITEMS[k]), sum: c.sum || 0 }) }
+  /* публично: лид оформляет демо */
+  if (path === '/demo/claim' && req.method === 'POST') { const code = String(o.c || '').slice(0, 40), L = await env.DB.prepare('SELECT * FROM demo_link WHERE code=?').bind(code).first(); if (!L || L.off) return json(req, { ok: false, err: 'Ссылка недействительна — попроси менеджера прислать новую' }, 404);
+    const c = JSON.parse(L.cfg || '{}'), email = String(o.email || '').trim().toLowerCase(), name = bStr(o.name, 80), phone = bStr(o.phone, 30), ip = req.headers.get('CF-Connecting-IP') || '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) return json(req, { ok: false, err: 'Проверь почту' }, 400); if (name.length < 2) return json(req, { ok: false, err: 'Напиши имя' }, 400); if (phone.replace(/\D/g, '').length < 10) return json(req, { ok: false, err: 'Проверь телефон' }, 400);
+    { const k = 'demoip:' + ip, n = (await kvGet(env, k)) || { n: 0, at: Date.now() }; if (Date.now() - n.at > 36e5) { n.n = 0; n.at = Date.now() } if (++n.n > 8) return json(req, { ok: false, err: 'Слишком много попыток — попробуй через час' }, 429); await kvPut(env, k, n) }
+    const was = await env.DB.prepare("SELECT until FROM demo_claim WHERE email=? AND st='ok' ORDER BY id DESC LIMIT 1").bind(email).first();
+    if (was && Date.parse(was.until) > Date.now()) return json(req, { ok: true, again: 1, until: was.until, login: GC_HOST + '/cms/system/login?required=true' });
+    if (was && Date.now() - Date.parse(was.until) < 30 * 864e5) return json(req, { ok: false, err: 'Демо-доступ на эту почту уже был. Напиши менеджеру — он подскажет, как продолжить' }, 409);
+    /* уже покупал — демо не нужен (и чтобы окончание демо не задело оплаченный доступ) */
+    const paid = await env.DB.prepare("SELECT 1 x FROM pay WHERE lower(email)=? AND status='Получен' AND sum>0 LIMIT 1").bind(email).first();
+    if (paid) return json(req, { ok: false, have: 1, err: 'На эту почту уже есть оплаченное обучение — просто войди на платформу', login: GC_HOST + '/cms/system/login?required=true' }, 409);
+    const days = [1, 2, 3].includes(+c.days) ? +c.days : 1, keys = ['zg'].concat(Object.keys(c.add || {}).filter(k => c.add[k] === 'demo' && DEMO_ITEMS[k])), errs = []; let uid = null;
+    for (const k of keys) { const j = await gcImport(env, 'deals', { user: { email, first_name: name, phone }, system: { refresh_if_exists: 0, return_deal_number: 1 },
+        deal: { offer_code: demoOffer(k, days), deal_cost: 0, deal_status: 'payed', deal_is_paid: 1, deal_comment: ('Демо-доступ по ссылке менеджера ' + (L.mgr || '') + ' (' + code + ')').slice(0, 300) } }).catch(e => ({ error_message: e.message }));
+      const R = (j && j.result) || {}; if ((j.success === true || j.success === 'true') && (R.success === true || R.success === 'true')) { if (R.user_id) uid = +R.user_id } else errs.push(k + ': ' + String(R.error_message || j.error_message || 'ошибка').slice(0, 120)) }
+    if (errs.length === keys.length) { await logIt(env, 'demo-err', 0, email + ' ' + errs.join(' | ')); return json(req, { ok: false, err: 'Не получилось открыть доступ — напиши менеджеру, он откроет вручную' }, 502) }
+    const until = new Date(Date.now() + days * 864e5).toISOString();
+    /* полный доступ к Спринту / Практикуму / Кэмпу */
+    const full = Object.keys(c.add || {}).filter(k => c.add[k] === 'full' && DEMO_FULL[k]).map(k => DEMO_FULL[k]); let pay_link = null, cid = null;
+    if (full.length) { const term = CPAY_TERMS[c.term] ? c.term : '6m', items = full.map(id => CPAY_ITEMS.find(x => x.id === id)).filter(Boolean), sum = Math.max(0, Math.round(+c.sum || 0));
+      if (sum >= 1) { const r = await cpayNew(env, { email, name, phone, items, term, sum, note: 'вместе с демо-доступом', mgr: L.mgr }); if (r.ok) { pay_link = r.link; cid = r.id } else errs.push('full: ' + r.err) }
+      else { const G = items.map(x => x.g); const j = await gcImport(env, 'users', { user: { email, first_name: name, phone, group_name: G }, system: { refresh_if_exists: 1 } }).catch(e => ({ error_message: e.message }));
+        if (j && (j.success === true || j.success === 'true')) { const un = new Date(Date.now() + CPAY_TERMS[term][0] * 864e5).toISOString(); const ins = await env.DB.prepare("INSERT INTO cpay (num, did, email, name, phone, items, days, sum, note, link, st, at, paid, paid_at, until, mgr) VALUES (NULL,NULL,?,?,?,?,?,0,?,NULL,'granted',?,0,?,?,?) RETURNING id").bind(email, name, phone, JSON.stringify(items.map(x => x.id)), CPAY_TERMS[term][0], 'бесплатно вместе с демо-доступом', new Date().toISOString(), new Date().toISOString(), un, L.mgr || null).first(); cid = ins && ins.id }
+        else errs.push('full: ' + String((j && j.error_message) || 'ошибка').slice(0, 120)) } }
+    const ins = await env.DB.prepare("INSERT INTO demo_claim (code, email, name, phone, uid, days, items, until, at, ip, cpay_id, pay_link, st) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ok') RETURNING id").bind(code, email, name, phone, uid, days, JSON.stringify(keys.concat(full.map(x => 'full:' + x))), until, new Date().toISOString(), ip, cid, pay_link).first();
+    await env.DB.prepare('UPDATE demo_link SET n=n+1 WHERE code=?').bind(code).run(); await logIt(env, 'demo', uid || 0, email + ' ' + keys.join(',') + ' ' + days + 'd' + (errs.length ? ' ERR ' + errs.join(' | ') : ''));
+    await tgAdmins(env, '🎁 <b>Демо-доступ</b>: ' + th(name) + ' · ' + th(email) + ' · ' + th(phone) + '\n' + keys.map(k => DEMO_ITEMS[k]).join(', ') + ' — на ' + days + ' ' + (days === 1 ? 'день' : 'дня') + (full.length ? '\nПолный доступ: ' + full.map(x => DEMO_ITEMS[x]).join(', ') + (pay_link ? ' (ссылка на оплату ' + Math.round(+c.sum) + ' ₽)' : ' (бесплатно)') : '') + (L.mgr ? '\nМенеджер: ' + th(L.mgr) : '') + (errs.length ? '\n⚠️ ' + th(errs.join('; ')) : ''));
+    return json(req, { ok: true, id: ins && ins.id, until, days, login: GC_HOST + '/cms/system/login?required=true', pay: pay_link, part: errs.length ? 1 : 0 }) }
+  /* дальше — кабинет менеджера (ключ из бота) или Роман */
+  const k = String(o.k || u.searchParams.get('k') || ''), ss = k ? null : await staffSess(env, req, u);
+  if (!(k && same(k, await cpayKey(env))) && !(ss && ss.role === 'admin')) return json(req, { ok: false, err: 'Нет доступа: открой кабинет менеджера по ссылке от бота' }, 403);
+  if (path === '/demo/link' && req.method === 'POST') { const days = [1, 2, 3].includes(+o.days) ? +o.days : 1, add = {};
+    for (const x of ['sprint', 'practicum', 'camp']) { const v = o.add && o.add[x]; if (v === 'demo' || v === 'full') add[x] = v }
+    const sum = Math.max(0, Math.round(+o.sum || 0)), term = CPAY_TERMS[o.term] ? o.term : '6m'; if (sum > 1e6) return json(req, { ok: false, err: 'Сумма — до 1 000 000 ₽' }, 400);
+    const cfg = { days, add, sum: Object.values(add).includes('full') ? sum : 0, term }, key = JSON.stringify(cfg), mgr = bStr(o.mgr, 40) || null;
+    let ex = await env.DB.prepare('SELECT code FROM demo_link WHERE cfg=? AND COALESCE(mgr,\'\')=? AND off=0').bind(key, mgr || '').first();
+    if (!ex) { const code = [...crypto.getRandomValues(new Uint8Array(6))].map(b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join(''); await env.DB.prepare('INSERT INTO demo_link (code, cfg, mgr, at) VALUES (?,?,?,?)').bind(code, key, mgr, new Date().toISOString()).run(); ex = { code } }
+    return json(req, { ok: true, code: ex.code, link: 'https://pay.oduvanovschool.pro/demo/?c=' + ex.code }) }
+  if (path === '/demo/list') { const C = await qAll(env.DB.prepare('SELECT id, code, email, name, phone, days, items, until, at, pay_link FROM demo_claim ORDER BY id DESC LIMIT 60')); const Ls = await qAll(env.DB.prepare('SELECT code, cfg, mgr, n, at FROM demo_link WHERE off=0 ORDER BY at DESC LIMIT 30'));
+    return json(req, { ok: true, claims: C.map(x => Object.assign(x, { items: JSON.parse(x.items || '[]') })), links: Ls.map(x => Object.assign(x, { cfg: JSON.parse(x.cfg || '{}'), link: 'https://pay.oduvanovschool.pro/demo/?c=' + x.code })) }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
 /* cron: оплата (в т. ч. частичная) по заказу → группы и срок; срок вышел → админам, что снять */
 async function cpayJob(env, B) { const out = { granted: 0, expired: 0 }; let L = []; try { L = await qAll(env.DB.prepare("SELECT * FROM cpay WHERE st IN ('new','granted') ORDER BY id DESC LIMIT 200")) } catch (e) { return { skip: 'no table' } }
