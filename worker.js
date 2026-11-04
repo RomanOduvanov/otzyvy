@@ -3513,9 +3513,11 @@ async function spkAdmin(env, code) { const k = await kvGet(env, 'speak_key'); if
   const key = await crypto.subtle.importKey('jwk', k.priv, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']), t = Math.floor(Date.now() / 1000);
   const h = jwS(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: k.kid })), p = jwS(JSON.stringify({ aud: 'speak', room_id: code, role: 'admin', iat: t, nbf: t - 60, exp: t + 12 * 3600 }));
   const sg = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(h + '.' + p)); return 'https://speak.kinescope.io/' + code + '?token=' + h + '.' + p + '.' + jwB(sg) }
+async function roomFolder(env) { const f = await kvGet(env, 'room_folder'); if (f) return String(f); const pj = await kinFolder(env); if (!pj) return null;
+  const r = await kinCall(env, 'POST', '/v1/projects/' + pj + '/folders', { name: 'Комнаты кураторов (записи)' }); const id = r.ok && r.data && r.data.id; if (id) { await kvPut(env, 'room_folder', id); return id } return pj }
 async function efRoom(env, e, force) { if (!env.KINESCOPE_KEY) return null; const kk = 'room:' + e.id, kv = await kvGet(env, kk); if (!force && kv && kv.code) return kv;
   const name = ('OduvanovSchool · ' + ((CURATORS.find(c => c.id === e.host_cid) || {}).name || 'Роман') + ' · ' + String(e.title || '')).slice(0, 95);
-  const r = await fetch(KIN_API + '/v1/speak/rooms', { method: 'POST', headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type: 'permanent_meeting', owner_id: await spkOwner(env), autorecording: true, waiting_room: false, wait_for_host: false }) });
+  const r = await fetch(KIN_API + '/v1/speak/rooms', { method: 'POST', headers: { Authorization: 'Bearer ' + env.KINESCOPE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type: 'permanent_meeting', owner_id: await spkOwner(env), autorecording: true, waiting_room: false, wait_for_host: false, record_folder_id: await roomFolder(env).catch(() => null) || undefined }) });
   const t = await r.text(); let j = null; try { j = JSON.parse(t) } catch (x) {} const d = j && (j.data || j);
   if (!r.ok || !d || !d.code) { await logIt(env, 'room-err', 0, e.id + ' ' + r.status + ' ' + t.slice(0, 200)); return { err: 'Kinescope ' + r.status } }
   const o = { id: d.id, code: d.code, link: d.link || 'https://speak.kinescope.io/' + d.code, name, at: msNow(), rec: d.autorecording !== false }; await kvPut(env, kk, o); return o }
@@ -3523,11 +3525,11 @@ async function efRoomLinks(env, e, W) { const cfg = efJ(e.cfg, {}); if (!cfg.roo
   const own = efOwn(W, e); return { link: R.link, code: R.code, host: own ? (await spkAdmin(env, R.code).catch(() => null)) || R.link : null, admin: own ? !!(await kvGet(env, 'speak_key') || {}).up : null } }
 /* запись комнаты: Speak кладёт видео встречи в каталог Kinescope; ищем новое видео за время эфира с именем комнаты (или единственное новое не из трансляций) */
 async function roomRecFind(env, e, now) { const R = await kvGet(env, 'room:' + e.id); if (!R || !R.code) return 0;
-  const r = await kinCall(env, 'GET', '/v1/videos?order=created_at.desc&per_page=40'); if (!r.ok) return 0; const L = Array.isArray(r.data) ? r.data : [];
+  const r = await kinCall(env, 'GET', '/v1/videos?order=created_at.desc&per_page=50'); if (!r.ok) return 0; const L = Array.isArray(r.data) ? r.data : [];
   const t0 = (e.at_live || e.start || 0) - 20 * 6e4, t1 = (e.at_end || now) + 6 * 36e5, used = (await kvGet(env, 'room_rec_used')) || {};
-  const C = L.map(v => ({ id: v.id, t: String(v.title || ''), at: Date.parse(v.created_at || '') || 0, st: String(v.status || ''), dur: +v.duration || 0 })).filter(v => v.at >= t0 && v.at <= t1 && !used[v.id] && !/^OduvanovSchool · эфиры/.test(v.t));
-  const nm = String(R.name || ''), byName = C.filter(v => v.t && (v.t.includes(R.code) || (nm && (v.t.includes(nm) || nm.includes(v.t)))));
-  const v = (byName.length ? byName : (C.length === 1 ? C : [])).sort((a, b) => b.dur - a.dur)[0];
+  const RF = await kvGet(env, 'room_folder'), C = L.map(v => ({ id: v.id, t: String(v.title || ''), at: Date.parse(v.created_at || '') || 0, st: String(v.status || ''), dur: +v.duration || 0, f: v.folder_id || v.parent_id || null })).filter(v => v.at >= t0 && v.at <= t1 && !used[v.id] && !/^OduvanovSchool · эфиры/.test(v.t));
+  const nm = String(R.name || ''), byName = C.filter(v => v.t && (v.t.includes(R.code) || (nm && (v.t.includes(nm) || nm.includes(v.t))))), inF = RF ? C.filter(v => v.f === RF) : [];
+  const v = (byName.length ? byName : inF.length === 1 ? inF : (C.length === 1 ? C : [])).sort((a, b) => b.dur - a.dur)[0];
   if (!v) { if (C.length > 1) await logIt(env, 'room-rec-many', 0, e.id + ' ' + C.map(x => x.id + ':' + x.t.slice(0, 40)).join(' | ').slice(0, 400)); return 0 }
   if (!/done|ready|processed/.test(v.st)) return 0; const rv = efVideo({ id: String(v.id), provider: 'kinescope', dur: v.dur }); if (!rv) return 0;
   used[v.id] = e.id; await kvPut(env, 'room_rec_used', used); await env.DB.prepare('UPDATE efir SET rec=?, upd=? WHERE id=?').bind(JSON.stringify(rv), now, e.id).run(); await logIt(env, 'efir-rec-room', 0, e.id + ' ' + v.id + ' ' + v.t.slice(0, 60)); return 1 }
