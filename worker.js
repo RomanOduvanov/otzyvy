@@ -73,6 +73,8 @@ export const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS demo_link (code TEXT PRIMARY KEY, cfg TEXT, mgr TEXT, at TEXT, n INTEGER DEFAULT 0, off INTEGER DEFAULT 0)',
   'CREATE TABLE IF NOT EXISTS demo_claim (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, email TEXT, name TEXT, phone TEXT, uid INTEGER, days INTEGER, items TEXT, until TEXT, at TEXT, ip TEXT, cpay_id INTEGER, pay_link TEXT, st TEXT)',
   'CREATE INDEX IF NOT EXISTS demo_claim_email ON demo_claim (email)',
+  /* 05.11 баллы рейтинга → бонусные рубли GetCourse (рейтинг не меняется, бонусный счёт школы = баллы − переведённое) */
+  'CREATE TABLE IF NOT EXISTS bonus_conv (id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER, email TEXT, amount INTEGER, pts INTEGER, at TEXT, st TEXT, info TEXT)',
   'CREATE TABLE IF NOT EXISTS odeal (id INTEGER PRIMARY KEY, day TEXT, eh TEXT, cost REAL, title TEXT)',
   /* кураторы в личке Telegram (Telegram Business): только время сообщений, без текстов */
   'CREATE TABLE IF NOT EXISTS tg_user (chat TEXT PRIMARY KEY, username TEXT, name TEXT, at TEXT)',
@@ -996,6 +998,25 @@ export default {
         let cpay = []; try { const em = await env.DB.prepare('SELECT email FROM gc_name WHERE uid=?').bind(uid).first(); if (em && em.email) cpay = (await qAll(env.DB.prepare("SELECT items, until, st FROM cpay WHERE email=? AND st IN ('granted','expired') ORDER BY id DESC LIMIT 10").bind(em.email))).map(c => ({ title: 'Индивидуальный доступ: ' + JSON.parse(c.items || '[]').map(id => (CPAY_ITEMS.find(x => x.id === id) || {}).t || '').filter(Boolean).map(t => t.replace(/^Бонус: /, '')).join(', '), until: c.until, st: c.st })) } catch (e) {}
         const dm = await demoOf(env, uid); if (dm) need_cur = false;
         return json(req, { ok: true, auth: true, need_cur, cpay, demo: dm ? { until: dm.until, on: Date.parse(dm.until) > Date.now() ? 1 : 0 } : null, tg_ok: !!r.tg_chat, tg_link: 'https://t.me/' + BOT(env) + '?start=s_' + r.tg_token, cur: r.curator ? Object.assign(curPub(CURATORS.find(c => c.id === r.curator)) || {}, { tg: await curTg(env, r.curator), hours: await curHours(env, r.curator) }) : null, curators: CURATORS.map(curPub) }) }
+      /* 05.11 (Роман): «Мои покупки» → «Перевести в бонусные рубли». Бонусный счёт школы = баллы рейтинга − уже переведённое (рейтинг не трогаем).
+         Сумма раскладывается на группы «Бонусы из рейтинга +1/+2/…/+8192» и группу «…: к зачислению»; процесс GetCourse 2635486 начисляет бонусные рубли и снимает группы. */
+      if (path === '/bonus') { let o = {}; if (req.method === 'POST') { try { o = JSON.parse(await req.text() || '{}') } catch (e) {} } await ensure(env);
+        const w = await who(env, o.t || u.searchParams.get('t'), 'a'); if (!w.uid) return json(req, { ok: false, err: 'Войди на платформу заново', st: 401 }, 401); const uid = w.uid;
+        let pts = 0; try { const D = await loadData(env); const r = (D.rows || []).find(x => x.uid != null && +x.uid === +uid); pts = r ? r.pts | 0 : 0 } catch (e) {}
+        const used = ((await env.DB.prepare("SELECT COALESCE(SUM(amount),0) s FROM bonus_conv WHERE uid=? AND st!='fail'").bind(uid).first()) || {}).s | 0;
+        const last = await env.DB.prepare("SELECT amount, at FROM bonus_conv WHERE uid=? AND st!='fail' ORDER BY id DESC LIMIT 1").bind(uid).first(), bal = Math.max(0, pts - used);
+        if (req.method !== 'POST') return json(req, { ok: true, pts, used, bal, last: last || null });
+        if (await demoOf(env, uid)) return json(req, { ok: false, err: 'В демо-доступе баллы не переводятся' }, 403);
+        if (last && Date.now() - Date.parse(last.at) < 20 * 6e4) return json(req, { ok: false, err: 'Предыдущий перевод ещё зачисляется — подожди несколько минут' }, 429);
+        const amt = Math.min(bal, 16383); if (amt < 1) return json(req, { ok: false, err: 'На бонусном счёте пока нет баллов' }, 400);
+        const em = await env.DB.prepare('SELECT email FROM gc_name WHERE uid=?').bind(uid).first(); if (!em || !em.email) return json(req, { ok: false, err: 'Не нашли твою почту — напиши в службу заботы, переведём вручную' }, 400);
+        const G = ['Бонусы из рейтинга: к зачислению']; for (let b = 1; b <= 8192; b *= 2) if (amt & b) G.push('Бонусы из рейтинга +' + b);
+        const ins = await env.DB.prepare("INSERT INTO bonus_conv (uid, email, amount, pts, at, st) VALUES (?,?,?,?,?,'new') RETURNING id").bind(uid, em.email, amt, pts, new Date().toISOString()).first();
+        const j = await gcImport(env, 'users', { user: { email: em.email, group_name: G }, system: { refresh_if_exists: 1 } }).catch(e => ({ error_message: e.message })); const R = (j && j.result) || {};
+        if (!(j && (j.success === true || j.success === 'true')) || R.error) { await env.DB.prepare("UPDATE bonus_conv SET st='fail', info=? WHERE id=?").bind(JSON.stringify(j).slice(0, 300), ins.id).run(); return json(req, { ok: false, err: 'GetCourse не ответил — попробуй ещё раз через минуту' }, 502) }
+        await env.DB.prepare("UPDATE bonus_conv SET st='sent' WHERE id=?").bind(ins.id).run(); await logIt(env, 'bonus-conv', uid, amt + ' ' + G.length);
+        await tgAdmins(env, '💎 Баллы → бонусные рубли: ' + th(em.email) + ' — ' + amt.toLocaleString('ru-RU') + ' ₽ (баллов в рейтинге ' + pts + ')');
+        return json(req, { ok: true, amount: amt, bal: Math.max(0, pts - used - amt), pts }) }
       if (path === '/cur' && req.method === 'POST') { let o = {}; try { o = JSON.parse(await req.text() || '{}') } catch (e) {}
         const w = await who(env, o.t, 'a'); if (!w.uid && !w.bad) w.uid = await softUid(env, w, +o.u); if (!w.uid || (o.u && +o.u !== w.uid)) return deny(req);
         const uid = w.uid, c = CURATORS.find(x => x.id === o.c); if (!c) return json(req, { ok: false }, 400);
