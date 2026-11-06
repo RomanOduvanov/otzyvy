@@ -3369,7 +3369,7 @@ function efPub(e, now, x) { x = x || {}; const cfg = efJ(e.cfg, {}), S = efState
   const st = S.sess || e.start || 0, lead = cfg.lead && cfg.lead.on !== 0 && cfg.lead.title ? { title: cfg.lead.title, sub: cfg.lead.sub || '', btn: cfg.lead.btn || 'Оставить заявку', timer: +cfg.lead.timer || 0, url: cfg.lead.url || null, min: cfg.lead.min != null ? +cfg.lead.min : null } : null;
   return { id: e.id, title: e.title, about: e.about || '', kind: e.kind, access: e.tariff || 'all', status: e.status, state: S.st, start: st, next: S.next || null, dur: e.dur || 60, host: efHost(e), cover: e.cover || null,
     video: x.full ? v : (v ? { provider: v.provider } : null), rec: x.full ? rv : (rv ? { provider: rv.provider } : null), chapters: efJ(e.chapters, []), at_live: e.at_live || null, at_end: e.at_end || null, kin: cfg.kin ? 1 : 0, room: cfg.room ? 1 : 0, rec_dur: rv && rv.dur ? rv.dur : null, rec_days: cfg.rec_days || 0, rec_until: cfg.rec_days && e.kind !== 'auto' && (e.at_end || e.start) ? (e.at_end || (e.start + (e.dur || 60) * 6e4)) + cfg.rec_days * 864e5 : null, rec_lost: !rv && (cfg.kin || cfg.room) && (cfg.norec || (e.at_end && now - e.at_end > 12 * 36e5)) ? 1 : 0,
-    stage: !!cfg.stage, label: e.kind === 'auto' && cfg.label ? 'Запись эфира от ' + human(dayStr(new Date(cfg.orig_at || e.created || now))) : null, lead: x.full ? lead : !!lead, work: cfg.work !== 0, room_open: S.st === 'live' || (S.st === 'soon' && st - now < 15 * 6e4) } }
+    stage: !!cfg.stage, label: e.kind === 'auto' && cfg.label ? 'Запись эфира от ' + human(dayStr(new Date(cfg.orig_at || e.created || now))) : null, lead: x.full ? lead : !!lead, work: cfg.work !== 0, qs: cfg.qs !== 0, room_open: S.st === 'live' || (S.st === 'soon' && st - now < 15 * 6e4) } }
 /* ---------- 06.11 (Роман: «напоминания об эфире не приходят»): раньше бот напоминал только тем, кто нажал «Напомнить».
    Теперь при планировании эфира создаются 3 рассылки в пульте (bc_plan, видно во «Рассылках»): за сутки, за час и на старте — всем, кому эфир доступен
    (ученики куратора / весь поток / Amazon / выбранные). Получатели считаются в момент отправки. Ведущий нажал «Начать» раньше — стартовая уходит сразу. ---------- */
@@ -3492,12 +3492,12 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     const H = hd.results || [], mine = H.findIndex(h => h.k === W.k && h.st === 'wait');
     out.hand = H.find(h => h.k === W.k) ? { st: H.find(h => h.k === W.k).st, pos: mine >= 0 ? H.filter(h => h.st === 'wait').findIndex(h => h.k === W.k) + 1 : 0 } : null;
     if (out.hand && out.hand.st === 'stage') out.hand.url = await efStageUrl(env, e, cfg);
-    out.stage = H.filter(h => h.st === 'stage').map(h => h.name); out.hands = H.filter(h => h.st === 'wait').length; out.stage_on = !!cfg.stage;
+    out.stage = H.filter(h => h.st === 'stage').map(h => h.name); out.hands = H.filter(h => h.st === 'wait').length; out.stage_on = !!cfg.stage; out.opt = { qs: cfg.qs === 0 ? 0 : 1, work: cfg.work === 0 ? 0 : 1 };
     out.viewers = ((vr.results || [])[0] || {}).n || 0; return json(req, out) }
   if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
   const S = efState(e, now, reg), sessOf = () => e.kind === 'auto' ? S.sess : 0, secOf = async () => { const sn = await env.DB.prepare('SELECT t0 FROM efir_seen WHERE efir_id=? AND k=? AND sess=?').bind(e.id, W.k, sessOf()).first(); return Math.max(0, Math.floor((now - ((sn && sn.t0) || S.sess || e.at_live || e.start || now)) / 1000)) };
   /* сообщение в чат или вопрос ведущему. В автовебинаре сообщение видят только зритель и модераторы */
-  if (path === '/efir/msg' && req.method === 'POST') { const text = bStr(o.text, 1000), kind = o.kind === 'q' ? 'q' : 'msg'; if (!text) return json(req, { ok: false, err: 'Пустое сообщение' }, 400);
+  if (path === '/efir/msg' && req.method === 'POST') { const text = bStr(o.text, 1000), kind = o.kind === 'q' ? 'q' : 'msg'; if (!text) return json(req, { ok: false, err: 'Пустое сообщение' }, 400); if (kind === 'q' && efJ(e.cfg, {}).qs === 0 && !W.staff) return json(req, { ok: false, err: 'Ведущий сейчас не принимает вопросы — напиши в чат' }, 400);
     if (S.st !== 'live' && kind === 'msg') return json(req, { ok: false, err: 'Чат откроется, когда начнётся эфир' }, 400);
     const fl = await env.DB.prepare('SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND k=? AND at>?').bind(e.id, W.k, now - 6e4).first(); if (fl && fl.n >= 8) return json(req, { ok: false, err: 'Слишком часто — подожди минуту' }, 429);
     const stop = await efStop(env), vis = e.kind === 'auto' ? 'mod' : (!W.staff && /https?:\/\/|t\.me\//i.test(text)) || (stop.length && efSpam(text, stop) && !W.staff) ? 'mod' : 'all';
@@ -3767,6 +3767,9 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     try { await efPlanSync(env, await efGet(env, nid)) } catch (x) { await logIt(env, 'efir-plan-err', 0, nid + ' ' + String(x && x.message || x).slice(0, 200)) }
     await logIt(env, 'efir-save', W.uid, nid + ' ' + kind + ' ' + (W.cid || 'admin')); return json(req, Object.assign({ ok: true, id: nid }, kin_warn ? { kin_warn } : {})) }
   const e = await efGet(env, id); if (!e) return json(req, { ok: false, err: 'Эфир не найден' }, 404); if (!efOwn(W, e)) return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403);
+  /* 06.11 (Роман): во время эфира ведущий включает/выключает у зрителей вкладки «Вопросы» и «Моя работа» */
+  if (path === '/efir/host/opt' && req.method === 'POST') { const k = o.k === 'qs' ? 'qs' : o.k === 'work' ? 'work' : null; if (!k) return json(req, { ok: false, err: 'Неизвестная настройка' }, 400);
+    const cf = efJ(e.cfg, {}); cf[k] = o.v ? 1 : 0; await env.DB.prepare('UPDATE efir SET cfg=?, upd=? WHERE id=?').bind(JSON.stringify(cf), now, e.id).run(); await logIt(env, 'efir-opt', W.uid, e.id + ' ' + k + '=' + cf[k]); return json(req, { ok: true, k, v: cf[k] }) }
   /* 04.11 (Роман): «Рассылка участникам» — кому доступен эфир (пульт → Рассылки, «Выбранные»), ссылка на эфир подставляется в кнопку */
   if (path === '/efir/host/roomlink') { const L = await efRoomLinks(env, e, W);
     /* ведущий вошёл в комнату — эфир у учеников начинается (с 30 минут до старта), как старт OBS у трансляции */
