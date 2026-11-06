@@ -526,7 +526,8 @@
     s.src = (SRC0 ? SRC0.replace(/[^\/]*$/, '') : '') + 'efir-host.js' + (v ? '?v=' + v : '');
     /* 07.11 (откат Э0): ответ ровно один раз — загрузился, ошибка или 10 с без ответа (зависший запрос не оставляет экран пустым) */
     var fin = function (ok) { if (R._hq !== q) return; R._hq = null; clearTimeout(tm); q.forEach(function (f) { try { f(ok) } catch (e) { try { console.error(e) } catch (x) {} } }) }, tm = FXT.st.call(window, function () { fin(false) }, 10000);
-    s.onload = function () { fin(!!R.host) }; s.onerror = function () { fin(false) };
+    /* 07.11 Э1: догрузился позже 10 с — страница сама откроет пульт (efir.html слушает efhost) */
+    s.onload = function () { var late = R._hq !== q; fin(!!R.host); if (late && R.host) try { window.dispatchEvent(new Event('efhost')) } catch (e) {} }; s.onerror = function () { fin(false) };
     document.head.appendChild(s) };
   /* общие помощники для efir-host.js (отдельный файл не видит замыкание этого модуля) */
   R._u = { css: css, css2: css2, api: api, NB: NB, esc: esc, mk: mk, MG: MG, MS: MS, WS: WS, WD: WD, toast: toast, modal: modal, nb: nb, dmy: dmy, host: host, plr: plr, hms: hms,

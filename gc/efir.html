@@ -27,7 +27,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <div id="ef"></div>
 </div>
 <div id="efn"></div>
-<script defer src="efir.js?v=35"></script>
+<script defer src="efir.js?v=36"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -45,7 +45,12 @@ var FXN=qs('fx');if(!/^[A-Za-z0-9_.-]{1,40}$/.test(FXN)||!(/^(localhost|127\.0\.
    Теперь: шапка и скелет рисуются этим скриптом сразу (efir.js — defer, шрифт не блокирует), запрос входа к кабинету уходит сразу, параллельно с загрузкой efir.js;
    если на устройстве уже есть сессия того же пользователя — список открывается с ней, не дожидаясь кабинета. */
 var EFU='';try{EFU=localStorage.getItem('efU')||''}catch(e){}
-if(!GR&&!FXN){$('bar').classList.remove('hid');if(!/^#(e\d+(\/days)?|host([\/?].*)?)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
+/* 07.11 Э1 (полировка Э0): старый пульт #host ждал efir-host.js (150 КБ) с пустым фреймом 10–15 с. Теперь сразу — скелет пульта (вкладки, шапка, карточки);
+   команде (роль запомнена на устройстве) efir-host.js начинает грузиться вместе с efir.js: на #host — сразу, на списке — с низким приоритетом. Ученикам — ничего лишнего */
+function hostSk(){var d=(($('ef').clientWidth)||innerWidth)>=860;return '<span class="ef-sk" style="height:48px;width:'+(d?'728px':'100%')+';max-width:100%;border-radius:16px"></span><div class="ef-row ef-sp" style="align-items:flex-end;flex-wrap:wrap;gap:12px;min-height:56px"><div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1"><span class="ef-sk" style="height:24px;width:120px;border-radius:8px"></span><span class="ef-sk" style="height:16px;width:'+(d?'360px':'70%')+';border-radius:8px"></span></div><span class="ef-sk" style="height:40px;width:150px;border-radius:12px"></span></div><span class="ef-sk" style="height:200px"></span><span class="ef-sk" style="height:88px"></span><span class="ef-sk" style="height:88px"></span>'}
+var STAFF0=ROLE==='admin'||ROLE==='curator'||ROLE==='mod',HOST0=/^#host(\/old)?$/.test(location.hash||'');
+if(!GR&&!FXN&&STAFF0&&EFU)try{var sv=(document.querySelector('script[src*="efir.js?v="]')||{}).src||'',pv=(sv.match(/[?&]v=(\d+)/)||[])[1],pl=document.createElement('link');pl.rel='preload';pl.as='script';pl.href='efir-host.js'+(pv?'?v='+pv:'');if(!/^#host/.test(location.hash||''))pl.setAttribute('fetchpriority','low');document.head.appendChild(pl)}catch(e){}
+if(!GR&&!FXN){$('bar').classList.remove('hid');if(HOST0){$('ef').className='efx';$('ef').innerHTML=hostSk()}else if(!/^#(e\d+(\/days)?|host([\/?].*)?)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
   ef0.innerHTML=(d0?'<div class="ef-row ef-sp" style="align-items:flex-end;flex-wrap:wrap;gap:12px;min-height:66px"><div><h2>Эфиры</h2><div class="ef-mut" style="font-size:15px">Разборы, вопрос-ответ и&nbsp;встречи потока</div></div></div>':'')+'<span class="ef-sk" style="height:220px"></span><span class="ef-sk" style="height:70px"></span><span class="ef-sk" style="height:70px"></span>'}}
 /* раунд 3: кабинет держит поверх фрейма свою заставку, пока здесь пусто — шапка нарисована, можно убирать (комната #e — свой скелет в efir.js) */
 if(EMB&&!FXN&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage({efPaint:1},'*')}catch(e){}
@@ -87,11 +92,13 @@ function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff
  $('login').classList.add('hid');
   el.className='';el.innerHTML='';if(CUR&&CUR.stop)CUR.stop();CUR=null;
   $('bar').classList.toggle('hid',!!GR&&!m);$('bBack').classList.toggle('hid',!(m||h==='#host')||!!GR);$('bHost').classList.toggle('hid',!staff||h==='#host');
-  if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';if(ECOEFIR.host){CUR=ECOEFIR.host(el,O);return}if(typeof ECOEFIR.loadHost!=='function'){el.innerHTML='<div class="ef-mut" style="padding:20px 0">Пульт не загрузился. Обнови страницу.</div>';return}var rq=RQ=(RQ||0)+1;ECOEFIR.loadHost(function(ok){if(rq!==RQ||(location.hash!=='#host'&&location.hash!=='#host/old'))return;if(!ok){el.innerHTML='<div class="ef-mut" style="padding:20px 0">Пульт не загрузился. Обнови страницу.</div>';return}CUR=ECOEFIR.host(el,O)});return}
+  if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';if(ECOEFIR.host){CUR=ECOEFIR.host(el,O);return}if(typeof ECOEFIR.loadHost!=='function'){el.innerHTML='<div class="ef-mut" style="padding:20px 0">Пульт не загрузился. Обнови страницу.</div>';return}el.className='efx';el.innerHTML=hostSk();var rq=RQ=(RQ||0)+1;ECOEFIR.loadHost(function(ok){if(rq!==RQ||(location.hash!=='#host'&&location.hash!=='#host/old'))return;el.className='';if(!ok){el.innerHTML='<div class="ef-mut" style="padding:20px 0">Пульт ещё не загрузился. <a href="#" style="color:#d77fff" onclick="location.reload();return false">Обновить страницу</a></div>';return}el.innerHTML='';CUR=ECOEFIR.host(el,O)});return}
   if(m){O.back=false;CUR=ECOEFIR.room(el,+m[1],O);return}
   document.title='Эфиры · OduvanovSchool';CUR=ECOEFIR.list(el,O)}
 $('bBack').onclick=function(){nav('#')};$('bHost').onclick=function(){nav('#host')};
 addEventListener('hashchange',route);
+/* efir-host.js догрузился позже 10 с (медленная сеть): пульт открывается сам, без «Обновить» */
+addEventListener('efhost',function(){var h=location.hash||'';if(!CUR&&!N2&&(h==='#host'||h==='#host/old'||isNew(h)))route()});
 /* гость открытого эфира (ссылка из бота): сразу комната; без метки и без входа — лендинг с «Напомнить в Telegram» */
 /* 30.10 QA №12: «Пульт эфиров» — одна кнопка справа вверху. 31.10 Н6: вход у кабинета запрашиваем сразу (P), efir.js догружается параллельно (defer) */
 var P=GR||FXN?null:viaSite(),RT=0;
