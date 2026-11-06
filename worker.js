@@ -784,6 +784,8 @@ function dbWrap(env, ctx) { const db = env.DB; if (!db || db._w) return env;
 export default {
   async fetch(req, env, ctx) {
     env = dbWrap(env, ctx);
+    /* 06.11: запланированные рассылки (в т. ч. напоминания об эфирах) — не ждать крона: любой запрос к серверу раз в минуту проверяет очередь */
+    if (Date.now() - BCT > 60e3 && req.method !== 'OPTIONS') { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env).catch(() => null)) }
     const u = new URL(req.url), path = u.pathname.replace(/\/+$/, '') || '/';
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
@@ -3376,7 +3378,7 @@ async function efAudUids(env, e) { const cf = efJ(e.cfg, {}), acc = e.tariff || 
 async function efPlanSync(env, e) { if (!e || e.kind === 'auto' || e.kind === 'open') return null; const cf = efJ(e.cfg, {}), old = cf.bcp || {}, now = Date.now();
   const ids = Object.values(old).filter(Boolean); if (ids.length) await env.DB.prepare("UPDATE bc_plan SET st='cancel' WHERE st='plan' AND id IN (" + ids.map(() => '?').join(',') + ')').bind(...ids).run();
   const bcp = {}; if (e.del || e.status !== 'plan' || !(e.start > now)) { cf.bcp = bcp; await env.DB.prepare('UPDATE efir SET cfg=? WHERE id=?').bind(JSON.stringify(cf), e.id).run(); return bcp }
-  const hc = CURATORS.find(c => c.id === e.host_cid), wh = hc ? 'с куратором ' + hc.name : 'с Романом', cc = (e.tariff === 'cur' || e.tariff === 'sel') && hc ? hc.id : 'all', role = cc === 'all' ? 'admin' : 'curator';
+  const hc = CURATORS.find(c => c.id === e.host_cid), wh = hc ? 'с куратором ' + hc.name + 'ом' : 'с Романом', cc = (e.tariff === 'cur' || e.tariff === 'sel') && hc ? hc.id : 'all', role = cc === 'all' ? 'admin' : 'curator';
   const link = SITE + '/teach/control/stream?fs=efir&e=' + e.id, T = String(e.title || 'Эфир'), hm = efHM(e.start) + NB + 'МСК';
   const P = [['d', e.start - 864e5, '📅 Привет, {имя}! Завтра в ' + hm + ' — эфир ' + wh + ' «' + T + '». Поставь напоминание, чтобы не пропустить.', 'Страница эфира'],
     ['h', e.start - 36e5, '⏰ Через час, в ' + hm + ', — эфир ' + wh + ' «' + T + '». Поставь будильник и обязательно приходи — мы тебя ждём!' + (cf.work !== 0 ? ' Можно заранее прислать работу на разбор на странице эфира.' : ''), 'Страница эфира'],
