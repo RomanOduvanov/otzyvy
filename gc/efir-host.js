@@ -177,7 +177,7 @@
       B.innerHTML = '<div class="ef-row ef-sp" style="flex-wrap:wrap"><div><h3>Эфиры</h3><span class="ef-mut">' + (adm() ? 'Все эфиры школы: создать, вести, собрать автовебинар.' : 'Твои эфиры: ученики потока или только твои ученики. Продаж в' + NB + 'эфирах кураторов нет.') + '</span></div><button class="ef-btn sm" data-h="new">+ Новый эфир</button></div>'
         + '<div data-kin style="display:flex;flex-direction:column;gap:14px">' + (H.j.kin && !(H.kin && H.kin.t) ? '<span class="ef-sk" style="height:200px"></span>' : kCard() + kHostsCard()) + '</div>'
         + (up.length ? up.sort(function (a, b) { return a.start - b.start }).map(row).join('') : '<div class="ef-c ef-emp" style="padding:20px"><b style="font-size:16px">Запланированных эфиров нет</b><span class="ef-mut">Создай эфир&nbsp;— ученики увидят его в' + NB + 'приложении и' + NB + 'на' + NB + 'сайте, бот напомнит.</span></div>')
-        + (past.length ? '<span class="ef-k2">Прошедшие</span>' + past.slice(0, 30).map(row).join('') : ''); kLoad(kDraw) }
+        + (past.length ? '<span class="ef-k2">Прошедшие</span>' + past.slice(0, 30).map(row).join('') : '') + (adm() ? ui2Line('old') : ''); kLoad(kDraw); if (adm()) ui2Sync(O, B) }
     /* 9.7 слева: новый эфир / изменить */
     function dEdit(B) { if (adm() && !H.evs) { H.evs = { events: [] }; evLoad(function () { if (H.tab === 'edit') draw() }) } var e = H.edit || {}, c = e.cfg || {}, L = c.lead || {}, sd = c.sched || {}, a = adm(), kind = e.kind || 'live', acc = e.access || (a ? 'all' : 'cur'), st = e.start ? mk(e.start) : mk(Date.now() + 864e5);
       var fmt = c.room ? 'room' : e.id ? 'live' : a ? 'live' : 'room', day = e.start ? st.day : mk(Date.now() + 864e5).day, tm = e.start ? st.t : '19:00', ch = (e.chapters || []).map(function (x) { return hms(x.t) + ' ' + x.title }).join('\n'), v = e.video || {}, rv = e.rec || {};
@@ -362,6 +362,7 @@
       if (f && b.hasAttribute('data-d')) { var d = +b.getAttribute('data-d'), i = f._st.days.indexOf(d); if (i >= 0) f._st.days.splice(i, 1); else f._st.days.push(d); b.classList.toggle('v', i < 0); return }
       var h = b.getAttribute('data-h'), id = +b.getAttribute('data-id') || 0;
       if (/^k(re|copy|show|create|mcreate|key|force)$/.test(h)) { kAct(b); return }
+      if (h === 'ui2') { ui2Set(O, b); return }
       if (h === 'kmore' && f) { f.classList.remove('kmin'); b.remove(); return }
       if (h === 'kman' && f) { f.classList.add('kman'); kPl(f); var vi = f.elements.video; if (vi) vi.focus(); return }
       if (h === 'kauto' && f) { f.classList.remove('kman'); if (f.elements.video) f.elements.video.value = ''; if (f.elements.rec) f.elements.rec.value = ''; kPl(f); return }
@@ -403,6 +404,14 @@
     function change(ev) { var t = ev.target; if (t.hasAttribute && t.hasAttribute('data-evimg')) { evImgUp(t); return } if (t.getAttribute && t.getAttribute('data-sf') === 'on' && t.closest('[data-si2]')) { evSync(); draw(); return } if (t.name === 'host' && t.closest('[data-form]')) { kPl(t.closest('[data-form]')); return } if (t.hasAttribute('data-si')) scSet(t); else if (t.hasAttribute('data-ls')) api(O, '/efir/host/lead', { id: +t.getAttribute('data-e'), lid: +t.getAttribute('data-ls'), st: t.value }).then(function (r) { if (!r.ok) toast(O, r.err) }) }
     el.innerHTML = '<span class="ef-sk" style="height:300px"></span>'; load(); return { reload: load, stop: stop } };
 
+  /* 07.11 Э3: «Новый раздел эфиров (бета)» — админ включает и выключает флаг efir_ui2 только себе (POST /efir/host/ui2 {self:1, on}); после переключения страница перезагружается */
+  function ui2Line(kind) { return kind === 'old' ? '<div class="ef-row" data-ui2row style="flex-wrap:wrap;gap:10px;font-size:13px;color:rgba(255,255,255,.6)"><span>Новый раздел эфиров (бета) — только для тебя</span><button type="button" class="ef-btn2 sm" data-h="ui2" data-on="1">Включить</button></div>'
+      : '<div class="c0 xui2"><div class="sw xnb"><span class="col xg2"><span>Новый раздел эфиров (бета)</span><span class="dim">Включён только у тебя. Выключишь — вернётся старый пульт</span></span><button type="button" class="tg on" aria-pressed="true" aria-label="Новый раздел эфиров: включено" data-a="ui2off"></button></div></div>' }
+  function ui2Sync(O, B) { if (R.fx && R.fx.on()) return; api(O, '/efir/host/me').then(function (j) { var b = B.querySelector('[data-h="ui2"]'); if (!b || !j || !j.ok) return; b.setAttribute('data-on', j.ui2 ? '0' : '1'); b.textContent = j.ui2 ? 'Выключить' : 'Включить' }) }
+  function ui2Set(O, b, tf) { var on = b.getAttribute('data-on') !== '0'; b.disabled = true; tf = tf || function (t) { toast(O, t) };
+    api(O, '/efir/host/ui2', { self: 1, on: on ? 1 : 0 }).then(function (j) { if (!j || !j.ok) { b.disabled = false; tf((j && j.err) || 'Не получилось — попробуй ещё раз'); return }
+      try { localStorage.removeItem('efUi2') } catch (e) {} tf(on ? 'Новый раздел включён — открываю' : 'Новый раздел выключен — открываю старый пульт');
+      setTimeout(function () { try { if (!on && /^#(efir\/)?host\//.test(location.hash)) history.replaceState(history.state, '', location.pathname + location.search + (/^#efir/.test(location.hash) ? '#efir' : '#host')) } catch (e) {} location.reload() }, 700) }) }
   /* ================= 07.11 «Эфиры 2.0», этап Э0: новый раздел команды (за флагом efir_ui2, ТЗ §1, §8) =================
      ECOEFIR.host2(el, O) → { route(hash), stop() }. Корень — .efn (стили css2()), адрес хранит экран и вкладку: #host/<раздел>[/<вкладка>…][?фильтры].
      O: { api, role ('admin'|'curator'|'mod'), go(hash, replace) — сменить адрес (хозяин сам вызовет route), href(hash) — ссылка для <a> (pult.html: #efir/…), toast? }.
@@ -518,6 +527,12 @@
     ".efn .xgs>.dim{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.efn .c0.xnew{flex-direction:row;align-items:flex-end;gap:10px;flex-wrap:wrap}.efn .xnew>.lb{flex:1 1 220px}",
     ".efn .c.xwc{border-color:rgba(251,191,36,.4)}.efn .b1.xdis{opacity:.45;cursor:default}.efn .c0.xmv{flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap}",
     ".efn .xf300{flex:1 1 300px}.efn .ph.xcov{background-size:cover;background-position:center}.efn .lb .bad,.efn .xerr{color:#fca5a5;font-size:13px}",
+    /* шаг 6 (доски M6, M6b, M6c) */
+    ".efn .seg button.xsga{height:auto;padding:0;border-radius:0;background:transparent;color:inherit;font:400 16px 'Inter Tight',system-ui,sans-serif;display:inline-flex;align-items:center;line-height:normal}",
+    ".efn button.pill.xpb{border:0;margin:0;font-family:'Inter Tight',system-ui,sans-serif;font-weight:400;cursor:pointer}.efn .c0.xq10{gap:10px}.efn .c0.xq6{gap:6px}.efn .xdrag{cursor:grab;touch-action:none;user-select:none}.efn .c0.xdrop{box-shadow:inset 0 2px 0 #d77fff}",
+    ".efn .c0.xui2{margin-top:16px;max-width:640px}.efn .sw.xnb{border-bottom:0}.efn .row.xnw{flex-wrap:nowrap}.efn .xfn{flex:none}.efn .in.xw220{width:220px}.efn .row.xpvr{gap:16px;align-items:flex-start}.efn .c0.xpv{width:300px;flex:none;gap:10px;background:#141218;box-shadow:inset 0 0 0 1px rgba(215,127,255,.35)}",
+    ".efn .c0.xgok{flex-direction:row;gap:10px;align-items:center}.efn .xmap{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)}.efn .xgfr{border-radius:12px;background:#f1ecf8;height:171px}.efn iframe.xgfr.xgif{border:0;width:100%;height:420px;background:#fff}",
+    ".efn .xpop.xprods{max-height:320px;overflow:auto;gap:6px}.efn .xprn{justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;min-width:0}.efn label.c0.xrad.off,.efn label.row.off{cursor:default}",
     /* меню «···», подтверждение, календарь (§7.6) */
     ".efn .xpop{position:absolute;z-index:70;border:1px solid rgba(255,255,255,.08)}.efn .xpop.xmenu{min-width:220px;gap:6px}.efn .xmenu>.sm{width:100%;justify-content:flex-start}",
     ".efn .c.xconf{flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px}.efn .xconf>span{flex:1 1 200px;font-size:14px}",
@@ -681,7 +696,7 @@
       if (!E) put(frm('', '<div class="col ehd"><span class="eskl"></span></div><div class="row xwz"><div class="c xsk xw280"></div><section class="col xwzm">' + skel2() + skel2() + '</section></div>', 'ev'));
       Promise.all(need.map(function (n) { return api(O, n[1]) })).then(function (R2) { if (X.dead() || X.cur() !== 'ev' || X.P()[1] !== String(id)) return; var bad = R2.filter(function (r) { return !r || !r.ok })[0];
         if (bad && (!E || need[0][0] === 'j')) { put(frm('web', '<div class="col ehd"><h1 class="h1">Мероприятие</h1></div>' + errBox(bad.err, 'reload'), 'ev')); fin(); return }
-        if (!E || need[0][0] === 'j') { var j = R2[0]; E = S.E = { id: id, at: now(), ev: j.ev, days: j.days || [], hosts: j.hosts || [], now: j.now, privacy: j.privacy, src: E && E.src } }
+        if (!E || need[0][0] === 'j') { var j = R2[0]; if (!S.E || S.E.id !== id) { S.chg6 = 0; S.exec6 = null; S.gurl6 = null; S.gErr6 = ''; S.gWarn6 = []; S.pv6 = 0; S.pv6done = 0 } E = S.E = { id: id, at: now(), ev: j.ev, days: j.days || [], hosts: j.hosts || [], now: j.now, privacy: j.privacy, src: E && E.src } }
         need.forEach(function (n, i) { if (n[0] !== 'j' && R2[i] && R2[i].ok) E[n[0]] = R2[i] }); drawWiz(step, sub) }) }
     function savedTxt(E) { var e = E.ev, st = { draft: 'черновик', test: 'тестовый прогон', reg: 'идёт регистрация', done: 'прошёл' }[e.status] || 'черновик';
       if (S.svErr) return st + ' · <span class="bad">' + esc(S.svErr) + '</span>';
@@ -689,9 +704,9 @@
     function drawWiz(step, sub) { var E = S.E, e = E.ev, mar = e.type !== 'web', nav = mar ? 'mar' : 'web', title = !e.named || !e.title ? (mar ? 'Новый марафон' : 'Новый вебинар') : e.title;
       var right = step === '1' || (step === '2' && mar) ? '<div class="row"><button type="button" class="b3" data-a="viewer">Как увидит зритель</button></div>' : step === '3' ? '<button type="button" class="b3" data-a="selftest">Пройти регистрацию самому</button>' : '';
       var hd = '<div class="row sp xhd"><div class="col xg4"><a href="' + esc(hf(mar ? '#host/mar' : '#host/web')) + '" class="xback">' + (mar ? '← Марафоны' : '← Вебинары') + '</a><h1 class="h1" data-h1>' + esc(title) + '</h1><span class="dim" data-saved>' + savedTxt(E) + '</span></div>' + right + '</div>';
-      var body = step === '1' ? w1(E) : step === '2' ? (mar ? w2(E) : w2w(E)) : step === '3' ? w3(E) : step === '7' ? w7(E) : step === '8' ? w8(E) : wStub(E, step);
+      var body = step === '1' ? w1(E) : step === '2' ? (mar ? w2(E) : w2w(E)) : step === '3' ? w3(E) : step === '6' ? w6(E) : step === '7' ? w7(E) : step === '8' ? w8(E) : wStub(E, step);
       put(frm(nav, hd + '<div class="row xwz"><div data-steps>' + steps2(O, { id: e.id, cur: step, steps: e.steps, type: e.type, days: E.days.filter(function (d) { return !d.hide }).length, status: e.status, regs: e.regs }) + '</div><section class="col xwzm' + (step === '3' ? ' xw940' : '') + '">' + body + '</section></div>', 'ev'));
-      S.step = step; if (step === '3' && !FXON && !e.reg.saved) sv({ reg: regOf(E) }, 1); fin() }
+      S.step = step; if (step === '3' && !FXON && !e.reg.saved) sv({ reg: regOf(E) }, 1); if (step === '6') poll6(); fin() }
     function navRow(back, fwd) { return '<div class="row sp">' + (back ? '<a class="b3" href="' + esc(hf(back[0])) + '"' + (back[1] ? ' data-a="' + back[1] + '"' : '') + '>← Назад</a>' : '<span></span>') + (fwd ? '<a class="b1" href="' + esc(hf(fwd[0])) + '" data-a="fwd">' + fwd[1] + '</a>' : '<span></span>') + '</div>' }
     var EH = function (n) { return '#host/ev/' + S.E.id + '/' + n };
     function wStub(E, step) { var st = step === '6' ? 3 : step === 'stats' ? 6 : 4; return '<div class="c estub"><b class="h2">Экран появится в этапе ' + st + '</b><span class="mut">Раздел «Эфиры» переделывается по новому макету. Пока этим экраном можно пользоваться в старом пульте.</span><a class="b2" href="' + esc(hf('#host/old')) + '" data-a="old">Открыть старый пульт</a></div>' +
@@ -786,12 +801,198 @@
           '<div class="c0"><span class="dim">Основная ссылка</span><b>' + esc(short(main)) + '</b><button type="button" class="b2 sm xas" data-a="copy" data-u="' + esc(main) + '">Скопировать</button></div></div>' +
           '<div class="row xg6"><span class="dim">Все ссылки с метками — в шаге 3</span><a class="b3 sm" href="' + esc(hf(EH(3))) + '">Открыть ссылки</a></div></div>' + navRow([EH(7)], null) }
 
+    /* ===== шаг 6 — продажи и заявки (доски M6, M6b, M6c; ТЗ §2.1 sale, §5, §6.4 2.6–2.6в) ===== */
+    var KIND6 = { one: 'один вариант', many: 'несколько вариантов', text: 'текст', num: 'телефон/число' }, FQ6 = [['name', 'Имя'], ['phone', 'Телефон'], ['email', 'Почта'], ['tg', 'Telegram']];
+    var EXEC6 = /^https:\/\/script\.google\.com\/(?:a\/[A-Za-z0-9.-]{1,80}\/)?macros\/s\/[A-Za-z0-9_-]{20,120}\/exec$/;
+    /* sale с умолчаниями — как на сервере (ev3Sale) */
+    function sale6(E) { var e = E.ev, S = e.sale || {}; if (S._n) return S; var F = S.form || {}, G = F.gform || {}, fl = F.fields || {}, fq = function (v, d) { return v === 'req' || v === 'opt' || v === 'off' ? v : d };
+      S = e.sale = { _n: 1, mode: S.mode || null, offer_id: S.offer_id || null, order_st: S.order_st === 'work' ? 'work' : 'new', comment: typeof S.comment === 'string' ? S.comment : (e.type === 'web' ? 'Заявка с вебинара «{марафон}», на {минута}-й минуте' : 'Заявка с марафона «{марафон}», день {день}, на {минута}-й минуте'),
+        report: S.report === 0 ? 0 : 1, copy_sheet: S.copy_sheet ? 1 : 0, sheet: S.sheet || null,
+        form: { src: F.src === 'gform' ? 'gform' : 'own', fields: { name: fq(fl.name, 'req'), phone: fq(fl.phone, 'req'), email: fq(fl.email, 'opt'), tg: fq(fl.tg, 'off') }, questions: (F.questions || []).map(function (q) { return { id: q.id, t: q.t, kind: q.kind || 'one', opts: (q.opts || []).slice(), req: q.req === 0 ? 0 : 1 } }),
+          one_per_person: F.one_per_person === 0 ? 0 : 1, dup: F.dup === 0 ? 0 : 1, gform: { url: G.url || '', link: G.link || '', title: G.title || '', n: +G.n || 0, accepting: G.accepting === 0 ? 0 : 1, login: G.login ? 1 : 0, open: G.login ? 'tab' : (G.open === 'tab' ? 'tab' : 'inside'), questions: G.questions || [], map: G.map || {}, test_at: +G.test_at || 0, checked_at: +G.checked_at || 0 } } };
+      var p = e.prod || null; S.offer = { id: p && p.id || null, title: p ? p.title : '', price: p ? p.price : '', code: p && p.code || '' }; return S }
+    /* что уходит в автосохранение (sheet, токен, адрес формы — только через «Проверить») */
+    function saleEdit(S) { var f = S.form; return { mode: S.mode, order_st: S.order_st, comment: S.comment, report: S.report, copy_sheet: S.copy_sheet, form: { src: f.src, fields: f.fields, questions: f.questions, one_per_person: f.one_per_person, dup: f.dup, gform: { open: f.gform.open, map: f.gform.map } } } }
+    function svSale(withOffer, now0) { var S = sale6(S0E()), o = saleEdit(S); if (withOffer || (PQ && PQ.sale && PQ.sale.offer)) o.offer = { id: S.offer.id, title: S.offer.title, price: String(S.offer.price || '').replace(/\D/g, ''), code: S.offer.code }; sv({ sale: o }, now0) }
+    function S0E() { return S.E }
+    function ddmm(ms) { var a = mp(ms); return p2(a.d) + '.' + p2(a.mo + 1) }
+    var ok6 = function (on) { return on ? '<span class="ok">✓</span>' : '' };
+    function w6(E) { var e = E.ev, S6 = sale6(E), mar = e.type !== 'web', live = !!e.live, m = S6.mode, sh = m === 'form' ? 0 : 1, lab = mar ? 'Продажи на марафоне' : 'Продажи на вебинаре';
+      var D3 = m === 'form' ? ['по каждой заявке — заказ на продукт', 'Кнопка «Заполнить анкету» в эфире. Ответы — в Google Таблицу, считаем заполненные анкеты.', 'кнопки заявки нет нигде']
+        : ['Кнопка заявки в эфире, по каждой заявке — заказ на продукт ниже. Менеджеры работают с заказами в GetCourse.', 'Кнопка «Заполнить анкету» в эфире. Своя форма или Google Форма — ответы падают в Google Таблицу, считаем заполненные анкеты. Для отдела продаж без CRM.', 'Кнопки заявки нет нигде: ни в материалах, ни в пульте, ни у зрителей. Шаг сразу отмечается готовым. Баннеры и опросы остаются.'];
+      var rad = function (v, t, i) { var on = m === v; return '<label class="c0 xrad' + (on ? ' on' : '') + (live ? ' off' : '') + '"><input type="radio" name="sale" value="' + v + '" data-sale' + (on ? ' checked' : '') + (live ? ' disabled' : '') + '><span class="col xg2"><b>' + t + '</b><span class="dim">' + D3[i] + '</span></span></label>' };
+      var h = '<div class="c"><h2 class="h2">' + lab + '</h2><div class="col xg8" role="radiogroup" aria-label="' + lab + '">' + rad('sell', 'Продаём: заявка = заказ в GetCourse', 0) + rad('form', 'Собираем анкеты, без заказа', 1) + rad('none', 'Без продаж', 2) + '</div>' +
+        (live ? '<span class="dim">Нельзя сменить во время эфира — только между днями</span>' : '') + '</div>';
+      if (m === 'sell') h += w6sell(E, S6, mar); else if (m === 'form') h += S6.form.src === 'gform' ? w6gform(E, S6, mar) : w6own(E, S6, mar);
+      return h + navRow([EH(5)], [EH(7), 'Дальше: доступ и запись →']) }
+    /* 2.6 «Продаём» */
+    function w6sell(E, S6, mar) { var e = E.ev, o = S6.offer, rt = (e.report_to || []).join(' · ') || 'админы бота';
+      var h = '<div class="c" data-prodc><h2 class="h2">Продукт для заказа</h2><span class="mut xpm">Каждая заявка из эфира создаёт заказ на этот продукт. Уведомлений о каждой заявке нет: после эфира приходит одна сводка.</span>' +
+        '<label class="lb">Продукт GetCourse *<span class="row xg6"><input class="in xf1" data-p="title" maxlength="200" value="' + esc(o.title) + '"><button type="button" class="b2" data-a="prods">Выбрать из сохранённых</button></span><span class="dim">Название и код предложения — как в GetCourse. Сохранённые продукты повторно не вводятся: выбрал — цена и код подставятся сами.</span></label>' +
+        '<div class="g3"><label class="lb">Код предложения<input class="in" data-p="code" maxlength="60" placeholder="необязательно" value="' + esc(o.code) + '"></label><label class="lb">Цена в заказе, ₽<input class="in" data-p="price" inputmode="numeric" maxlength="12" value="' + esc(o.price === '' || o.price == null ? '' : nf(o.price)) + '"></label>' +
+          '<label class="lb">Статус заказа<select class="in" data-s="order_st"><option value="new"' + (S6.order_st !== 'work' ? ' selected' : '') + '>Новый</option><option value="work"' + (S6.order_st === 'work' ? ' selected' : '') + '>В работе</option></select></label></div>' +
+        '<label class="lb">Комментарий к заказу<input class="in" data-s="comment" maxlength="500" value="' + esc(S6.comment) + '"><span class="dim">Менеджер в GetCourse сразу видит, откуда заявка</span></label>' +
+        (e.reg && e.reg.email === 0 ? '<span class="warn x14">Для заказа в GetCourse нужна почта — включи «Спрашивать почту» на <a href="' + esc(hf(EH(3))) + '">шаге 3</a></span>' : '') + '</div>';
+      h += '<div class="c"><h2 class="h2">Сводка и копия заявок</h2><div class="col xg0">' +
+        '<div class="sw"><span class="col xg2"><span>Сводка после эфира в Telegram</span><span class="dim">записались, пришли, пик онлайн, среднее время, сообщения, заявки</span></span>' + tgl('s:report', S6.report, 'Сводка после эфира') + '</div>' +
+        '<div class="sw"><span class="col xg2"><span>Копия каждой заявки — в Google Таблицу</span><span class="dim">чтобы менеджеры видели заявки списком без входа в GetCourse · <a href="#" data-a="howsheet">как подключить таблицу</a></span></span>' + tgl('s:copy_sheet', S6.copy_sheet, 'Копия в Google Таблицу') + '</div>' +
+        '<div class="sw"><span class="col xg2"><span>Кому приходит сводка</span><span class="dim">' + esc(rt) + ' — меняется в «Настройках эфиров»</span></span><a class="b2 sm" href="' + esc(hf('#host/set')) + '">Настройки</a></div></div></div>';
+      return h + (S6.copy_sheet ? sheet6(S6, 'copy', mar) : '') }
+    /* «Куда падают анкеты» / «Куда копируем заявки» (2.6б, 2.6): подключённая таблица, «Как подключить новую таблицу» (скрипт + ссылка развёртывания + «Проверить») */
+    function sheet6(S6, kind, mar) { var T = S6.sheet, ok = !!(T && T.ok_at && !T.form), list = kind === 'copy' ? 'Заявки' : 'Анкеты', fxo = FXON && ((fxd() || {}).ui || {}).open === 'sheet', open = !ok || S.chg6 || fxo;
+      var h = '<div class="c" data-sheet><div class="row sp"><h2 class="h2">' + (kind === 'copy' ? 'Куда копируем заявки' : 'Куда падают анкеты') + '</h2>' + (ok ? '<span class="pill pgr">✓ таблица подключена</span>' : '<span class="pill py">таблица не подключена</span>') + '</div>';
+      if (ok) h += '<div class="sw"><span class="col xg2"><b>' + esc(T.title || 'Google Таблица') + '</b><span class="dim">Google Таблица · лист «' + list + '» · скрипт подключён ' + ddmm(T.ok_at) + '</span></span><span class="row xg6"><a class="b2 sm" href="' + esc(T.url || '#') + '" target="_blank" rel="noopener">Открыть</a><button type="button" class="b3 sm" data-a="shchg">Сменить</button></span></div>';
+      if (open) h += '<div class="c0 xg6"><span><b>Как подключить новую таблицу</b> <span class="dim">— один раз, ключи не нужны</span></span><span class="dim">1. Создай Google Таблицу → «Расширения» → «Apps Script» → вставь скрипт <button type="button" class="b2 sm" data-a="gas">Скопировать скрипт</button></span>' +
+        '<span class="dim">2. «Развернуть» → «Веб-приложение», запуск от моего имени, доступ «Все» → вставь ссылку сюда → «Проверить»: в таблице появится тестовая строка</span><div class="row"><input class="in xf1" data-exec placeholder="https://script.google.com/…/exec" value="' + esc(S.exec6 || '') + '" aria-label="Ссылка развёртывания"><button type="button" class="b2" data-a="shchk">Проверить</button></div>' +
+        (T && T.last_err ? '<span class="xerr" data-sherr>' + esc(T.last_err) + '</span>' : '') + '</div>';
+      if (kind === 'copy') return h + '<span class="mut">Каждая заявка — новая строка на листе «Заявки». Колонки создаются сами; заказ в GetCourse создаётся как обычно.</span></div>';
+      return h + '<span class="mut">Каждая анкета — новая строка. Колонки создаются сами:</span><div class="row xg6">' + ['дата и время', 'эфир · день', 'минута эфира', 'имя', 'телефон', 'почта', 'Telegram', 'откуда пришёл (UTM)', 'сколько смотрел'].map(function (x) { return '<span class="pill">' + x + '</span>' }).join('') + '<span class="pill pv">ответы — по колонке на вопрос</span><span class="pill pb">статус менеджера</span></div>' +
+        '<span class="dim">Колонку «статус» заполняют менеджеры прямо в таблице: связались · не дозвонились · купил. Мы её не трогаем — и подтягиваем в итоги ' + (mar ? 'марафона' : 'вебинара') + '.</span>' +
+        '<div class="sw xnb"><span class="col xg2"><span>Дублировать в «Анкеты» кабинета</span><span class="dim">список с фильтрами на случай, если таблицу случайно удалят</span></span>' + tgl('f:dup', S6.form.dup, 'Дублировать в кабинет') + '</div></div>' }
+    function seg6(src) { return '<div class="seg xas" role="tablist" aria-label="Форма анкеты"><button type="button" role="tab" aria-selected="' + (src === 'own') + '" class="' + (src === 'own' ? 'on' : 'xsga') + '" data-src="own">Своя форма в эфире</button><button type="button" role="tab" aria-selected="' + (src === 'gform') + '" class="' + (src === 'gform' ? 'on' : 'xsga') + '" data-src="gform">Google Форма</button></div>' }
+    /* 2.6б своя форма */
+    function w6own(E, S6, mar) { var F = S6.form, Q = F.questions, nm = mar ? 'марафон' : 'вебинар';
+      var h = '<div class="c"><div class="row sp"><h2 class="h2">Где человек заполняет анкету</h2></div>' + seg6('own') + '<span class="dim">Своя форма открывается поверх видео, звук идёт. Имя, телефон и почта уже подставлены из регистрации в боте — человеку остаётся ответить на вопросы.</span></div>';
+      h += '<div class="c"><div class="row sp"><h2 class="h2">Контакты</h2><span class="dim">подставляются из бота</span></div><div class="col xg0">' + FQ6.map(function (x, i) { var v = F.fields[x[0]], on = v !== 'off';
+        return '<div class="sw' + (i === 3 ? ' xnb' : '') + '"><span>' + x[1] + '</span><span class="row xg10">' + (on ? '<button type="button" class="pill xpb" data-freq="' + x[0] + '" aria-label="' + x[1] + ': ' + (v === 'req' ? 'обязательно' : 'по желанию') + ', поменять">' + (v === 'req' ? 'обязательно' : 'по желанию') + '</button>' : '<span class="dim">' + (x[0] === 'tg' ? 'берём из бота сами' : 'не спрашиваем') + '</span>') + tgl('fl:' + x[0], on, x[1]) + '</span></div>' }).join('') + '</div></div>';
+      h += '<div class="c" data-qs><div class="row sp"><h2 class="h2">Вопросы анкеты</h2><span class="dim">можно без вопросов — тогда это просто контакт</span></div>' + Q.map(function (q, i) { var ch = q.kind === 'one' || q.kind === 'many';
+          return '<div class="c0 ' + (ch ? 'xq10' : 'xq6') + '" data-q="' + i + '"><div class="row sp"><span class="row xg10"><span class="dim xdrag" aria-hidden="true" data-drag="' + i + '">⋮⋮</span><b>' + esc(q.t) + '</b></span><span class="row xg6"><span class="pill">' + KIND6[q.kind] + '</span><button type="button" class="b3 sm" data-a="qedit" data-i="' + i + '">Изменить</button></span></div>' +
+            (ch ? '<div class="row xg6">' + q.opts.map(function (o) { return '<span class="pill">' + esc(o) + '</span>' }).join('') + '</div>' : '') + (q.req ? '' : '<span class="dim">необязательный</span>') + '</div>' }).join('') +
+        '<div class="row xg8"><button type="button" class="b2 sm" data-a="qadd"' + (Q.length >= 6 ? ' disabled' : '') + '>+ Вопрос</button><button type="button" class="b3 sm" data-a="qpast">' + (mar ? 'Взять вопросы из прошлого марафона' : 'Взять вопросы из прошлого вебинара') + '</button></div>' +
+        '<span class="dim">Типы: один вариант · несколько вариантов · текст · телефон/число. Не больше 6 вопросов — дальше люди бросают.</span></div>';
+      h += sheet6(S6, 'form', mar);
+      h += '<div class="c"><h2 class="h2">Что считаем анкетой</h2><div class="col xg0"><div class="sw"><span>Засчитываем, когда человек отправил анкету</span><span class="ok">✓</span></div>' +
+        '<div class="sw"><span class="col xg2"><span>Один человек — одна анкета на ' + nm + '</span><span class="dim">заполнил ещё раз — обновим его строку, счётчик не растёт</span></span>' + tgl('f:one_per_person', F.one_per_person, 'Одна анкета на человека') + '</div>' +
+        '<div class="sw xnb"><span class="col xg2"><span>Таблица недоступна</span><span class="dim xtail">анкета не теряется: копим у себя и дописываем, когда доступ вернётся.</span></span><span class="warn">!</span></div></div></div>';
+      return h + pv6own(E, S6) }
+    function pv6own(E, S6) { var Q = S6.form.questions, i = Math.min(S.pv6 || 0, Q.length), q = Q[i], tt = E.ev.lead_title || 'Анкета', body;
+      if (S.pv6done) body = '<span class="pill pgr xas">✓ Анкета получена</span><span class="dim">Анна, менеджер напишет в течение дня</span><button type="button" class="b3 sm xas" data-a="pvredo">Исправить ответы</button>';
+      else body = '<span class="dim">Анна · +7 900 123-45-67 <a href="#" data-a="pvedit">изменить</a></span>' + (q ? '<span class="x14">' + esc(q.t) + '</span>' + (q.kind === 'one' || q.kind === 'many' ? '<div class="row xg6">' + q.opts.slice(0, 3).map(function (o, j) { return '<span class="pill' + (j === 0 ? ' pv' : '') + '">' + esc(o) + '</span>' }).join('') + '</div>' : '<input class="in" placeholder="ответ" aria-label="Ответ" tabindex="-1">') + '<span class="dim">вопрос ' + (i + 1) + ' из ' + Q.length + '</span>' : '') +
+        '<button type="button" class="b1 w100" data-a="pvnext">' + (i >= Q.length - 1 ? 'Отправить' : 'Дальше') + '</button>';
+      return '<div class="c" data-pv6><div class="row sp"><h2 class="h2">Так видит зритель</h2><span class="dim">телефон</span></div><div class="row xpvr"><div class="c0 xpv"><b>' + esc(tt) + '</b>' + body + '</div></div></div>' }
+    /* 2.6в Google Форма */
+    function w6gform(E, S6, mar) { var F = S6.form, G = F.gform, T = S6.sheet, Q = G.questions, nm = mar ? 'марафона' : 'вебинара', err = S.gErr6;
+      var h = '<div class="c"><h2 class="h2">Где человек заполняет анкету</h2>' + seg6('gform') + '<label class="lb">Ссылка на Google Форму *<span class="row xg6"><input class="in xf1" data-gurl placeholder="https://forms.gle/…" value="' + esc(S.gurl6 != null ? S.gurl6 : (G.link || G.url)) + '"><button type="button" class="b2" data-a="gchk">Проверить</button></span></label>' +
+        (err ? '<div class="c0 xgok"><span class="bad">✕</span><span class="col xg2"><b>' + esc(err) + '</b><span class="dim">Поправь и нажми «Проверить» ещё раз</span></span></div>'
+          : G.checked_at ? '<div class="c0 xgok"><span class="ok">✓</span><span class="col xg2"><b>«' + esc(G.title || 'Google Форма') + '»</b><span class="dim">' + G.n + ' ' + plr(G.n, 'вопрос', 'вопроса', 'вопросов') + ' · ' + (G.accepting ? 'принимает ответы' : 'не принимает ответы') + ' · ' + (G.login ? 'просит вход в Google' : 'открыта всем по ссылке') + '</span></span></div>' : '') +
+        '<div class="col xg8" role="radiogroup" aria-label="Как открывается форма"><label class="row xg10' + (G.login ? ' off' : '') + '"><input type="radio" name="open" value="inside" data-gopen' + (G.open !== 'tab' ? ' checked' : '') + (G.login ? ' disabled' : '') + '><span>Внутри эфира, поверх видео <span class="dim">— звук идёт, человек не уходит</span></span></label>' +
+          '<label class="row xg10"><input type="radio" name="open" value="tab" data-gopen' + (G.open === 'tab' ? ' checked' : '') + '><span>В новой вкладке <span class="dim">— если форма не открывается внутри</span></span></label></div></div>';
+      if (Q.length) { var sel = function (k, al) { var cur = (G.map[k] || {}).entry; return '<select class="in" aria-label="' + al + '" data-map="' + k + '">' + Q.map(function (q) { return '<option value="' + esc(q.entry) + '"' + (String(q.entry) === String(cur) ? ' selected' : '') + '>' + esc(q.title + (k === 'mark' && q.kind === 'text' ? ' (короткий ответ)' : '')) + '</option>' }).join('') + '<option value=""' + (cur ? '' : ' selected') + '>— не подставлять —</option></select>' };
+        h += '<div class="c"><div class="row sp"><h2 class="h2">Что подставляем в форму</h2><span class="dim">человеку не нужно вводить заново</span></div><div class="th xmap"><span>Из регистрации в боте</span><span>Вопрос в форме</span></div>' +
+          '<div class="tb xmap"><span>Имя</span>' + sel('name', 'Вопрос для имени') + '</div><div class="tb xmap"><span>Телефон</span>' + sel('phone', 'Вопрос для телефона') + '</div><div class="tb xmap"><span>Почта</span>' + sel('email', 'Вопрос для почты') + '</div>' +
+          '<div class="tb xmap"><span class="col xg2"><span>Метка эфира</span><span class="dim">' + (mar ? 'марафон' : 'вебинар') + ' · день · минута</span></span>' + sel('mark', 'Вопрос для метки') + '</div>' +
+          (S.gWarn6 && S.gWarn6.length ? S.gWarn6.map(function (w) { return '<span class="warn x14">' + esc(w) + '</span>' }).join('') : '') +
+          '<span class="dim">В Google Форме нет скрытых полей: подставленные ответы человек видит и может поправить. Метку лучше положить в отдельный короткий вопрос в конце формы.</span></div>' }
+      var s1 = !!(T && T.form), s2 = !!(T && T.ok_at), s3 = !!(T && T.ok_at && T.exec), s4 = !!G.test_at, all = s1 && s2 && s3 && s4, ex = S.exec6 != null ? S.exec6 : (T && T.exec) || '';
+      h += '<div class="c" data-hook><div class="row sp"><h2 class="h2">Как узнаём, что анкету заполнили</h2>' + (all ? '<span class="pill pgr">✓ подключено</span>' : '<span class="pill py">не подключено</span>') + '</div>' +
+        '<span class="mut">Google сам ничего не присылает, поэтому к таблице ответов формы подключается наш скрипт. Делается один раз на форму, ключи не нужны.</span><div class="col xg0">' +
+        '<div class="sw"><span class="row xg10 xnw"><span class="num">1</span><span class="col xg2"><span>В форме: «Ответы» → «Связать с Таблицами»</span><span class="dim">откроется таблица ответов</span></span></span>' + ok6(s1) + '</div>' +
+        '<div class="sw"><span class="row xg10 xnw"><span class="num">2</span><span class="col xg2"><span>В таблице: «Расширения» → «Apps Script», вставь скрипт</span><span class="dim">в скрипте уже стоит код этого ' + nm + '</span></span></span><span class="row xg6"><button type="button" class="b2 sm" data-a="gas">Скопировать скрипт</button>' + ok6(s2) + '</span></div>' +
+        '<div class="sw"><span class="row xg10 xnw"><span class="num">3</span><span class="col xg2"><span>«Развернуть» → «Новое развёртывание» → «Веб-приложение», запуск от моего имени, доступ «Все»</span><span class="dim">Google попросит разрешение — это доступ скрипта к этой таблице. Ссылку развёртывания вставь сюда:</span>' + (T && T.last_err ? '<span class="xerr" data-sherr>' + esc(T.last_err) + '</span>' : '') + '</span></span>' +
+          '<span class="row xg6 xnw xfn"><input class="in xw220" data-exec data-auto value="' + esc(ex) + '" placeholder="https://script.google.com/…/exec" aria-label="Ссылка развёртывания">' + ok6(s3) + '</span></div>' +
+        '<div class="sw xnb"><span class="row xg10 xnw"><span class="num">4</span><span class="col xg2"><span>Отправь в форму тестовый ответ</span><span class="dim" data-s4>' + (s4 ? 'получили ' + hm2(G.test_at) + ' · в итоги не идёт, помечен «тест»' : s3 ? 'ждём ответ — отправь его в форму сам, галочка появится сама' : 'после шага 3') + '</span></span></span>' + ok6(s4) + '</div></div>' +
+        '<span class="dim">Ответ приходит к нам сразу после отправки формы. Таблица ответов формы — это и есть таблица для менеджеров: колонку «статус» добавляете в ней, мы её читаем раз в 10 минут.</span></div>';
+      h += '<div class="c"><h2 class="h2">Что считаем анкетой</h2><div class="col xg0"><div class="sw"><span class="col xg2"><span>Анкета = новая строка в таблице ответов</span><span class="dim">отдельно считаем, сколько открыли форму: «открыли 120 · заполнили 74»</span></span><span class="ok">✓</span></div>' +
+        '<div class="sw"><span class="col xg2"><span>Привязываем к зрителю по телефону или почте</span><span class="dim">стёр подставленное — анкета засчитается, но в списке будет «зритель не найден»</span></span><span class="ok">✓</span></div>' +
+        '<div class="sw xnb"><span class="col xg2"><span>Ответы не из эфира</span><span class="dim">форму открыли по прямой ссылке — в счётчик ' + nm + ' не идут, видны отдельно</span></span><span class="dim">отдельно</span></div></div></div>';
+      var fr = FXON || !G.url || G.login ? '<div class="xgfr" data-fx-mask></div>' : '<iframe class="xgfr xgif" src="' + esc(G.url + '?embedded=true') + '" title="Google Форма" loading="lazy"></iframe>';
+      return h + '<div class="c"><div class="row sp"><h2 class="h2">Так видит зритель</h2><span class="dim">телефон</span></div><div class="row xpvr"><div class="c0 xpv"><div class="row sp"><b>' + esc(E.ev.lead_title || G.title || 'Анкета') + '</b><button type="button" class="b3 sm" aria-label="Свернуть" data-a="pvfold">✕</button></div>' + fr + '</div></div></div>' }
+    function s6save(j) { var E = S.E, e = E.ev, S6 = sale6(E); if (j.upd) e.upd = j.upd; if (j.steps) e.steps = j.steps; if ('sheet' in j) S6.sheet = j.sheet; if (j.gform) { var G = j.gform; S6.form.gform = { url: G.url || '', link: G.link || '', title: G.title || '', n: +G.n || 0, accepting: G.accepting === 0 ? 0 : 1, login: G.login ? 1 : 0, open: G.login ? 'tab' : (G.open === 'tab' ? 'tab' : 'inside'), questions: G.questions || [], map: G.map || {}, test_at: +G.test_at || 0, checked_at: +G.checked_at || 0 } } S.L = {} }
+    function shCheck(b) { var E = S.E, inp = b ? b.closest('.c0,.sw,.c').querySelector('[data-exec]') : el.querySelector('[data-exec]'), v = ((inp && inp.value) || '').trim(); S.exec6 = v;
+      if (!EXEC6.test(v)) { s6err('Это не ссылка развёртывания: она начинается с https://script.google.com/macros/s/ и заканчивается на /exec', inp); return }
+      if (S.chk6) return; S.chk6 = 1; if (b) b.disabled = true; toast('Проверяю скрипт…');
+      api(O, '/efir/host/event/form/check', { ev: E.id, what: 'sheet', exec: v }).then(function (j) { S.chk6 = 0; if (b) b.disabled = false; if (S.E !== E) return; if (!j) { toast('Нет связи — попробуй ещё раз'); return }
+        s6save(j); if (j.ok) { S.exec6 = null; S.chg6 = 0; toast(j.sheet && j.sheet.form ? 'Скрипт подключён — отправь тестовый ответ в форму' : 'Таблица подключена — в ней появилась тестовая строка') } X.redraw(); stepsUp(); label() }) }
+    function s6err(t, inp) { var c = inp && inp.closest('.c0,.sw'); if (!c) { toast(t); return } var x = c.querySelector('[data-sherr]'); if (!x) { x = document.createElement('span'); x.className = 'xerr'; x.setAttribute('data-sherr', ''); (c.classList.contains('sw') ? c.querySelector('.col') : c).appendChild(x) } x.textContent = typo(t) }
+    function gCheck(b) { var E = S.E, inp = el.querySelector('[data-gurl]'), v = ((inp && inp.value) || '').trim(); S.gurl6 = v; if (!v) { S.gErr6 = 'Вставь ссылку на Google Форму'; X.redraw(); return } if (S.chk6) return; S.chk6 = 1; if (b) b.disabled = true; toast('Проверяю форму…');
+      api(O, '/efir/host/event/form/check', { ev: E.id, what: 'gform', url: v }).then(function (j) { S.chk6 = 0; if (b) b.disabled = false; if (S.E !== E) return; if (!j) { toast('Нет связи — попробуй ещё раз'); return } s6save(j); S.gErr6 = j.ok ? '' : (j.err || 'Не получилось проверить форму'); S.gWarn6 = j.warn || []; X.redraw(); stepsUp(); label() }) }
+    /* ждём тестовый ответ (шаг 4 на 2.6в): раз в 10 с, пока открыт шаг 6 */
+    function poll6() { if (FXON || S.pl6) return; S.pl6 = setInterval(function () { var E = S.E; if (X.dead() || !E || S.step !== '6' || X.cur() !== 'ev' || !el.isConnected) { clearInterval(S.pl6); S.pl6 = 0; return } var S6 = sale6(E); if (S6.mode !== 'form' || S6.form.src !== 'gform' || S6.form.gform.test_at || !(S6.sheet && S6.sheet.ok_at) || document.visibilityState !== 'visible') return;
+      api(O, '/efir/host/event/form?ev=' + E.id).then(function (j) { if (!j || !j.ok || S.E !== E || !j.gform || !j.gform.test_at) return; S6.form.gform.test_at = j.gform.test_at; if (j.sheet) S6.sheet = j.sheet; if (S.step === '6') X.redraw() }) }, 10e3) }
+    function gasCopy() { var E = S.E; api(O, '/efir/host/event/form/script?ev=' + E.id).then(function (j) { if (!j || !j.ok || !j.text) { toast((j && j.err) || 'Скрипт не загрузился — попробуй ещё раз'); return } copy2(j.text, function () { toast('Скрипт скопирован — вставь его в Apps Script') }) }) }
+    /* выпадающий список справочника (§6.4 2.6): под полем, у строк ✕ */
+    function prodsOpen(b) { closePop(); var pg = el.querySelector('.pg'), inp = el.querySelector('[data-p="title"]'), r = inp.getBoundingClientRect(), pr = pg.getBoundingClientRect(), c = document.createElement('div');
+      c.className = 'c0 xpop xmenu xprods'; c.setAttribute('role', 'listbox'); c.setAttribute('aria-label', 'Сохранённые продукты'); c.style.left = (r.left - pr.left) + 'px'; c.style.top = (r.bottom - pr.top + 6) + 'px'; c.style.width = Math.max(320, r.width) + 'px'; c.innerHTML = '<span class="dim">Загружаю…</span>'; pg.appendChild(c); S.menu = c;
+      var fill = function (L) { if (S.menu !== c) return; c.innerHTML = L.length ? L.map(function (p) { return '<div class="row xg6 xnw"><button type="button" class="b3 sm xf1 xprn" role="option" data-a="prodpick" data-id="' + p.id + '">' + esc(p.title) + (p.price ? ' · ' + nf(p.price) + NB + '₽' : '') + (p.code ? ' · ' + esc(p.code) : '') + '</button><button type="button" class="b3 sm" data-a="proddel" data-id="' + p.id + '" aria-label="Удалить «' + esc(p.title) + '» из сохранённых">✕</button></div>' }).join('')
+        : '<span class="dim">Сохранённых продуктов пока нет. Впиши название — продукт сохранится сам.</span>'; typoDom(c) };
+      if (S.prods) fill(S.prods); else api(O, '/efir/host/prod').then(function (j) { S.prods = j && j.ok ? j.prods || [] : []; fill(S.prods) }) }
+    function prodPick(id) { var p = (S.prods || []).filter(function (x) { return +x.id === +id })[0]; closePop(); if (!p) return; var S6 = sale6(S.E); S6.offer = { id: p.id, title: p.title, price: p.price, code: p.code || '' }; S.E.ev.prod = p; X.redraw(); svSale(1, 1) }
+    function prodDel(id) { api(O, '/efir/host/prod', { id: +id, del: 1 }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Не удалилось'); return } S.prods = (S.prods || []).filter(function (x) { return +x.id !== +id }); var c = S.menu; closePop(); toast('Убрали из сохранённых'); if (c) prodsOpen() }) }
+    /* редактор вопроса (§7.6): .drw 520 с полями; «Удалить вопрос» — подтверждение на месте */
+    function qWin(i) { var S6 = sale6(S.E), Q = S6.form.questions, q = i == null ? { id: 'q' + Math.random().toString(16).slice(2, 10), t: '', kind: 'one', opts: ['', ''], req: 1 } : JSON.parse(JSON.stringify(Q[i])); S.qe = { i: i, q: q }; closeWin();
+      var d = document.createElement('div'); d.className = 'ov xovr'; d.setAttribute('data-a', 'winclose'); d.innerHTML = '<div class="drw" role="dialog" aria-modal="true" aria-label="Вопрос анкеты"></div>'; el.querySelector('.pg').appendChild(d); S.win = d; qDraw() }
+    function qDraw() { var d = S.win, Z = S.qe; if (!d || !Z) return; var q = Z.q, ch = q.kind === 'one' || q.kind === 'many';
+      d.firstChild.innerHTML = '<h2 class="h2">' + (Z.i == null ? 'Новый вопрос' : 'Вопрос анкеты') + '</h2><label class="lb">Вопрос<input class="in" data-qe="t" maxlength="200" value="' + esc(q.t) + '" placeholder="Например: Чем сейчас занимаешься?"></label>' +
+        '<div class="lb">Тип ответа<div class="seg" role="radiogroup" aria-label="Тип ответа">' + ['one', 'many', 'text', 'num'].map(function (k) { return '<button type="button" role="radio" aria-checked="' + (q.kind === k) + '"' + (q.kind === k ? ' class="on"' : '') + ' data-a="qk" data-k="' + k + '">' + KIND6[k] + '</button>' }).join('') + '</div>' +
+          (q.kind === 'num' ? '<span class="dim">цифры и + - ( ), без маски</span>' : '') + '</div>' +
+        (ch ? '<div class="lb">Варианты<div class="col xg6">' + q.opts.map(function (o, j) { return '<div class="row xg6 xnw"><input class="in" data-qo="' + j + '" maxlength="80" value="' + esc(o) + '" placeholder="Вариант ' + (j + 1) + '"><button type="button" class="b3 sm" data-a="qodel" data-i="' + j + '" aria-label="Убрать вариант"' + (q.opts.length <= 2 ? ' disabled' : '') + '>✕</button></div>' }).join('') + '</div>' +
+          (q.opts.length < 10 ? '<button type="button" class="b2 sm xas" data-a="qoadd">+ Вариант</button>' : '') + '</div>' : '') +
+        '<div class="sw"><span>Обязательный вопрос</span>' + tgl('qreq', q.req, 'Обязательный вопрос') + '</div><span class="xerr" data-qerr></span>' +
+        '<div class="row sp xdrwb">' + (Z.i != null ? '<span data-qdelw><button type="button" class="bd sm" data-a="qdelask">Удалить вопрос</button></span>' : '<span></span>') + '<span class="row xg8"><button type="button" class="b3" data-a="winclose">Отмена</button><button type="button" class="b1" data-a="qok">Готово</button></span></div>'; typoDom(d) }
+    function qOk() { var Z = S.qe, q = Z.q, er = S.win.querySelector('[data-qerr]'); q.t = String(q.t || '').trim(); if (!q.t) { er.textContent = 'Напиши вопрос'; return }
+      if (q.kind === 'one' || q.kind === 'many') { q.opts = q.opts.map(function (o) { return String(o || '').trim() }).filter(Boolean); if (q.opts.length < 2) { er.textContent = typo('Нужно хотя бы 2 варианта'); return } } else q.opts = [];
+      var Q = sale6(S.E).form.questions; if (Z.i == null) { if (Q.length >= 6) { er.textContent = 'Не больше 6 вопросов'; return } Q.push(q) } else Q[Z.i] = q; closeWin(); S.qe = null; X.redraw(); svSale() }
+    function pastWin() { closeWin(); var E = S.E, d = document.createElement('div'); d.className = 'ov xovr'; d.setAttribute('data-a', 'winclose'); d.innerHTML = '<div class="drw" role="dialog" aria-modal="true" aria-label="Вопросы из прошлого"><h2 class="h2">Взять вопросы</h2><span class="dim">Загружаю…</span></div>'; el.querySelector('.pg').appendChild(d); S.win = d;
+      api(O, '/efir/host/event/qs?ev=' + E.id).then(function (j) { if (S.win !== d) return; var L = (j && j.ok && j.events) || []; S.past6 = L;
+        d.firstChild.innerHTML = '<h2 class="h2">Взять вопросы</h2><span class="dim">Новые сверху. Вопросы скопируются — дальше их можно править.</span><div class="col xg0">' + (L.length ? L.map(function (x, i) { return '<div class="sw"><span class="col xg2"><b class="x14">' + esc(x.title) + '</b><span class="dim">' + x.questions.length + ' ' + plr(x.questions.length, 'вопрос', 'вопроса', 'вопросов') + ': ' + esc(x.questions.slice(0, 2).map(function (q) { return q.t }).join(' · ')) + '</span></span><button type="button" class="b2 sm" data-a="pasttake" data-i="' + i + '">Взять</button></div>' }).join('')
+          : '<span class="mut">Пока нет мероприятий со своей анкетой.</span>') + '</div><div class="row sp xdrwb"><span></span><button type="button" class="b3" data-a="winclose">Отмена</button></div>'; typoDom(d) }) }
+    function pastTake(i) { var x = (S.past6 || [])[i]; if (!x) return; var Q = sale6(S.E).form.questions, n0 = Q.length; x.questions.forEach(function (q) { if (Q.length < 6) Q.push({ id: 'q' + Math.random().toString(16).slice(2, 10), t: q.t, kind: q.kind, opts: (q.opts || []).slice(), req: q.req === 0 ? 0 : 1 }) });
+      closeWin(); X.redraw(); svSale(); var n = Q.length - n0; toast(n ? 'Добавили ' + n + ' ' + plr(n, 'вопрос', 'вопроса', 'вопросов') : 'Уже 6 вопросов — больше не добавить') }
+    /* перетаскивание вопроса за ⋮⋮ */
+    function dragStart(ev, h) { var from = +h.getAttribute('data-drag'), box = el.querySelector('[data-qs]'); if (!box) return; ev.preventDefault(); var cards = [].slice.call(box.querySelectorAll('[data-q]')), to = from;
+      var mv = function (e2) { var y = e2.clientY; to = cards.length - 1; for (var k = 0; k < cards.length; k++) { var r = cards[k].getBoundingClientRect(); if (y < r.top + r.height / 2) { to = k; break } } cards.forEach(function (c, k) { c.classList.toggle('xdrop', k === to && to !== from) }) };
+      var up = function () { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); cards.forEach(function (c) { c.classList.remove('xdrop') }); if (to === from) return; var Q = sale6(S.E).form.questions, q = Q.splice(from, 1)[0]; Q.splice(to, 0, q); X.redraw(); svSale() };
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up) }
+    function click6(e, a) { var E = S.E; if (!E || S.step !== '6') return false; var S6 = sale6(E);
+      if (a.hasAttribute('data-src')) { e.preventDefault(); var v = a.getAttribute('data-src'); if (S6.form.src === v) return true; S6.form.src = v; S.gErr6 = ''; X.redraw(); svSale(); return true }
+      if (a.hasAttribute('data-freq')) { e.preventDefault(); var k = a.getAttribute('data-freq'); S6.form.fields[k] = S6.form.fields[k] === 'req' ? 'opt' : 'req'; X.redraw(); svSale(); return true }
+      var k2 = a.getAttribute('data-a');
+      if (k2 === 'prods') { e.preventDefault(); if (S.menu) { closePop(); return true } prodsOpen(a); return true }
+      if (k2 === 'prodpick') { e.preventDefault(); prodPick(a.getAttribute('data-id')); return true }
+      if (k2 === 'proddel') { e.preventDefault(); prodDel(a.getAttribute('data-id')); return true }
+      if (k2 === 'howsheet') { e.preventDefault(); if (!S6.copy_sheet) { S6.copy_sheet = 1; svSale() } S.chg6 = 1; X.redraw(); var s = el.querySelector('[data-sheet]'); if (s && s.scrollIntoView) s.scrollIntoView({ block: 'center' }); return true }
+      if (k2 === 'shchg') { e.preventDefault(); S.chg6 = 1; S.exec6 = ''; X.redraw(); return true }
+      if (k2 === 'shchk') { e.preventDefault(); shCheck(a); return true }
+      if (k2 === 'gas') { e.preventDefault(); gasCopy(); return true }
+      if (k2 === 'gchk') { e.preventDefault(); gCheck(a); return true }
+      if (k2 === 'qadd') { e.preventDefault(); if (S6.form.questions.length < 6) qWin(null); return true }
+      if (k2 === 'qedit') { e.preventDefault(); qWin(+a.getAttribute('data-i')); return true }
+      if (k2 === 'qpast') { e.preventDefault(); pastWin(); return true }
+      if (k2 === 'pasttake') { e.preventDefault(); pastTake(+a.getAttribute('data-i')); return true }
+      if (k2 === 'qk') { e.preventDefault(); var q = S.qe.q; q.kind = a.getAttribute('data-k'); if ((q.kind === 'one' || q.kind === 'many') && q.opts.length < 2) q.opts = q.opts.concat(['', '']).slice(0, Math.max(2, q.opts.length)); qDraw(); return true }
+      if (k2 === 'qoadd') { e.preventDefault(); S.qe.q.opts.push(''); qDraw(); var L = S.win.querySelectorAll('[data-qo]'); if (L.length) L[L.length - 1].focus(); return true }
+      if (k2 === 'qodel') { e.preventDefault(); S.qe.q.opts.splice(+a.getAttribute('data-i'), 1); qDraw(); return true }
+      if (k2 === 'qok') { e.preventDefault(); qOk(); return true }
+      if (k2 === 'qdelask') { e.preventDefault(); var w = S.win.querySelector('[data-qdelw]'); w.innerHTML = '<span class="row xg6"><span class="x14">Удалить вопрос?</span><button type="button" class="bd sm" data-a="qdel">Да, удалить</button><button type="button" class="b3 sm" data-a="qdelno">Нет</button></span>'; typoDom(w); return true }
+      if (k2 === 'qdelno') { e.preventDefault(); qDraw(); return true }
+      if (k2 === 'qdel') { e.preventDefault(); S6.form.questions.splice(S.qe.i, 1); closeWin(); S.qe = null; X.redraw(); svSale(); toast('Вопрос удалён'); return true }
+      if (k2 === 'pvnext') { e.preventDefault(); var n = S6.form.questions.length; if ((S.pv6 || 0) >= n - 1) S.pv6done = 1; else S.pv6 = (S.pv6 || 0) + 1; pvRe(); return true }
+      if (k2 === 'pvredo') { e.preventDefault(); S.pv6 = 0; S.pv6done = 0; pvRe(); return true }
+      if (k2 === 'pvedit' || k2 === 'pvfold') { e.preventDefault(); toast('Это превью — так анкета выглядит у зрителя'); return true }
+      return false }
+    function pvRe() { var b = el.querySelector('[data-pv6]'); if (!b) return; var t = document.createElement('div'); t.innerHTML = pv6own(S.E, sale6(S.E)); b.parentNode.replaceChild(t.firstChild, b); typoDom(el.querySelector('[data-pv6]')) }
+    function tgl6(k, on) { var S6 = sale6(S.E), p = k.split(':'); if (p[0] === 's') { S6[p[1]] = on ? 1 : 0; if (p[1] === 'copy_sheet') X.redraw() } else if (p[0] === 'f') S6.form[p[1]] = on ? 1 : 0; else if (p[0] === 'fl') { S6.form.fields[p[1]] = on ? (p[1] === 'tg' ? 'opt' : 'req') : 'off'; X.redraw() } else if (k === 'qreq') { S.qe.q.req = on ? 1 : 0; return } svSale() }
+    function input6(t) { var S6 = sale6(S.E), p = t.getAttribute('data-p');
+      if (p) { S6.offer[p] = p === 'price' ? t.value.replace(/[^\d ]/g, '') : t.value; return true }
+      if (t.getAttribute('data-s') === 'comment') { S6.comment = t.value; svSale(); return true }
+      if (t.hasAttribute('data-qe')) { S.qe.q.t = t.value; return true } if (t.hasAttribute('data-qo')) { S.qe.q.opts[+t.getAttribute('data-qo')] = t.value; return true }
+      if (t.hasAttribute('data-gurl')) { S.gurl6 = t.value; return true }
+      if (t.hasAttribute('data-exec')) { S.exec6 = t.value; if (t.hasAttribute('data-auto')) { clearTimeout(S.et6); var v = t.value.trim(); if (EXEC6.test(v)) S.et6 = setTimeout(function () { shCheck(null) }, 600) } return true }
+      return false }
+    function change6(t) { var S6 = sale6(S.E);
+      if (t.hasAttribute('data-sale')) { if (S.E.ev.live) return true; S6.mode = t.value; S.gErr6 = ''; X.redraw(); svSale(0, 1); return true }
+      if (t.getAttribute('data-p')) { if (t.getAttribute('data-p') === 'price') t.value = S6.offer.price ? nf(String(S6.offer.price).replace(/\D/g, '')) : ''; if (!String(S6.offer.title || '').trim()) S6.offer.id = null; svSale(1); return true }
+      if (t.getAttribute('data-s') === 'order_st') { S6.order_st = t.value; svSale(); return true }
+      if (t.hasAttribute('data-gopen')) { S6.form.gform.open = t.value; svSale(); return true }
+      if (t.hasAttribute('data-map')) { var q = S6.form.gform.questions.filter(function (x) { return String(x.entry) === t.value })[0]; S6.form.gform.map[t.getAttribute('data-map')] = q ? { entry: String(q.entry), title: q.title } : null; svSale(); return true }
+      return false }
+
     /* ---------- автосохранение (800 мс после ввода, по одному запросу; конфликт — «Изменено в другой вкладке — обнови») ---------- */
     var PQ = null, PT = 0, DQ = 0;
     function sv(patch, now0) { PQ = Object.assign(PQ || {}, patch); clearTimeout(PT); if (FXON) return; if (now0) flush(); else PT = setTimeout(flush, 800) }
     function flush() { if (!PQ || S.sv) return; var p = PQ, E = S.E; PQ = null; S.sv = 1; label();
       api(O, '/efir/host/event/save', Object.assign({ v: 2, id: E.id, upd: E.ev.upd }, p)).then(function (j) { S.sv = 0; if (S.E !== E) return;
-        if (j && j.ok) { S.svErr = ''; E.ev.upd = j.upd; E.ev.steps = j.steps; if (p.reg) E.ev.reg.saved = 1; if ('access' in p || 'rec' in p) E.ev.saved7 = 1; S.L = {} } else { S.svErr = (j && j.err) || 'Не сохранилось — проверь связь'; if (!j || !j.conflict) PQ = Object.assign(p, PQ || {}) }
+        if (j && j.ok) { S.svErr = ''; E.ev.upd = j.upd; E.ev.steps = j.steps; if (j.prod) { E.ev.prod = j.prod; if (E.ev.sale && E.ev.sale._n) E.ev.sale.offer.id = j.prod.id; S.prods = null } if (p.reg) E.ev.reg.saved = 1; if ('access' in p || 'rec' in p) E.ev.saved7 = 1; S.L = {} } else { S.svErr = (j && j.err) || 'Не сохранилось — проверь связь'; if (!j || !j.conflict) PQ = Object.assign(p, PQ || {}) }
         label(); stepsUp(); if (PQ && !S.svErr) PT = setTimeout(flush, 800); else if (PQ && S.svErr && !(j && j.conflict)) PT = setTimeout(flush, 5000) }) }
     function daysSv(now0) { clearTimeout(DQ); if (FXON) return; DQ = setTimeout(daysFlush, now0 ? 0 : 800) }
     function daysFlush() { var E = S.E; DQ = 0; if (!E) return; if (S.sv) { DQ = setTimeout(daysFlush, 300); return } S.sv = 1; label();
@@ -827,14 +1028,16 @@
       im.onerror = function () { toast('Не открылась картинка') }; im.src = url }
 
     /* ---------- события ---------- */
-    function click(e) { var a = e.target.closest('[data-a],[data-tab],[data-fmt],[data-tgl]'); if (S.menu && !(a && S.menu.contains(a)) && !e.target.closest('.xmenu')) { if (!a || a.getAttribute('data-a') !== 'menu') closePop() }
+    function click(e) { var a = e.target.closest('[data-a],[data-tab],[data-fmt],[data-tgl],[data-src],[data-freq]'); if (S.menu && !(a && S.menu.contains(a)) && !e.target.closest('.xmenu')) { if (!a || a.getAttribute('data-a') !== 'menu') closePop() }
       if (S.cal && !e.target.closest('.xcal') && !(a && a.getAttribute('data-d') === 'date')) closePop();
       /* «Ученики потока» — окно выбора и при повторном нажатии (клик по подписи доходит до радиокнопки) */
       if (e.target.matches && e.target.matches('input[data-acc][value=stream]')) { accWin(); [].forEach.call(el.querySelectorAll('.xrad'), function (l) { l.classList.toggle('on', l.contains(e.target)) }); return true }
       if (!a) { var di = e.target.closest('[data-d="date"]'); if (di && !di.disabled) calOpen(di); return false }
+      if (S.step === '6' && X.cur() === 'ev' && !a.hasAttribute('data-tgl') && click6(e, a)) return true;
       if (a.hasAttribute('data-tab')) { e.preventDefault(); var L = S.list; if (L) go('#host/' + L.type + (a.getAttribute('data-tab') === 'up' ? '' : '/' + a.getAttribute('data-tab'))); return true }
       if (a.hasAttribute('data-fmt')) { e.preventDefault(); var f = a.getAttribute('data-fmt'); S.E.ev.fmt = f; [].forEach.call(a.parentNode.children, function (b) { var on = b === a; b.classList.toggle('on', on); b.setAttribute('aria-checked', on) }); sv({ fmt: f }); return true }
       if (a.hasAttribute('data-tgl')) { e.preventDefault(); var k = a.getAttribute('data-tgl'), on = !a.classList.contains('on'); a.classList.toggle('on', on); a.setAttribute('aria-pressed', on); a.setAttribute('aria-label', a.getAttribute('aria-label').replace(/: (да|нет)$/, ': ' + (on ? 'да' : 'нет')));
+        if (S.step === '6') { tgl6(k, on); return true }
         if (S.step === '3') { S.E.ev.reg[k] = on ? 1 : 0; pvUp(); if (k === 'email') X.redraw(); sv({ reg: regOf(S.E) }) } else { S.E.ev.rec[k] = on ? 1 : 0; sv({ rec: S.E.ev.rec }) } return true }
       var k2 = a.getAttribute('data-a'), E = S.E;
       if (k2 === 'old') return false;
@@ -842,7 +1045,7 @@
       if (k2 === 'newmar') { e.preventDefault(); newEv('mar', a); return true }
       if (k2 === 'new') { e.preventDefault(); newEv(a.getAttribute('data-t'), a); return true }
       if (k2 === 'ovclose') { if (e.target !== a && !e.target.closest('button[data-a="ovclose"]')) return false; e.preventDefault(); go('#host/web'); return true }
-      if (k2 === 'winclose') { if (e.target !== a && !e.target.closest('button[data-a="winclose"]')) return false; e.preventDefault(); closeWin(); if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); else if (S.step === '7' && X.cur() === 'ev') X.redraw(); return true }
+      if (k2 === 'winclose') { if (e.target !== a && !e.target.closest('button[data-a="winclose"]')) return false; e.preventDefault(); closeWin(); if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); else if (S.step === '7' && X.cur() === 'ev') X.redraw(); S.qe = null; return true }
       if (k2 === 'menu') { e.preventDefault(); if (S.menu) { closePop(); return true } menu(a); return true }
       if (k2 === 'copy') { e.preventDefault(); closePop(); copy2(a.getAttribute('data-u'), function () { toast('Скопировано') }); return true }
       if (k2 === 'delask') { e.preventDefault(); delAsk(a); return true }
@@ -876,23 +1079,24 @@
       if (t.hasAttribute('data-src-t')) { S.srcT = t.value; if (!S.srcOwn) { var busy = ((E && E.src && E.src.src) || []).map(function (s) { return s.code }), ci = el.querySelector('[data-src-c]'); S.srcC = srcCode(t.value, busy); if (ci) ci.value = S.srcC } return }
       if (t.hasAttribute('data-src-c')) { S.srcOwn = 1; S.srcC = t.value; return }
       if (t.hasAttribute('data-pickq')) { var q = lc(t.value); [].forEach.call(el.querySelectorAll('[data-picks] label'), function (l) { l.style.display = q && lc(l.textContent).indexOf(q) < 0 ? 'none' : '' }); return }
-      if (!E) return; var f = t.getAttribute('data-f'), r = t.getAttribute('data-r'), d = t.getAttribute('data-d');
+      if (!E) return; if (S.step === '6' && input6(t)) return; var f = t.getAttribute('data-f'), r = t.getAttribute('data-r'), d = t.getAttribute('data-d');
       if (f) { var v = t.value; if (f === 'dur') { if (!(+v >= 10 && +v <= 600)) return; v = +v } E.ev[f] = v; var p = {}; p[f] = v; sv(p);
         if (f === 'title' && E.ev.named) { var h1 = el.querySelector('[data-h1]'); if (h1) h1.textContent = typo(v || (E.ev.type === 'web' ? 'Новый вебинар' : 'Новый марафон')) } return }
       if (r) { var pp = r.split('.'); E.ev.reg[pp[0]][pp[1]] = t.value; pvUp(); sv({ reg: regOf(E) }); return }
       if (d) { var i = +t.getAttribute('data-i'), dd = E.days[i]; if (!dd) return;
         if (d === 'time') { var raw = t.value.replace(/[^\d]/g, '').slice(0, 4), nv = raw.length > 2 ? raw.slice(0, 2) + ':' + raw.slice(2) : raw; if (nv !== t.value) t.value = nv; if (nv.length === 5) { var ok = setTime(i, nv); t.classList.toggle('xbad', !ok); if (ok === true) daysSv() } return }
         if (d === 'title' || d === 'short') { dd[d] = t.value; daysSv() } } }
-    function change(e) { var t = e.target, E = S.E; if (t.hasAttribute('data-cover')) { coverUp(t); return } if (!E) return;
+    function change(e) { var t = e.target, E = S.E; if (t.hasAttribute('data-cover')) { coverUp(t); return } if (!E) return; if (S.step === '6' && change6(t)) return;
       if (t.getAttribute('data-f') === 'host') { E.ev.host = t.value; sv({ host: t.value }); return }
       if (t.getAttribute('data-f') === 'dur' && t.tagName === 'SELECT') { E.ev.dur = +t.value; sv({ dur: +t.value }); return }
       if (t.hasAttribute('data-acc')) { if (t.value === 'stream') return; E.ev.access = Object.assign({}, E.ev.access, { who: 'open' }); sv({ access: E.ev.access }); [].forEach.call(el.querySelectorAll('.xrad'), function (l) { l.classList.toggle('on', l.contains(t)) }); return }
       var rk = t.getAttribute('data-rec'); if (rk) { E.ev.rec[rk] = rk === 'days' ? +t.value : t.value; sv({ rec: E.ev.rec }); return }
       if (t.getAttribute('data-d') === 'time' && t.value && t.value.length !== 5) toast('Время в формате 19:00') }
-    function key(e) { if (e.key !== 'Escape') return; if (S.menu || S.cal) { closePop(); return } if (S.win) { closeWin(); if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); return } if (S.conf) { S.conf.remove(); S.conf = null; return } if (X.cur() === 'new') go('#host/web') }
+    function key(e) { if (e.key !== 'Escape') return; if (S.menu || S.cal) { closePop(); return } if (S.win) { closeWin(); S.qe = null; if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); return } if (S.conf) { S.conf.remove(); S.conf = null; return } if (X.cur() === 'new') go('#host/web') }
     /* уход с экрана: несохранённое — сразу; ушли с шага 1 с названием — заголовок мастера становится названием (§6.4 2.1) */
     function leave() { var E = S.E; if (E && S.step === '1' && X.cur() === 'ev' && E.ev.title && !E.ev.named) { E.ev.named = 1; PQ = Object.assign(PQ || {}, { named: 1 }) } if (PQ) { clearTimeout(PT); flush() } if (DQ) { clearTimeout(DQ); DQ = 0; daysFlush() } closePop(); closeWin() }
-    return { list: list, wiz: wiz, click: click, input: input, change: change, key: key, leave: leave, S: S, stepsHtml: function (o) { return steps2(O, o) } } }
+    function pdown(e) { var h = e.target.closest && e.target.closest('[data-drag]'); if (h && S.step === '6') dragStart(e, h) }
+    return { list: list, wiz: wiz, click: click, input: input, change: change, key: key, leave: leave, pdown: pdown, S: S, stepsHtml: function (o) { return steps2(O, o) } } }
 
   R.host2 = function (el, O) { css2(); var S = { h: '', P: [], n: null, tm: 0, cntAt: 0, dead: 0 }, FXON = R.fx && R.fx.on();
     var role = O.role || 'admin', ttl = function (t) { try { document.title = t + ' · Эфиры · OduvanovSchool' } catch (e) {} };
@@ -914,7 +1118,7 @@
         else if (sub === 'Empty') el.innerHTML = '<div class="efn pg epgc" data-fx-screen="Empty">' + TOK2_EMPTY(O) + '</div>';
         else if (sub === 'bg') el.innerHTML = '<div class="efn pg" data-fx-screen="bg"></div>';
         else el.innerHTML = frame('web', tokens2(), '_tokens') }
-      else { var st = hStage(P); ttl(s.t); el.innerHTML = frame(s.nav, stub(s, st), k) }
+      else { var st = hStage(P); ttl(s.t); el.innerHTML = frame(s.nav, stub(s, st) + (k === 'set' && role === 'admin' && !FXON ? ui2Line('new') : ''), k); typoDom(el) }
       if (fx) R.fx.done(el.querySelector('[data-fx-screen]')) }
     function route(h) { if (S.dead) return; var X = hParse(h), P = X.p, s = SCR2[P[0]];
       /* неизвестный адрес или чужой раздел — экран по роли (§1); служебная страница — только в режиме сверки или админу */
@@ -922,8 +1126,8 @@
       if (P[0] === 'ev' && P[1] === 'new') { O.go('#host/new', true); return }
       X2.leave(); S.h = h; S.P = P; S.q = X.q; if (FXON && R.fx.data().api && R.fx.data().api['GET /efir/leads/count']) S.n = +R.fx.data().api['GET /efir/leads/count'].n || 0;
       draw(); if (!FXON) cnt(true) }
-    el.onclick = function (e) { if (X2.click(e)) return; var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (/^(old|fwd|ovclose|winclose)$/.test(k)) return; e.preventDefault(); toast2('Появится в своём этапе') };
-    el.oninput = function (e) { X2.input(e) }; el.onchange = function (e) { X2.change(e) };
+    el.onclick = function (e) { if (X2.click(e)) return; var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (/^(old|fwd|ovclose|winclose)$/.test(k)) return; e.preventDefault(); if (k === 'ui2off') { a.setAttribute('data-on', '0'); ui2Set(O, a, toast2); return } toast2('Появится в своём этапе') };
+    el.oninput = function (e) { X2.input(e) }; el.onchange = function (e) { X2.change(e) }; el.onpointerdown = function (e) { X2.pdown(e) };
     var kd = function (e) { if (!S.dead && el.isConnected) X2.key(e) }; document.addEventListener('keydown', kd);
     /* тост (§7.6): .pill .pgr снизу по центру, 2 с */
     function toast2(t) { if (O.toast) return O.toast(t); var d = document.querySelector('.efn-toast'); if (d) d.remove(); d = document.createElement('div'); d.className = 'efn efn-toast'; d.innerHTML = '<span class="pill pgr">' + ty(t) + '</span>'; document.body.appendChild(d); setTimeout(function () { d.remove() }, 2000) }
