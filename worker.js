@@ -559,6 +559,7 @@ async function tgUpdate(env, up) {
     await logIt(env, 'cw-' + (k === 'cwd' ? 'manual' : 'noneed'), w ? w.uid : 0, cid);
     try { await tg(env, 'editMessageReplyMarkup', { chat_id: q.message.chat.id, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }) } catch (e) {}
     return tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: k === 'cwd' ? 'Отметил: ответ дан. Спасибо!' : 'Отметил: ответ не нужен' }) }
+  if (up.callback_query && /^evskip:\d{1,9}$/.test(up.callback_query.data || '')) return evSkip(env, up.callback_query); /* 07.11 Э1: «Пропустить» почту */
   if (up.callback_query) { const q = up.callback_query, chat = String(q.message && q.message.chat.id);
     if (q.data === 'off') { const p = await env.DB.prepare('SELECT uid, student FROM parent WHERE tg_chat=? AND active=1').bind(chat).first();
       if (p) { await env.DB.prepare('UPDATE parent SET active=0, updated=? WHERE uid=?').bind(new Date().toISOString(), p.uid).run(); await logIt(env, 'tg-off', p.uid, '') }
@@ -566,12 +567,13 @@ async function tgUpdate(env, up) {
       if (p) await tgSend(env, chat, 'Готово, отчёты больше не будут приходить. Если это ошибка — ' + th(p.student || 'ученик') + ' может снова подключить их в своём профиле.') }
     return }
   const m = up.message; if (!m || !m.chat || m.chat.type !== 'private') return; const chat = String(m.chat.id), text = String(m.text || '').trim();
+  if (await evRegMsg(env, m, chat, text)) return; /* 07.11 Э1 (ТЗ §4.5–4.6): идёт регистрация на мероприятие — контакт или почта (bot_state) */
   if (await bksReply(env, m, chat)) return; /* ответ на «Ответить здесь» / уведомление чата → в чат на платформе */
   if (await neuroTg(env, m, chat, text)) return;
   const st = text.match(/^\/start(?:\s+(\S+))?/);
   if (st && st[1] && /^c[0-9a-f]{10}$/.test(st[1])) return refStart(env, chat, st[1].slice(1), m.from);
   if (st && st[1] && /^e\d{1,9}$/.test(st[1])) return efStart(env, chat, +st[1].slice(1), m.from);
-  if (st && st[1] && /^v\d{1,9}$/.test(st[1])) return evStart(env, chat, +st[1].slice(1), m.from); /* 06.11: запись на мероприятие (марафон / открытый эфир) */ /* 30.10: запись на эфир из бота (в т.ч. не-ученики) */
+  if (st && st[1] && /^v\d{1,9}(_[a-z0-9]{1,24})?$/.test(st[1])) { const vm = st[1].match(EV_START_RE); return evStart(env, chat, +vm[1], m.from, vm[2] || '') } /* 07.11 Э1 (ТЗ §4.1): v<id>[_<код>] — метка ev_src */ /* 06.11: запись на мероприятие (марафон / открытый эфир) */ /* 30.10: запись на эфир из бота (в т.ч. не-ученики) */
   if (st && st[1] && st[1].startsWith('login_')) return appLoginTg(env, chat, st[1].slice(6), m.from);
   if (/^\/panel/.test(text)) { const ok = (await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(chat).first()) || (await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(chat).first());
     if (ok) return tgSend(env, chat, '<b>Пульт куратора</b>: ученики, ожидание ответа, рассылки и часы работы.', [[{ text: 'Открыть пульт', url: (env.BASE_URL || 'https://oduvanov-api.romanoduvanov52.workers.dev') + '/app' }]]) }
@@ -786,7 +788,7 @@ export default {
   async fetch(req, env, ctx) {
     env = dbWrap(env, ctx);
     /* 06.11: запланированные рассылки (в т. ч. напоминания об эфирах) — не ждать крона: любой запрос к серверу раз в минуту проверяет очередь */
-    if (Date.now() - BCT > 60e3 && req.method !== 'OPTIONS') { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env).catch(() => null)); ctx.waitUntil(evTick(env).catch(x => logIt(env, 'ev-tick-err', 0, String(x && x.message || x).slice(0, 200)))) }
+    if (Date.now() - BCT > 60e3 && req.method !== 'OPTIONS') { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env).catch(() => null)); ctx.waitUntil(evTick(env).catch(x => logIt(env, 'ev-tick-err', 0, String(x && x.message || x).slice(0, 200)))); ctx.waitUntil(evGcTick(env, budget(2)).catch(() => null)) }
     const u = new URL(req.url), path = u.pathname.replace(/\/+$/, '') || '/';
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
@@ -967,7 +969,7 @@ export default {
         if (!CURATORS.some(c => c.id === cq)) return json(req, { ok: false, err: 'cid' }, 400); return json(req, Object.assign({ ok: true, dry: true }, await digestFor(env, cq))) }
       if (path === '/admin/run' && u.searchParams.get('k') === env.ADMIN_KEY) { const res = await runHourly(env, true); return json(req, res) }
       /* Telegram: вебхук и настройка */
-      if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 }); if (Date.now() - BCT > 60e3) { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env, budget(40)).catch(() => {})); ctx.waitUntil(evTick(env).catch(() => {})) } /* 04.11: запланированные рассылки — точнее крона (бот получает обновления постоянно) */
+      if (path === '/tg/hook' && req.method === 'POST') { if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await tgSecret(env)) return new Response('no', { status: 403 }); if (Date.now() - BCT > 60e3) { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env, budget(40)).catch(() => {})); ctx.waitUntil(evTick(env).catch(() => {})); ctx.waitUntil(evGcTick(env, budget(2)).catch(() => {})) } /* 04.11: запланированные рассылки — точнее крона (бот получает обновления постоянно) */
         const up = await req.json(); ctx.waitUntil(tgUpdate(env, up).catch(e => logIt(env, 'tg-ex', 0, String(e && e.message || e)))); return new Response('ok') }
       if (path === '/tg/setup' && u.searchParams.get('k') === env.ADMIN_KEY) { await ensure(env); const base = env.BASE_URL || u.origin;
         const a = await tg(env, 'setWebhook', { url: base + '/tg/hook', secret_token: await tgSecret(env), allowed_updates: ['message', 'callback_query', 'business_connection', 'business_message', 'edited_business_message', 'deleted_business_messages'], drop_pending_updates: true });
@@ -1056,12 +1058,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin'],
+const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay', 'evgc'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin', 'evgc'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin', 'evgc'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'evgc' ? evGcTick(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -3421,9 +3423,9 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     if (ev) await evRegister(env, ev, { k: 'w' + gid, uid: 0 }, { name, src: 'web' }); else await env.DB.prepare("INSERT INTO efir_reg (efir_id, k, uid, chat, name, sess, src, at, rem) VALUES (?,?,NULL,NULL,?,0,'web',?,'') ON CONFLICT(efir_id, k) DO NOTHING").bind(e.id, 'w' + gid, name, now).run();
     await logIt(env, 'efir-web', 0, (ev ? 'ev' + ev.id : e.id) + ' ' + name); return json(req, { ok: true, r, efir: e ? e.id : null }) }
   /* 06.11: страница мероприятия без входа — oduvanovschool.pro/efir?ev=<id> */
-  if (path === '/efir/ev') { await evEnsure(env); const ev = await evGet(env, u.searchParams.get('ev')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
-    const E = await evEfirs(env, ev.id), n = await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=?').bind(ev.id).first();
-    return json(req, { ok: true, ev: { id: ev.id, title: ev.title, about: ev.about || '', cover: ev.cover || null }, efirs: E.map(e => { const p = efPub(e, now); delete p.chapters; return p }), next: (evNext(E, now) || {}).id || null, regs: (n && n.n) || 0, bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id }) }
+  if (path === '/efir/ev') { await ef2Ensure(env); const ev = await evGet(env, u.searchParams.get('ev')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
+    const E = await evEfirs(env, ev.id), n = await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first(); /* 07.11 Э1: тестовые регистрации не в счётчиках; кнопка бота — с меткой «Сайт» (§4.12) */
+    return json(req, { ok: true, ev: { id: ev.id, title: ev.title, about: ev.about || '', cover: ev.cover || null }, efirs: E.map(e => { const p = efPub(e, now); delete p.chapters; return p }), next: (evNext(E, now) || {}).id || null, regs: (n && n.n) || 0, bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id + '_site' }) }
   /* 31.10: обложки эфиров, загруженные в пульте (JPEG 1280×720) — открыто, как картинки на сайте */
   if (path === '/efir/cover') { const r = await env.DB.prepare('SELECT mime, data FROM efir_cover WHERE id=?').bind(+u.searchParams.get('id') || 0).first().catch(() => null); if (!r) return new Response('not found', { status: 404 });
     const bin = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)); return new Response(bin, { headers: { 'Content-Type': r.mime || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } }) }
@@ -4030,7 +4032,8 @@ const EF2_COLS = {
   ev_reg: ['phone TEXT', 'email TEXT', 'src_code TEXT', 'gc_ok INTEGER', 'gc_uid INTEGER', 'test INTEGER DEFAULT 0'],
   efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER'],
   efir_msg: ['title TEXT', 'note TEXT'],
-  efir_pollv: ['opts TEXT'] };
+  efir_pollv: ['opts TEXT'],
+  bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'] }; /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
 let EF2_OK = false;
 async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
   await env.DB.batch(EF2_SCHEMA.map(s => env.DB.prepare(s)));
@@ -4038,6 +4041,7 @@ async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
   for (let i = 0; i < T.length; i++) { const have = new Set(((info[i] && info[i].results) || []).map(c => c.name));
     for (const c of EF2_COLS[T[i]]) if (!have.has(c.split(' ')[0])) await env.DB.prepare('ALTER TABLE ' + T[i] + ' ADD COLUMN ' + c).run().catch(e => { if (!/duplicate column/i.test(String(e && e.message))) throw e }) }
   const now = msNow();
+  await env.DB.batch(['CREATE INDEX IF NOT EXISTS ev_reg_chat ON ev_reg (chat)', 'CREATE INDEX IF NOT EXISTS ev_reg_gc ON ev_reg (gc_ok, at) WHERE email IS NOT NULL'].map(q => env.DB.prepare(q))); /* 07.11 Э1: «знакомый» по chat, повтор GetCourse */
   await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT id, '', 'Основная', ? FROM efir_event").bind(now),
     env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT id, 'site', 'Сайт', ? FROM efir_event").bind(now)]);
   EF2_OK = true }
@@ -4057,10 +4061,14 @@ async function evGet(env, id) { return +id ? env.DB.prepare('SELECT * FROM efir_
 async function evEfirs(env, id) { return qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind='open' AND status NOT IN ('draft','cancel') AND CAST(json_extract(cfg, '$.ev') AS INTEGER)=? ORDER BY start").bind(+id)) }
 const evLink = id => 'https://oduvanovschool.pro/efir?ev=' + id;
 /* запись на мероприятие: ev_reg + запись на каждый его эфир (для «Мои напоминания», статистики «кто зарегистрирован») */
-async function evRegister(env, ev, W, x) { x = x || {}; const now = msNow(), E = await evEfirs(env, ev.id);
-  const r = await env.DB.prepare('INSERT INTO ev_reg (ev_id, k, uid, chat, name, src, at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(ev_id, k) DO UPDATE SET chat=COALESCE(excluded.chat, ev_reg.chat), uid=COALESCE(excluded.uid, ev_reg.uid) RETURNING at').bind(ev.id, W.k, W.uid || null, x.chat || W.chat || null, bStr(x.name || '', 60) || null, bStr(x.src || 'app', 20), now).first();
-  const q = E.filter(e => !['done', 'rec'].includes(e.status)).map(e => env.DB.prepare("INSERT INTO efir_reg (efir_id, k, uid, chat, name, sess, src, at, rem) VALUES (?,?,?,?,?,0,?,?,'dhs') ON CONFLICT(efir_id, k) DO UPDATE SET chat=COALESCE(excluded.chat, efir_reg.chat)").bind(e.id, W.k, W.uid || null, x.chat || W.chat || null, bStr(x.name || '', 60) || null, bStr(x.src || 'app', 20), now));
-  if (q.length) await env.DB.batch(q); await logIt(env, 'ev-reg', W.uid || 0, ev.id + ' ' + W.k + ' ' + (x.src || ''));
+async function evRegister(env, ev, W, x) { x = x || {}; await ef2Ensure(env); const now = msNow(), E = await evEfirs(env, ev.id);
+  /* 07.11 Э1 (ТЗ §2.2, §2.4, §4.7, §4.10): телефон, почта, метка (src_code: из бота — код ссылки, с сайта — 'site', из приложения — '' = «Основная»), test — `_test` или мероприятие в draft/test;
+     тестовые не в счётчиках: в efir_reg (счётчики эфира, сводка) не пишутся. gc_ok: 1 — в GetCourse, 0 — нет почты, NULL — ждёт импорта, −N — N неудачных попыток */
+  const test = x.test || ev.status === 'test' || ev.status === 'draft' ? 1 : 0, code = x.src_code != null ? String(x.src_code) : x.src === 'web' ? 'site' : '', em = x.email || null;
+  const r = await env.DB.prepare('INSERT INTO ev_reg (ev_id, k, uid, chat, name, src, at, phone, email, src_code, gc_ok, test) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(ev_id, k) DO UPDATE SET chat=COALESCE(excluded.chat, ev_reg.chat), uid=COALESCE(excluded.uid, ev_reg.uid), phone=COALESCE(excluded.phone, ev_reg.phone), email=COALESCE(excluded.email, ev_reg.email) RETURNING at')
+    .bind(ev.id, W.k, W.uid || null, x.chat || W.chat || null, bStr(x.name || '', 60) || null, bStr(x.src || 'app', 20), now, x.phone || null, em, bStr(code, 24), em ? null : 0, test).first();
+  const q = test ? [] : E.filter(e => !['done', 'rec'].includes(e.status)).map(e => env.DB.prepare("INSERT INTO efir_reg (efir_id, k, uid, chat, name, sess, src, at, rem) VALUES (?,?,?,?,?,0,?,?,'dhs') ON CONFLICT(efir_id, k) DO UPDATE SET chat=COALESCE(excluded.chat, efir_reg.chat)").bind(e.id, W.k, W.uid || null, x.chat || W.chat || null, bStr(x.name || '', 60) || null, bStr(x.src || 'app', 20), now));
+  if (q.length) await env.DB.batch(q); await logIt(env, 'ev-reg', W.uid || 0, ev.id + ' ' + W.k + ' ' + (x.src || '') + (code ? ' ' + code : '') + (test ? ' test' : '') + (x.phone ? ' tel' : '') + (em ? ' mail' : '')); /* в лог — только есть ли телефон/почта, не они сами */
   return { fresh: !!(r && r.at === now), E } }
 /* подстановки: {имя} {мероприятие} {эфир_тема} {время} {расписание}; кнопка {эфир} — личная ссылка на нужный эфир, {мероприятие} — страница мероприятия */
 function evNext(E, now) { return E.find(e => e.status === 'live') || E.find(e => e.status === 'plan' && (e.start || 0) > now - 3 * 36e5) || E[E.length - 1] || null }
@@ -4090,14 +4098,167 @@ async function evTick(env, only) { await evEnsure(env); const now = msNow(), out
         const ins = await env.DB.prepare('INSERT OR IGNORE INTO ev_sent (ev_id, step, efir_id, k, ok, at) VALUES (?,?,?,?,?,?)').bind(ev.id, J.s.id, eid, r.k, chat ? 1 : 0, now).run(); if (!ins.meta || !ins.meta.changes || !chat) continue;
         const e = J.e || evNext(E, now), m = await evRender(env, ev, E, e, J.s, r), j = await evSend(env, chat, m, J.s.img).catch(() => null); if (j && j.ok) out.sent++; else out.fail++ } } }
   if (out.sent || out.fail) await logIt(env, 'ev-tick', 0, JSON.stringify(out)); return out }
-/* регистрация из бота: /start v<id> (и /start e<id> для эфира мероприятия) */
-async function evStart(env, chat, id, from) { await evEnsure(env); if (from) await saveTgUser(env, from); const ev = await evGet(env, id); if (!ev) return tgSend(env, chat, 'Это мероприятие не найдено или уже закончилось.');
-  const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(), W = st ? { me: 'student', uid: st.uid, k: 'u' + st.uid } : { me: 'guest', chat, k: 't' + chat };
-  const nm = efShort([from && from.first_name, from && from.last_name].filter(Boolean).join(' ')), x = await evRegister(env, ev, W, { chat, name: [from && from.first_name, from && from.last_name].filter(Boolean).join(' ') || nm, src: 'bot' });
-  const steps = evSteps(ev), now = msNow(), e = evNext(x.E, now);
-  if (!x.fresh || !steps.some(s => s.on === 'reg' && !(s.min | 0))) { /* уже записан или нет приветствия в воронке — короткое подтверждение со ссылкой */
-    return tgSend(env, chat, '✅ <b>' + nbt(e && e.status === 'live' ? 'Эфир уже идёт!' : 'Ты записан') + '</b>\n«' + th(ev.title) + '»' + (e && e.status !== 'live' && e.start ? '\n' + efWhen(e.start) : ''), e ? [[{ text: e.status === 'live' ? '▶ Открыть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined) }
-  return evTick(env, { ev, k: W.k }) }
+/* ===== 07.11 «Эфиры 2.0», этап Э1 (docs/plan/efiry-tz.md v6 §4): регистрация через бота с телефоном, почтой и метками.
+   /start v<id>[_<код>] (EV_START_RE), /start e<id> эфира мероприятия → evStart. Мероприятие без настроек `reg` (все старые) — как раньше: одно сообщение, без телефона и почты.
+   С `reg` (новые мероприятия, EV_REG_NEW): приветствие + согласие (§4.4) → «Поделиться номером» (request_contact, только свой контакт) → почта (проверка опечаток, «Пропустить» при skip_email)
+   → ev_reg (phone, email, src_code, test) → шаг воронки `reg`. Знакомый (ученик или уже давал телефон) шаги пропускает. Состояние диалога — bot_state.
+   Статусы: draft / test — только команде и efir_testers (запись test=1), `_test` — test=1. GetCourse: почта есть — gcImport users с телефоном и группой reg.gc_group, сразу и повтором в фоне (evGcTick).
+   Телефон и почта — только в D1 и GetCourse; в лог — маской (mPhone, mMail, mPII). ===== */
+const EV_START_RE = /^v(\d{1,9})(?:_([a-z0-9]{1,24}))?$/;
+const EV_REG_NEW = { phone: 1, email: 1, skip_email: 0 }; /* у нового мероприятия (доска M3: телефон — да, почта — да, «можно пропустить» — нет); тексты — по умолчанию, evRegCfg */
+const EV_PRIVACY = 'https://oduvanovroman.getcourse.ru/privacypolicy', EV_BTN = '📱 Поделиться номером';
+/* настройки регистрации с текстами по умолчанию (дословно с доски M3); null — регистрация по-старому */
+function evRegCfg(ev, E) { const R = efJ(ev && ev.reg, null); if (!R || typeof R !== 'object') return null;
+  const mar = (ev.type || ((E || []).length > 1 ? 'mar' : 'web')) === 'mar', g = R.greet || {}, a = R.ask_email || {}, phone = R.phone === 0 || R.phone === false ? 0 : 1;
+  return { phone, email: R.email === 0 || R.email === false ? 0 : 1, skip_email: R.skip_email ? 1 : 0,
+    greet: { text: bStr(g.text, 1500) || 'Привет! Это запись на бесплатный ' + (mar ? 'марафон' : 'вебинар') + ' «' + ev.title + '».' + (phone ? ' Поделись номером — так мы не потеряем тебя, если Telegram глючит.' : ''), btn: bStr(g.btn, 40) || EV_BTN },
+    ask_email: { text: bStr(a.text, 1000) || 'Спасибо! Теперь напиши почту — туда придёт подарок и записи эфиров.', err: bStr(a.err, 500) || 'Похоже, в почте опечатка — проверь и пришли ещё раз' },
+    gc_group: bStr(R.gc_group, 200) || (mar ? 'Марафон: ' : 'Вебинар: ') + ev.title } }
+async function evPrivacy(env) { const v = await kvGet(env, 'privacy_url').catch(() => null); return typeof v === 'string' && /^https:\/\/[^\s"'<>]+$/.test(v) ? v : EV_PRIVACY }
+/* §4.4: строка согласия в конце приветствия (не редактируется) */
+const evGreetText = (R, url) => nbt(th(R.greet.text)) + '\n\n' + nbt(R.phone ? 'Нажимая «Поделиться номером», ты соглашаешься с' : 'Продолжая, ты соглашаешься с') + NB + '<a href="' + th(url) + '">политикой обработки персональных данных</a>.';
+const evMsg = (env, chat, text, markup) => tg(env, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(markup ? { reply_markup: markup } : {}) });
+const evKbPhone = R => ({ keyboard: [[{ text: R.greet.btn, request_contact: true }]], resize_keyboard: true, one_time_keyboard: true });
+const evKbEmail = (ev, R) => R.skip_email ? { inline_keyboard: [[{ text: 'Пропустить', callback_data: 'evskip:' + ev.id }]] } : { remove_keyboard: true };
+/* почта: формат + частые опечатки (mail,ru · gmail.co · yandex.ru. · пробелы) → null */
+const EV_MAIL_TYPO = /^(gmail\.(co|cm|con|cpm|cim|om|comm|ru)|g(mai|mal|amil|mial|nail|maill|mali|mil)\.com|(mail|yandex|ya|inbox|list|bk|rambler)\.(ry|tu|ri|rj|ru\.ru|con|cm|co)|(maill|mial|mai|meil|mali)\.ru|(yandx|yanex|yande|jandex|yndex|yadex)\.ru|(icloud|outlook|hotmail|yahoo)\.(co|con|cm))$/;
+function evEmail(s) { s = String(s || '').trim(); if (!s || s.length > 120 || /[\s,;]/.test(s)) return null; s = s.toLowerCase();
+  if (!/^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(s) || /\.\.|^\.|\.@|@-/.test(s)) return null;
+  const d = s.split('@')[1]; return EV_MAIL_TYPO.test(d) || /\.(con|cpm|cim|comm|ry|rj)$/.test(d) ? null : s }
+const evPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 10 && d.length <= 15 ? '+' + d : null };
+const mPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d ? '+' + d.slice(0, 1) + '***' + d.slice(-2) : '-' };
+const mMail = e => { const [a, d] = String(e || '').split('@'); return d ? (a || '').slice(0, 1) + '***@' + d : '-' };
+const mPII = s => String(s || '').replace(/[^\s@"'<>,;:()]+@[^\s@"'<>,;:()]+/g, m => mMail(m)).replace(/\+?\d[\d\s()-]{8,}\d/g, m => mPhone(m));
+async function evWho(env, chat) { const st = await env.DB.prepare('SELECT uid FROM student WHERE tg_chat=?').bind(chat).first(); return st ? { me: 'student', uid: st.uid, k: 'u' + st.uid } : { me: 'guest', chat, k: 't' + chat } }
+/* команда для draft / test: админы бота, кураторы, сотрудники, kv efir_testers (chat или uid) */
+async function evTeam(env, chat, uid) { const T = await kvGet(env, 'efir_testers').catch(() => null);
+  if (Array.isArray(T) && T.map(String).some(v => v === String(chat) || (uid && v === String(uid)))) return true; if (uid && isStaffUid(env, uid)) return true;
+  return !!((await env.DB.prepare('SELECT chat FROM tg_admin WHERE chat=?').bind(String(chat)).first().catch(() => null)) || (await env.DB.prepare('SELECT cid FROM cur_tg WHERE tg_id=?').bind(String(chat)).first().catch(() => null))) }
+/* код метки из ссылки: известный (ev_src), 'site', 'test'; неизвестный — «Основная» ('') */
+async function evSrcOk(env, evId, code) { if (!code) return ''; if (code === 'site' || code === 'test') return code;
+  const r = await env.DB.prepare('SELECT code FROM ev_src WHERE ev_id=? AND code=?').bind(evId, code).first().catch(() => null); return r ? code : '' }
+async function evStateSet(env, chat, evId, step, src, test, phone) { await env.DB.prepare("INSERT INTO bot_state (chat, kind, ev_id, step, src, at, phone, test) VALUES (?,'evreg',?,?,?,?,?,?) ON CONFLICT(chat) DO UPDATE SET kind=excluded.kind, ev_id=excluded.ev_id, step=excluded.step, src=excluded.src, at=excluded.at, phone=excluded.phone, test=excluded.test")
+  .bind(String(chat), evId, step, src || '', msNow(), phone || null, test ? 1 : 0).run() }
+const evStateDel = (env, chat) => env.DB.prepare('DELETE FROM bot_state WHERE chat=?').bind(String(chat)).run().catch(() => null);
+/* повторный /start записанного (§4.9): «Ты уже записан» + ближайший эфир; идёт — сразу «▶ Смотреть эфир» */
+async function evAlready(env, chat, ev, E, W) { const e = evNext(E, msNow()), live = !!(e && e.status === 'live');
+  return tgSend(env, chat, (live ? '🔴 <b>' + nbt('Эфир уже идёт!') + '</b>' : '✅ <b>' + nbt('Ты уже записан') + '</b>') + '\n«' + th(ev.title) + '»' + (!live && e && e.status === 'plan' && e.start ? '\nБлижайший эфир: ' + efWhen(e.start) + (E.length > 1 ? NB + '— ' + th(e.title) : '') : ''),
+    e ? [[{ text: live ? '▶ Смотреть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined) }
+/* регистрация из бота: /start v<id>[_<код>] (и /start e<id> для эфира мероприятия) */
+async function evStart(env, chat, id, from, code) { await ef2Ensure(env); if (from) await saveTgUser(env, from); const ev = await evGet(env, id); if (!ev) return tgSend(env, chat, 'Это мероприятие не найдено или уже закончилось.');
+  const W = await evWho(env, chat), status = ev.status || 'reg', src = await evSrcOk(env, ev.id, String(code || '')), test = src === 'test' || status === 'draft' || status === 'test' ? 1 : 0;
+  if ((status === 'draft' || status === 'test') && !(await evTeam(env, chat, W.uid))) return tgSend(env, chat, 'Регистрация ещё не' + NB + 'открыта.');
+  const name = [from && from.first_name, from && from.last_name].filter(Boolean).join(' '), E = await evEfirs(env, ev.id), R = evRegCfg(ev, E);
+  if (!R) { /* старое мероприятие (без настроек регистрации) — ровно как до Э1; добавились только метка и test в ev_reg */
+    const nm = efShort(name), x = await evRegister(env, ev, W, { chat, name: name || nm, src: 'bot', src_code: src, test });
+    const steps = evSteps(ev), now = msNow(), e = evNext(x.E, now);
+    if (!x.fresh || !steps.some(s => s.on === 'reg' && !(s.min | 0))) { /* уже записан или нет приветствия в воронке — короткое подтверждение со ссылкой */
+      return tgSend(env, chat, '✅ <b>' + nbt(e && e.status === 'live' ? 'Эфир уже идёт!' : 'Ты записан') + '</b>\n«' + th(ev.title) + '»' + (e && e.status !== 'live' && e.start ? '\n' + efWhen(e.start) : ''), e ? [[{ text: e.status === 'live' ? '▶ Открыть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined) }
+    return evTick(env, { ev, k: W.k }) }
+  if (await env.DB.prepare('SELECT at FROM ev_reg WHERE ev_id=? AND k=?').bind(ev.id, W.k).first()) { await evStateDel(env, chat); return evAlready(env, chat, ev, E, W) }
+  /* §4.3 знакомый: ученик (почта — из GetCourse, gc_name) или уже давал телефон в боте — шаги телефона и почты пропускаются */
+  let known = null;
+  if (W.uid) { const g = await env.DB.prepare('SELECT email FROM gc_name WHERE uid=?').bind(W.uid).first().catch(() => null); known = { phone: null, email: (g && evEmail(g.email)) || null } }
+  else { const p = await env.DB.prepare('SELECT phone, email FROM ev_reg WHERE chat=? AND phone IS NOT NULL ORDER BY at DESC LIMIT 1').bind(String(chat)).first().catch(() => null); if (p) known = { phone: p.phone, email: p.email || null } }
+  if (known) return evRegDone(env, ev, W, { chat, name, src_code: src, test, phone: known.phone, email: known.email });
+  const url = await evPrivacy(env);
+  if (R.phone) { await evStateSet(env, chat, ev.id, 'phone', src, test, null); return evMsg(env, chat, evGreetText(R, url), evKbPhone(R)) }
+  await evMsg(env, chat, evGreetText(R, url)); /* §4.5: без телефона — приветствие без клавиатуры и сразу почта (или «записан») */
+  if (R.email) { await evStateSet(env, chat, ev.id, 'email', src, test, null); return evMsg(env, chat, nbt(th(R.ask_email.text)), evKbEmail(ev, R)) }
+  return evRegDone(env, ev, W, { chat, name, src_code: src, test }) }
+/* §4.7: записан — ev_reg, bot_state удаляется, шаг `reg` воронки (как раньше); затем GetCourse (§4.8) — ошибка регистрации не мешает */
+async function evRegDone(env, ev, W, x) { await evStateDel(env, x.chat);
+  const r = await evRegister(env, ev, W, { chat: x.chat, name: x.name || efShort(''), src: 'bot', src_code: x.src_code, test: x.test, phone: x.phone || null, email: x.email || null });
+  const steps = evSteps(ev), e = evNext(r.E, msNow()); let j;
+  if (!r.fresh) j = await evAlready(env, x.chat, ev, r.E, W);
+  else if (steps.some(s => s.on === 'reg' && !(s.min | 0))) j = await evTick(env, { ev, k: W.k });
+  else j = await tgSend(env, x.chat, '✅ <b>' + nbt(e && e.status === 'live' ? 'Эфир уже идёт!' : 'Ты записан') + '</b>\n«' + th(ev.title) + '»' + (e && e.status !== 'live' && e.start ? '\n' + efWhen(e.start) : ''), e ? [[{ text: e.status === 'live' ? '▶ Смотреть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined);
+  if (r.fresh && x.email) await evGcImport(env, ev, { k: W.k, uid: W.uid || null, phone: x.phone, email: x.email }).catch(() => null);
+  return j }
+/* шаги диалога (bot_state): контакт на шаге phone, почта на шаге email. Команды (/…) не перехватываем */
+async function evRegMsg(env, m, chat, text) { if (!m.contact && (!text || text[0] === '/')) return false;
+  let S = null; try { S = await env.DB.prepare("SELECT * FROM bot_state WHERE chat=? AND kind='evreg'").bind(chat).first() } catch (e) { return false } if (!S) return false;
+  if (msNow() - (S.at || 0) > 7 * 864e5) { await evStateDel(env, chat); return false }
+  await ef2Ensure(env); const ev = await evGet(env, S.ev_id), E = ev ? await evEfirs(env, ev.id) : [], R = ev && evRegCfg(ev, E); if (!R) { await evStateDel(env, chat); return false }
+  const W = await evWho(env, chat); if (await env.DB.prepare('SELECT at FROM ev_reg WHERE ev_id=? AND k=?').bind(ev.id, W.k).first()) { await evStateDel(env, chat); await evAlready(env, chat, ev, E, W); return true }
+  const x = { chat, name: [m.from && m.from.first_name, m.from && m.from.last_name].filter(Boolean).join(' '), src_code: S.src || '', test: S.test ? 1 : 0 };
+  const again = () => evMsg(env, chat, nbt('Нажми кнопку «' + th(R.greet.btn) + '» внизу экрана — Telegram сам подставит номер.'), evKbPhone(R));
+  if (S.step === 'phone') {
+    if (!m.contact) { await again(); return true }
+    if (!m.from || String(m.contact.user_id || '') !== String(m.from.id)) { await logIt(env, 'ev-reg-alien', 0, ev.id + ' ' + chat); await evMsg(env, chat, nbt('Это чужой контакт. Нужен твой номер — нажми «' + th(R.greet.btn) + '» внизу экрана.'), evKbPhone(R)); return true }
+    const phone = evPhone(m.contact.phone_number); if (!phone) { await again(); return true }
+    if (R.email) { await evStateSet(env, chat, ev.id, 'email', S.src, S.test, phone); await evMsg(env, chat, nbt(th(R.ask_email.text)), evKbEmail(ev, R)); return true }
+    await evRegDone(env, ev, W, Object.assign(x, { phone })); return true }
+  if (S.step === 'email') {
+    if (m.contact) { await evMsg(env, chat, nbt(th(R.ask_email.text)), evKbEmail(ev, R)); return true }
+    if (R.skip_email && /^пропустить$/i.test(text)) { await evRegDone(env, ev, W, Object.assign(x, { phone: S.phone })); return true }
+    const em = evEmail(text); if (!em) { await evMsg(env, chat, nbt(th(R.ask_email.err)), evKbEmail(ev, R)); return true }
+    await evRegDone(env, ev, W, Object.assign(x, { phone: S.phone, email: em })); return true }
+  await evStateDel(env, chat); return false }
+/* кнопка «Пропустить» под вопросом о почте (callback evskip:<ev>) */
+async function evSkip(env, q) { const chat = String((q.message && q.message.chat && q.message.chat.id) || (q.from && q.from.id)), id = +String(q.data).split(':')[1];
+  let S = null; try { S = await env.DB.prepare("SELECT * FROM bot_state WHERE chat=? AND kind='evreg' AND ev_id=? AND step='email'").bind(chat, id).first() } catch (e) {}
+  await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }); if (!S) return;
+  await ef2Ensure(env); const ev = await evGet(env, id), E = ev ? await evEfirs(env, ev.id) : [], R = ev && evRegCfg(ev, E); if (!R || !R.skip_email) return;
+  if (q.message) await tg(env, 'editMessageReplyMarkup', { chat_id: chat, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => null);
+  return evRegDone(env, ev, await evWho(env, chat), { chat, name: [q.from && q.from.first_name, q.from && q.from.last_name].filter(Boolean).join(' '), src_code: S.src || '', test: S.test ? 1 : 0, phone: S.phone }) }
+/* §4.8 GetCourse: один пользователь за запрос — почта, телефон, группа reg.gc_group (по умолчанию «Марафон: …» / «Вебинар: …», запоминается при первом импорте).
+   Имя не передаём: refresh_if_exists=1 перезаписал бы имя у тех, кто уже есть в GetCourse. Успех — gc_ok=1, gc_uid; ошибка — gc_ok −1, −2, … (повтор — evGcTick) */
+async function evGcImport(env, ev, r) { if (!r.email) return { ok: false, skip: 1 };
+  const R = efJ(ev.reg, null); let grp = R && bStr(R.gc_group, 200);
+  if (!grp) { const E = await evEfirs(env, ev.id); grp = ((ev.type || (E.length > 1 ? 'mar' : 'web')) === 'mar' ? 'Марафон: ' : 'Вебинар: ') + ev.title;
+    if (R && typeof R === 'object') { R.gc_group = grp; ev.reg = JSON.stringify(R); await env.DB.prepare('UPDATE efir_event SET reg=? WHERE id=?').bind(ev.reg, ev.id).run().catch(() => null) } }
+  const user = { email: r.email, group_name: [grp] }; if (r.phone) user.phone = r.phone;
+  let j = null, err = ''; try { j = await gcImport(env, 'users', { user, system: { refresh_if_exists: 1 } }) } catch (e) { err = String((e && e.message) || e) }
+  const X = (j && j.result) || {}, ok = !!j && (j.success === true || j.success === 'true') && !X.error && X.success !== false && X.success !== 'false';
+  if (ok) { await env.DB.prepare('UPDATE ev_reg SET gc_ok=1, gc_uid=? WHERE ev_id=? AND k=?').bind(+X.user_id || null, ev.id, r.k).run(); return { ok: true, uid: +X.user_id || null } }
+  err = mPII(err || X.error_message || (j && j.error_message) || 'ошибка');
+  await env.DB.prepare('UPDATE ev_reg SET gc_ok=CASE WHEN COALESCE(gc_ok,0)<0 THEN gc_ok-1 ELSE -1 END WHERE ev_id=? AND k=?').bind(ev.id, r.k).run();
+  await logIt(env, 'ev-gc-err', r.uid || 0, ev.id + ' ' + r.k + ' ' + mMail(r.email) + ' ' + err.slice(0, 200)); return { ok: false, err } }
+/* фон (§3.1, до Paid — тик раз в минуту и cron, ≤ 2 импорта за запуск): почта есть, в GetCourse ещё не ушло. Повтор после N неудач — через 2^N мин от регистрации, до 12 попыток, 3 дня */
+async function evGcTick(env, B, lim) { B = B || budget(2); if (!env.GC_KEY_W) return { skip: 'nokey' }; await ef2Ensure(env); const now = msNow(), out = { ok: 0, fail: 0 }, EV = {};
+  const L = await qAll(env.DB.prepare('SELECT ev_id, k, uid, phone, email, gc_ok, at FROM ev_reg WHERE email IS NOT NULL AND (gc_ok IS NULL OR (gc_ok<0 AND gc_ok>-12)) AND at>? AND at<? ORDER BY at LIMIT 40').bind(now - 3 * 864e5, now - 6e4));
+  for (const r of L.filter(r => r.gc_ok == null || now - r.at >= Math.pow(2, -r.gc_ok) * 6e4).slice(0, lim || 2)) { if (!B.ok(1)) break;
+    const ev = r.ev_id in EV ? EV[r.ev_id] : (EV[r.ev_id] = await evGet(env, r.ev_id)); if (!ev) continue; B.use(1);
+    const x = await evGcImport(env, ev, r).catch(() => ({ ok: false })); if (x.ok) out.ok++; else out.fail++ }
+  if (out.ok || out.fail) await logIt(env, 'ev-gc', 0, JSON.stringify(out)); return out }
+/* ===== метки (ev_src): записались / пришли / заявки по src_code — для 2.3 и 5.1 (экраны — Э2, Э6). Тестовые (test=1) не считаются ===== */
+async function evSrcStats(env, ev) { return memo(env, 'evsrc:' + ev.id, 30, async () => { const E = await evEfirs(env, ev.id), ids = E.map(e => +e.id).join(',');
+  const [S, C, T] = await env.DB.batch([env.DB.prepare("SELECT code, title, at FROM ev_src WHERE ev_id=? AND code<>'test' ORDER BY code<>'', at, code").bind(ev.id),
+    env.DB.prepare("SELECT COALESCE(r.src_code,'') c, COUNT(*) regs" + (ids ? ', SUM(CASE WHEN EXISTS (SELECT 1 FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids + ')) THEN 1 ELSE 0 END) came, SUM(CASE WHEN EXISTS (SELECT 1 FROM efir_lead l WHERE l.k=r.k AND l.efir_id IN (' + ids + ')) THEN 1 ELSE 0 END) leads' : ', 0 came, 0 leads') + " FROM ev_reg r WHERE r.ev_id=? AND COALESCE(r.test,0)=0 GROUP BY COALESCE(r.src_code,'')").bind(ev.id),
+    env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=1').bind(ev.id)]);
+  const by = {}; for (const c of C.results || []) by[c.c] = c; const L = (S.results || []).slice(); if (!L.some(s => s.code === '')) L.unshift({ code: '', title: 'Основная' });
+  for (const c in by) if (!L.some(s => s.code === c)) L.push({ code: c, title: c }); /* метка удалена или не из ev_src — всё равно видна */
+  const link = c => 'https://t.me/' + BOT(env) + '?start=v' + ev.id + (c ? '_' + c : '');
+  return { src: L.map(s => ({ code: s.code, title: s.title || (s.code || 'Основная'), link: link(s.code), regs: (by[s.code] || {}).regs | 0, came: (by[s.code] || {}).came | 0, leads: (by[s.code] || {}).leads | 0 })), test: (((T.results || [])[0] || {}).n) | 0 } }) }
+const EV_TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+const evCode = t => String(t || '').toLowerCase().replace(/[а-яё]/g, c => EV_TR[c]).replace(/[^a-z0-9]/g, '').slice(0, 24);
+async function evSrcAdd(env, ev, o) { const title = bStr(o.title, 60); if (!title) return { ok: false, err: 'Напиши название метки' };
+  const own = o.code != null && String(o.code).trim() !== ''; let code = own ? String(o.code).trim().toLowerCase() : evCode(title) || 'm';
+  if (!/^[a-z0-9]{1,24}$/.test(code)) return { ok: false, err: 'Придумай код латиницей: буквы a–z и' + NB + 'цифры, до' + NB + '24' + NB + 'символов' };
+  if (code === 'test') return { ok: false, err: 'Код «test» занят: это «Пройти регистрацию самому»' };
+  const has = async c => !!(await env.DB.prepare('SELECT 1 x FROM ev_src WHERE ev_id=? AND code=?').bind(ev.id, c).first());
+  if (await has(code)) { if (own) return { ok: false, err: 'Метка с' + NB + 'таким кодом уже есть' }; let n = 2; while (n < 100 && await has(code.slice(0, 22) + n)) n++; code = code.slice(0, 22) + n }
+  await env.DB.prepare('INSERT INTO ev_src (ev_id, code, title, at) VALUES (?,?,?,?)').bind(ev.id, code, title, msNow()).run(); await memoClear(env, 'evsrc:' + ev.id);
+  return { ok: true, code, title, link: 'https://t.me/' + BOT(env) + '?start=v' + ev.id + '_' + code } }
+/* настройки регистрации и статус мероприятия (§2.1 reg, §2.4). Экран — Э2; в Э1 — для проверки на тестовом мероприятии. reg: null — регистрация по-старому */
+async function evRegSave(env, ev, o, W) { const set = [], b = [];
+  if ('reg' in o) { const R = o.reg;
+    if (R === null) set.push('reg=NULL');
+    else if (R && typeof R === 'object') { const c = { phone: R.phone ? 1 : 0, email: R.email ? 1 : 0, skip_email: R.skip_email ? 1 : 0 }, g = R.greet || {}, a = R.ask_email || {};
+      if (bStr(g.text, 1500) || bStr(g.btn, 40)) c.greet = { text: bStr(g.text, 1500) || undefined, btn: bStr(g.btn, 40) || undefined };
+      if (bStr(a.text, 1000) || bStr(a.err, 500)) c.ask_email = { text: bStr(a.text, 1000) || undefined, err: bStr(a.err, 500) || undefined };
+      if (bStr(R.gc_group, 200)) c.gc_group = bStr(R.gc_group, 200); set.push('reg=?'); b.push(JSON.stringify(c)) }
+    else return { ok: false, err: 'Не понял настройки регистрации' } }
+  if (o.status != null && String(o.status) !== (ev.status || 'reg')) { const to = String(o.status), from = ev.status;
+    /* §2.4: draft → test / reg, test → reg / draft; reg → draft нельзя. Мероприятие без статуса (старое или созданное в старом пульте) можно увести в draft / test, пока нет настоящих регистраций */
+    const real = from ? 0 : (((await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first()) || {}).n | 0);
+    const OK = from === 'draft' ? ['test', 'reg'] : from === 'test' ? ['reg', 'draft'] : !from && !real ? ['draft', 'test', 'reg'] : [];
+    if (!OK.includes(to)) return { ok: false, err: (from || 'reg') === 'reg' ? 'Регистрация уже идёт — в' + NB + 'черновик не' + NB + 'вернуть' : 'Так статус не' + NB + 'меняется' };
+    set.push('status=?'); b.push(to) }
+  if (!set.length) return { ok: false, err: 'Нечего сохранять' };
+  await env.DB.prepare('UPDATE efir_event SET ' + set.join(', ') + ', upd=? WHERE id=?').bind(...b, msNow(), ev.id).run(); await logIt(env, 'ev-regcfg', W.uid, ev.id + ' ' + set.map(x => x.split('=')[0]).join(',') + (o.status ? ' ' + o.status : ''));
+  const nv = await evGet(env, ev.id); return { ok: true, status: nv.status || 'reg', reg: evRegCfg(nv, await evEfirs(env, ev.id)) } }
 /* рассылка участникам мероприятия (пульт → мероприятие, и «Рассылки»): кому — все / были / не пришли (на конкретном эфире или на любом), пачками по 25 */
 async function evBroadcast(env, ev, o) { const E = await evEfirs(env, ev.id), ids = +o.efir ? [+o.efir] : E.map(x => x.id), off = Math.max(0, +o.off | 0);
   const came = ids.length ? '(SELECT COUNT(*) FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids.map(Number).join(',') + '))' : '0', who = o.who === 'came' ? ' AND ' + came + '>0' : o.who === 'miss' ? ' AND ' + came + '=0' : '';
@@ -4108,9 +4269,9 @@ async function evBroadcast(env, ev, o) { const E = await evEfirs(env, ev.id), id
   if (!off) await logIt(env, 'ev-bc', 0, ev.id + ' ' + (o.who || 'all') + ' ' + ((tot && tot.n) || 0));
   return { ok: true, sent, fail, total: (tot && tot.n) || 0, next: off + R.length < ((tot && tot.n) || 0) ? off + R.length : null } }
 /* пульт: мероприятия (только админ) */
-async function evHostApi(env, req, path, u, o, W) { await evEnsure(env); const now = msNow(); if (!W.adm) return json(req, { ok: false, err: 'Мероприятия настраивает Роман' }, 403);
+async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const now = msNow(); if (!W.adm) return json(req, { ok: false, err: 'Мероприятия настраивает Роман' }, 403);
   if (path === '/efir/host/events') { const L = await qAll(env.DB.prepare('SELECT * FROM efir_event WHERE del=0 ORDER BY id DESC LIMIT 60')), out = [];
-    for (const ev of L) { const [E, n] = await Promise.all([evEfirs(env, ev.id), env.DB.prepare('SELECT COUNT(*) n, SUM(CASE WHEN chat IS NOT NULL OR uid IS NOT NULL THEN 1 ELSE 0 END) tg FROM ev_reg WHERE ev_id=?').bind(ev.id).first()]);
+    for (const ev of L) { const [E, n] = await Promise.all([evEfirs(env, ev.id), env.DB.prepare('SELECT COUNT(*) n, SUM(CASE WHEN chat IS NOT NULL OR uid IS NOT NULL THEN 1 ELSE 0 END) tg FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first()]);
       out.push({ id: ev.id, title: ev.title, about: ev.about || '', cover: ev.cover || null, offer: efJ(ev.offer, null), funnel: evSteps(ev), link: evLink(ev.id), bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) || 0, tg: (n && n.tg) || 0,
         efirs: E.map(e => ({ id: e.id, title: e.title, start: e.start, status: e.status })) }) }
     return json(req, { ok: true, events: out, def: evFunnelDef() }) }
@@ -4119,14 +4280,19 @@ async function evHostApi(env, req, path, u, o, W) { await evEnsure(env); const n
     const cover = /^https:\/\/[^\s"'<>]+$/.test(o.cover || '') ? bStr(o.cover, 400) : null;
     if (+o.id) { const old = await evGet(env, o.id); if (!old) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
       await env.DB.prepare('UPDATE efir_event SET title=?, about=?, cover=?, offer=?, funnel=COALESCE(?, funnel), upd=? WHERE id=?').bind(title, bStr(o.about, 1500), cover, of ? JSON.stringify(of) : null, fn, now, old.id).run(); return json(req, { ok: true, id: old.id }) }
-    const r = await env.DB.prepare('INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd) VALUES (?,?,?,?,?,?,?) RETURNING id').bind(title, bStr(o.about, 1500), cover, of ? JSON.stringify(of) : null, fn || JSON.stringify(evFunnelDef()), now, now).first();
+    const r = await env.DB.prepare('INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd, reg) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(title, bStr(o.about, 1500), cover, of ? JSON.stringify(of) : null, fn || JSON.stringify(evFunnelDef()), now, now, JSON.stringify(EV_REG_NEW)).first();
+    /* 07.11 Э1: у нового мероприятия — регистрация с телефоном и почтой (§4, тексты по умолчанию — evRegCfg) и метки «Основная» / «Сайт» (§2.2) */
+    await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now)]);
     await logIt(env, 'ev-new', W.uid, r.id + ' ' + title); return json(req, { ok: true, id: r.id }) }
   const ev = await evGet(env, o.ev || u.searchParams.get('ev')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
   if (path === '/efir/host/event/del' && req.method === 'POST') { const E = await evEfirs(env, ev.id); if (E.some(e => e.status === 'live')) return json(req, { ok: false, err: 'Сейчас идёт эфир этого мероприятия' }, 400);
     await env.DB.prepare('UPDATE efir_event SET del=1, upd=? WHERE id=?').bind(now, ev.id).run(); return json(req, { ok: true }) }
+  if (path === '/efir/host/event/src') return json(req, Object.assign({ ok: true, bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id }, await evSrcStats(env, ev))); /* 07.11 Э1: метки — записались / пришли / заявки (для 2.3 и 5.1) */
+  if (path === '/efir/host/event/src/add' && req.method === 'POST') return json(req, await evSrcAdd(env, ev, o));
+  if (path === '/efir/host/event/reg' && req.method === 'POST') return json(req, await evRegSave(env, ev, o, W)); /* 07.11 Э1: настройки регистрации и статус (экран 2.3/2.8 — в Э2) */
   if (path === '/efir/host/event/regs') { const E = await evEfirs(env, ev.id), ids = E.map(x => x.id);
-    const R = await qAll(env.DB.prepare('SELECT r.k, r.uid, r.name, r.src, r.at, (r.chat IS NOT NULL OR s.tg_chat IS NOT NULL) tg' + (ids.length ? ', (SELECT COUNT(DISTINCT efir_id) FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids.join(',') + ')) came' : ', 0 came') + ' FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=? ORDER BY r.at DESC LIMIT 500').bind(ev.id));
-    return json(req, { ok: true, regs: R.map(r => ({ name: r.name || (r.uid ? 'Ученик ' + r.uid : 'Гость'), src: r.src, at: r.at, tg: !!r.tg, came: r.came | 0, student: !!r.uid })), efirs: E.length }) }
+    const R = await qAll(env.DB.prepare('SELECT r.k, r.uid, r.name, r.src, r.src_code, r.test, r.at, (r.chat IS NOT NULL OR s.tg_chat IS NOT NULL) tg' + (ids.length ? ', (SELECT COUNT(DISTINCT efir_id) FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids.join(',') + ')) came' : ', 0 came') + ' FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=? ORDER BY r.at DESC LIMIT 500').bind(ev.id));
+    return json(req, { ok: true, regs: R.map(r => ({ name: r.name || (r.uid ? 'Ученик ' + r.uid : 'Гость'), src: r.src, code: r.src_code || '', test: r.test ? 1 : 0, at: r.at, tg: !!r.tg, came: r.came | 0, student: !!r.uid })), efirs: E.length }) }
   if (path === '/efir/host/event/bc' && req.method === 'POST') { if (!String(o.text || '').trim()) return json(req, { ok: false, err: 'Напиши текст сообщения' }, 400); return json(req, await evBroadcast(env, ev, o)) }
   if (path === '/efir/host/event/test' && req.method === 'POST') { const s = evClean([o.step || {}])[0]; if (!s) return json(req, { ok: false, err: 'Пустой шаг' }, 400);
     const me = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(W.uid).first().catch(() => null), chat = (me && me.tg_chat) || ((await env.DB.prepare('SELECT chat FROM tg_admin LIMIT 1').first()) || {}).chat; if (!chat) return json(req, { ok: false, err: 'Не нашёл твой Telegram' }, 400);
