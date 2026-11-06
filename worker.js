@@ -3689,6 +3689,12 @@ async function roomRecFind(env, e, now) { const R = await kvGet(env, 'room:' + e
   if (!/done|ready|processed/.test(v.st)) return 0; const rv = efVideo({ id: String(v.id), provider: 'kinescope', dur: v.dur }); if (!rv) return 0;
   used[v.id] = e.id; await kvPut(env, 'room_rec_used', used); /* 05.11: в плеере поверх видео Kinescope показывает название — «Record OduvanovSchool · …» меняем на тему эфира */ await kinCall(env, 'PATCH', '/v1/videos/' + v.id, { title: String(e.title || '').slice(0, 200) }).catch(() => null); await env.DB.prepare('UPDATE efir SET rec=?, upd=? WHERE id=?').bind(JSON.stringify(rv), now, e.id).run(); await logIt(env, 'efir-rec-room', 0, e.id + ' ' + v.id + ' ' + v.t.slice(0, 60)); return 1 }
 async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json(req, { ok: false, err: 'Только для команды школы' }, 403);
+  /* 07.11 Эфиры Э0: кто я в разделе «Эфиры» и включён ли новый раздел (флаг efir_ui2); включить/выключить флаг — только админ */
+  if (path === '/efir/host/me') { await ef2Ensure(env); return json(req, { ok: true, role: W.me, cid: W.cid || null, uid: W.uid || 0, ui2: (await efUi2(env, W.uid)) ? 1 : 0 }) }
+  if (path === '/efir/host/ui2') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env);
+    if (req.method === 'POST') { const L = [...new Set((Array.isArray(o.uids) ? o.uids : String(o.uids || '').split(/[\s,;]+/)).map(x => String(x).trim()).filter(x => /^\d{3,12}$/.test(x)))].slice(0, 50).map(Number);
+      await kvPut(env, 'efir_ui2', L); await logIt(env, 'efir-ui2', W.uid, L.join(',')); return json(req, { ok: true, uids: L }) }
+    return json(req, { ok: true, uids: (await kvGet(env, 'efir_ui2')) || [] }) }
   if (path === '/efir/host/cover' && req.method === 'POST') { const m = String(o.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/); if (!m) return json(req, { ok: false, err: 'Нужна картинка JPG, PNG или WebP' }, 400);
     if (m[2].length > 1400000) return json(req, { ok: false, err: 'Картинка слишком большая — до 1 МБ' }, 400);
     const r = await env.DB.prepare('INSERT INTO efir_cover (mime, data, by_uid, at) VALUES (?,?,?,?) RETURNING id').bind(m[1], m[2], W.uid || 0, now).first();
@@ -3945,10 +3951,13 @@ async function efirScenApi(env, req, path) { const u = new URL(req.url); await e
       for (const k of ['name', 'role', 'text', 'title', 'sub', 'btn', 'url', 'q']) if (x[k] != null) y[k] = bStr(x[k], k === 'text' ? 1000 : 200); if (x.timer != null) y.timer = Math.min(180, +x.timer | 0); if (Array.isArray(x.opts)) y.opts = x.opts.map(z => bStr(z, 60)).slice(0, 6); return y }).sort((a, b) => a.sec - b.sec);
     if (o.as_new) { const ver = ((await env.DB.prepare('SELECT MAX(ver) v FROM efir_scen WHERE src_id IS ?').bind(old.src_id).first()) || {}).v || 0; const r = await env.DB.prepare('INSERT INTO efir_scen (src_id, ver, title, items, vc, note, by, at) VALUES (?,?,?,?,?,?,?,?) RETURNING id').bind(old.src_id, ver + 1, old.title, JSON.stringify(items), old.vc, old.note, 'admin', now).first(); return json(req, { ok: true, id: r.id, ver: ver + 1 }) }
     await env.DB.prepare('UPDATE efir_scen SET items=?, at=? WHERE id=?').bind(JSON.stringify(items), now, old.id).run(); EFSC.delete(old.id); return json(req, { ok: true, id: old.id, ver: old.ver }) }
+  /* 07.11 Эфиры Э0 (§6.4 Nav): счётчик новых заявок в меню раздела. До Э5 (колонка mgr_st ещё не заполнена) — по старому efir_lead.st='new' */
+  if (path === '/efir/leads/count') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env);
+    const r = await env.DB.prepare("SELECT COUNT(*) n FROM efir_lead WHERE COALESCE(mgr_st, st)='new'").first(); return json(req, { ok: true, n: (r && r.n) || 0 }) }
   if (path === '/efir/leads') { if (req.method === 'POST') { const c = { chats: (Array.isArray(o.chats) ? o.chats : String(o.chats || '').split(/[\s,;]+/)).map(x => String(x).trim()).filter(x => /^-?\d{3,20}$/.test(x)).slice(0, 5) }; await kvPut(env, 'efir_leads', c); return json(req, { ok: true, cfg: c }) }
     return json(req, { ok: true, cfg: (await kvGet(env, 'efir_leads')) || {}, leads: await qAll(env.DB.prepare('SELECT l.*, e.title FROM efir_lead l LEFT JOIN efir e ON e.id=l.efir_id ORDER BY l.id DESC LIMIT 200')) }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
-const EFIR_SCEN_API = ['/efir/scen', '/efir/mod', '/efir/leads'];
+const EFIR_SCEN_API = ['/efir/scen', '/efir/mod', '/efir/leads', '/efir/leads/count'];
 
 /* ---------- эфиры в боте: /start e<id> (запись, в т.ч. не-учеников), напоминания за сутки / за час / при старте (cron, учитывает «Уведомления» → Эфиры) ---------- */
 async function efLink(env, e, k) { return k[0] === 't' ? 'https://romanoduvanov.github.io/otzyvy/gc/efir.html?id=' + e.id + '&r=' + await efGuestTok(env, k.slice(1)) : maLink(env, 'e' + e.id) }
@@ -3990,6 +3999,50 @@ const EV_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS ev_sent (ev_id INTEGER NOT NULL, step TEXT NOT NULL, efir_id INTEGER NOT NULL DEFAULT 0, k TEXT NOT NULL, ok INTEGER, at INTEGER, PRIMARY KEY (ev_id, step, efir_id, k))'];
 let EV_OK = false;
 async function evEnsure(env) { await efirEnsure(env); if (EV_OK) return; await env.DB.batch(EV_SCHEMA.map(s => env.DB.prepare(s))); EV_OK = true }
+/* ===== 07.11 «Эфиры 2.0», этап Э0 (docs/plan/efiry-tz.md v6 §2): новые таблицы и колонки — лениво, как efirEnsure/evEnsure. Старые колонки не удаляем.
+   Вызывается только из новых маршрутов (/efir/host/me, /efir/host/ui2, /efir/leads/count) и маршрутов следующих этапов — поведение существующих не меняется.
+   Миграция Э0: у каждого мероприятия — метки «Основная» ('') и «Сайт» (site) в ev_src (INSERT OR IGNORE — повторный запуск ничего не портит; test зарезервирован). ===== */
+const EF2_SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS ev_src (ev_id INTEGER NOT NULL, code TEXT NOT NULL, title TEXT, at INTEGER, PRIMARY KEY (ev_id, code))',
+  'CREATE TABLE IF NOT EXISTS ev_mat (id INTEGER PRIMARY KEY AUTOINCREMENT, ev_id INTEGER NOT NULL, kind TEXT, data TEXT, days TEXT, ord INTEGER DEFAULT 0, del INTEGER DEFAULT 0, at INTEGER)',
+  'CREATE INDEX IF NOT EXISTS ev_mat_ev ON ev_mat (ev_id, del, ord)',
+  'CREATE TABLE IF NOT EXISTS ev_mat_log (id INTEGER PRIMARY KEY AUTOINCREMENT, efir_id INTEGER NOT NULL, mat_id INTEGER, kind TEXT, sec_on INTEGER, sec_off INTEGER, at_on INTEGER, at_off INTEGER, clicks INTEGER DEFAULT 0, leads INTEGER DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS ev_mat_log_e ON ev_mat_log (efir_id, mat_id)',
+  'CREATE TABLE IF NOT EXISTS ev_mat_click (log_id INTEGER NOT NULL, k TEXT NOT NULL, PRIMARY KEY (log_id, k))',
+  "CREATE TABLE IF NOT EXISTS ev_form (id INTEGER PRIMARY KEY AUTOINCREMENT, ev_id INTEGER NOT NULL, efir_id INTEGER, k TEXT, uid INTEGER, chat TEXT, name TEXT, phone TEXT, email TEXT, tg TEXT, answers TEXT, sec INTEGER, src TEXT, row_ok INTEGER DEFAULT 0, row_n INTEGER, sheet_st TEXT, st TEXT DEFAULT 'new', test INTEGER DEFAULT 0, outside INTEGER DEFAULT 0, at INTEGER, upd INTEGER)",
+  'CREATE INDEX IF NOT EXISTS ev_form_ev ON ev_form (ev_id, at)',
+  'CREATE TABLE IF NOT EXISTS ev_form_q (id INTEGER PRIMARY KEY AUTOINCREMENT, ev_id INTEGER NOT NULL, form_id INTEGER, sheet TEXT, payload TEXT, tries INTEGER DEFAULT 0, next_at INTEGER, err TEXT)',
+  'CREATE INDEX IF NOT EXISTS ev_form_q_n ON ev_form_q (next_at)',
+  "CREATE TABLE IF NOT EXISTS ev_bc (id INTEGER PRIMARY KEY AUTOINCREMENT, ev_id INTEGER NOT NULL, who TEXT, text TEXT, img TEXT, btns TEXT, at_plan INTEGER, at_sent INTEGER, n INTEGER DEFAULT 0, ok INTEGER DEFAULT 0, st TEXT DEFAULT 'plan')",
+  'CREATE INDEX IF NOT EXISTS ev_bc_ev ON ev_bc (ev_id, st)',
+  'CREATE TABLE IF NOT EXISTS ev_prod (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, price INTEGER, code TEXT, del INTEGER DEFAULT 0, at INTEGER)',
+  'CREATE TABLE IF NOT EXISTS efir_ban (efir_id INTEGER NOT NULL, k TEXT NOT NULL, chat TEXT, uid INTEGER, kind TEXT NOT NULL, by TEXT, at INTEGER, PRIMARY KEY (efir_id, k, kind))',
+  'CREATE TABLE IF NOT EXISTS efir_rev (efir_id INTEGER NOT NULL, mid INTEGER NOT NULL, at_on INTEGER, at_off INTEGER, sec_on INTEGER, PRIMARY KEY (efir_id, mid))',
+  'CREATE TABLE IF NOT EXISTS efir_wait (efir_id INTEGER NOT NULL, k TEXT NOT NULL, first INTEGER, last INTEGER, PRIMARY KEY (efir_id, k))',
+  'CREATE TABLE IF NOT EXISTS efir_pult (efir_id INTEGER NOT NULL, uid INTEGER NOT NULL, name TEXT, role TEXT, last INTEGER, PRIMARY KEY (efir_id, uid))',
+  'CREATE TABLE IF NOT EXISTS bot_state (chat TEXT PRIMARY KEY, kind TEXT, ev_id INTEGER, step TEXT, src TEXT, at INTEGER)',
+  /* §3.7: очередь сообщений бота (заполняется после Э0.П — включения Paid; до этого не используется) */
+  "CREATE TABLE IF NOT EXISTS tg_q (id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT NOT NULL, pri INTEGER DEFAULT 2, chat TEXT, k TEXT NOT NULL, ev_id INTEGER, efir_id INTEGER, st TEXT DEFAULT 'q', tries INTEGER DEFAULT 0, next_at INTEGER, err TEXT, at INTEGER, sent_at INTEGER, UNIQUE (job, k))",
+  'CREATE INDEX IF NOT EXISTS tg_q_st ON tg_q (st, pri, next_at)'];
+/* новые колонки старых таблиц (§2.1, §2.2 «Дополнения»): добавляются, если их ещё нет; значения старых строк — миграциями своих этапов (§8, §10) */
+const EF2_COLS = {
+  efir_event: ['type TEXT', 'status TEXT', 'host TEXT', 'fmt TEXT', 'dur INTEGER', 'short TEXT', 'reg TEXT', 'sale TEXT', 'access TEXT', 'rec TEXT', 'steps TEXT'],
+  ev_reg: ['phone TEXT', 'email TEXT', 'src_code TEXT', 'gc_ok INTEGER', 'gc_uid INTEGER', 'test INTEGER DEFAULT 0'],
+  efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER'],
+  efir_msg: ['title TEXT', 'note TEXT'],
+  efir_pollv: ['opts TEXT'] };
+let EF2_OK = false;
+async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
+  await env.DB.batch(EF2_SCHEMA.map(s => env.DB.prepare(s)));
+  const T = Object.keys(EF2_COLS), info = await env.DB.batch(T.map(t => env.DB.prepare('PRAGMA table_info(' + t + ')')));
+  for (let i = 0; i < T.length; i++) { const have = new Set(((info[i] && info[i].results) || []).map(c => c.name));
+    for (const c of EF2_COLS[T[i]]) if (!have.has(c.split(' ')[0])) await env.DB.prepare('ALTER TABLE ' + T[i] + ' ADD COLUMN ' + c).run().catch(e => { if (!/duplicate column/i.test(String(e && e.message))) throw e }) }
+  const now = msNow();
+  await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT id, '', 'Основная', ? FROM efir_event").bind(now),
+    env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT id, 'site', 'Сайт', ? FROM efir_event").bind(now)]);
+  EF2_OK = true }
+/* флаг нового раздела (§8): kv efir_ui2 — список uid (сначала админы и efir_testers); пусто — у всех старые экраны */
+async function efUi2(env, uid) { const L = await kvGet(env, 'efir_ui2'); return !!uid && Array.isArray(L) && L.map(String).includes(String(uid)) }
 const EV_TRIG = ['reg', 'before', 'start', 'after', 'days'];
 const evFunnelDef = () => [
   { id: 'r0', on: 'reg', min: 0, text: '✅ {имя}, ты записан на «{мероприятие}»!\n\n{расписание}\n\nНапомню перед эфиром — просто жди сообщение здесь.', btns: [{ t: 'Страница эфира', u: '{эфир}' }] },
