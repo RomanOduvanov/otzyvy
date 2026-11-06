@@ -788,7 +788,7 @@ export default {
   async fetch(req, env, ctx) {
     env = dbWrap(env, ctx);
     /* 06.11: запланированные рассылки (в т. ч. напоминания об эфирах) — не ждать крона: любой запрос к серверу раз в минуту проверяет очередь */
-    if (Date.now() - BCT > 60e3 && req.method !== 'OPTIONS') { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env).catch(() => null)); ctx.waitUntil(evTick(env).catch(x => logIt(env, 'ev-tick-err', 0, String(x && x.message || x).slice(0, 200)))); ctx.waitUntil(evGcTick(env, budget(2)).catch(() => null)) }
+    if (Date.now() - BCT > 60e3 && req.method !== 'OPTIONS') { BCT = Date.now(); ctx.waitUntil(bcPlanTick(env).catch(() => null)); ctx.waitUntil(evTick(env).catch(x => logIt(env, 'ev-tick-err', 0, String(x && x.message || x).slice(0, 200)))); ctx.waitUntil(evGcTick(env, budget(2)).catch(() => null)); ctx.waitUntil(evFormTick(env, budget(3)).catch(() => null)) }
     const u = new URL(req.url), path = u.pathname.replace(/\/+$/, '') || '/';
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(req) });
     try {
@@ -1058,12 +1058,12 @@ export default {
    «45 * * * *» — кураторы, досылка экспорта платежей и отчётов. 03.11 (этап 3): «20 6 * * *» — черновики ИИ на утро (9:20 МСК), «30 6 * * *» — утренняя сводка кураторам (9:30 МСК). Если оставить одно расписание — все задачи по очереди с общим бюджетом.
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
-const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay', 'evgc'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin', 'evgc'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin', 'evgc'],
+const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay', 'evgc', 'evform', 'evfst'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin', 'evgc', 'evform', 'evfst'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin', 'evgc', 'evform', 'evfst'],
   '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
   const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'evgc' ? evGcTick(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'evgc' ? evGcTick(env, B) : j === 'evform' ? evFormTick(env, B) : j === 'evfst' ? evFormStatus(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -3429,6 +3429,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
   /* 31.10: обложки эфиров, загруженные в пульте (JPEG 1280×720) — открыто, как картинки на сайте */
   if (path === '/efir/cover') { const r = await env.DB.prepare('SELECT mime, data FROM efir_cover WHERE id=?').bind(+u.searchParams.get('id') || 0).first().catch(() => null); if (!r) return new Response('not found', { status: 404 });
     const bin = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)); return new Response(bin, { headers: { 'Content-Type': r.mime || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } }) }
+  if (path === '/efir/form/hook' && req.method === 'POST') return efFormHook(env, req, o); /* 07.11 Э3: ответ Google Формы от скрипта таблицы — по токену мероприятия, без входа */
   const W = await efirWho(env, req, u, o); if (!W) return deny(req);
   if (env.KINESCOPE_KEY) try { await kinAutoLive(env, now) } catch (x) {}
   if (path.startsWith('/efir/host/') || path.startsWith('/efir/kin/')) return efirHostApi(env, req, path, u, o, W, now);
@@ -3451,6 +3452,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
   { const cR = efJ(e.cfg, {}); if (cR.rec_days && e.kind !== 'auto' && !W.staff && e.status !== 'live' && (e.at_end || 0) && now > e.at_end + cR.rec_days * 864e5) return json(req, { ok: false, err: 'Запись была доступна ' + cR.rec_days + NB + (cR.rec_days % 10 === 1 && cR.rec_days % 100 !== 11 ? 'день' : [2, 3, 4].includes(cR.rec_days % 10) && ![12, 13, 14].includes(cR.rec_days % 100) ? 'дня' : 'дней') + ' после эфира — срок закончился' }, 403) }
   if (!(await efCan(env, e, W))) return json(req, { ok: false, err: e.tariff === 'amz' ? 'Этот эфир — для тарифа «Премиум Амазон»' : 'Этот эфир не для твоего потока' }, 403);
   const reg = await env.DB.prepare('SELECT * FROM efir_reg WHERE efir_id=? AND k=?').bind(e.id, W.k).first();
+  if (path === '/efir/form' || path === '/efir/form/open') return efFormApi(env, req, path, u, o, W, e, now); /* 07.11 Э3: анкета зрителя (экран — Э5) */
   if (path === '/efir/one') { const p = efPub(e, now, { reg, full: true }), [sn, hd, pt, wk] = await env.DB.batch([env.DB.prepare('SELECT * FROM efir_seen WHERE efir_id=? AND k=? ORDER BY last DESC LIMIT 1').bind(e.id, W.k), env.DB.prepare('SELECT st FROM efir_hand WHERE efir_id=? AND k=?').bind(e.id, W.k), env.DB.prepare('SELECT COALESCE(SUM(pts),0) p FROM efir_pts WHERE efir_id=? AND k=?').bind(e.id, W.k), env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND k=? AND kind='work' AND del=0").bind(e.id, W.k)]);
     const s0 = (sn.results || [])[0] || null, wq = (wk.results || [])[0];
     if (e.kind === 'auto') { const L = efSessions(e, now, now + 8 * 864e5).slice(0, 6), cfg = efJ(e.cfg, {}); p.sessions = L; p.after = cfg.sched && +cfg.sched.after || 0 }
@@ -3552,9 +3554,13 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
     const contact = [ph, em, tgn].filter(Boolean).join(' · ').slice(0, 160) || bStr(o.contact, 120), sec = S.st === 'live' ? await secOf() : null, nm = bStr(o.name, 60) || (W.uid && !W.staff ? await stuName(env, W.uid) : await efName(env, W));
     const r = await env.DB.prepare('INSERT INTO efir_lead (efir_id, sess, k, uid, chat, name, contact, text, sec, at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id').bind(e.id, sessOf(), W.k, W.uid || null, chat, nm, contact, bStr(o.text, 500), sec, now).first();
     /* 06.11 (Роман): без уведомлений менеджерам (заявок по 100). Заказ в GetCourse на продукт мероприятия — менеджеры работают с ним там */
-    let deal = null; if (o.form && em) { try { const evid = efJ(e.cfg, {}).ev, ev = evid ? await evGet(env, evid) : null, of = ev ? efJ(ev.offer, null) : null;
-      if (of && of.title) { const cm = ('Заявка с эфира «' + e.title + '»' + (sec != null ? ' на ' + Math.floor(sec / 60) + '-й минуте' : '') + (tgn ? ' · Telegram ' + tgn : '')).slice(0, 500);
-        const j = await gcImport(env, 'deals', { user: { email: em, first_name: nm || undefined, phone: ph || undefined }, system: { refresh_if_exists: 0, return_deal_number: 1 }, deal: of.code ? { offer_code: of.code, deal_status: 'new', deal_comment: cm } : { product_title: of.title.slice(0, 250), deal_cost: of.price || 0, deal_status: 'new', quantity: 1, deal_comment: cm } });
+    /* 07.11 Э3: продукт — из справочника (sale.offer_id), статус и комментарий заказа — с шага 6; «Анкеты» и «Без продаж» заказ не создают */
+    const evid0 = efJ(e.cfg, {}).ev, ev0 = evid0 ? await (async () => { await ef2Ensure(env); return evGet(env, evid0) })() : null, S0 = ev0 ? ev3Sale(ev0) : null;
+    if (ev0 && S0 && S0.mode === 'sell' && S0.copy_sheet && S0.sheet && S0.sheet.ok_at) try { const D0 = await ev2Days(env, ev0.id); await ev3Queue(env, ev0.id, -r.id, 'Заявки', { k: 'l' + r.id, at: ev3At(now), day: ev3Mark(ev0, D0, e), min: sec != null ? Math.floor(sec / 60) : null, name: nm, phone: ph, email: em, tg: tgn, src: '', watched: '', a: {} }) } catch (x) {}
+    let deal = null; if (o.form && em && !(S0 && !S0.legacy && S0.mode !== 'sell')) { try { const ev = ev0, of = ev ? await ev3Prod(env, S0, ev) : null;
+      if (of && of.title) { const D1 = S0 && !S0.legacy ? await ev2Days(env, ev.id) : [], cm = (S0 && !S0.legacy ? String(S0.comment || '').replace(/\{марафон\}/g, ev.title || '').replace(/\{день\}/g, String(Math.max(0, D1.findIndex(x => x.id === e.id)) + 1)).replace(/\{минута\}/g, sec != null ? String(Math.floor(sec / 60)) : '—') + (tgn ? ' · Telegram ' + tgn : '')
+          : 'Заявка с эфира «' + e.title + '»' + (sec != null ? ' на ' + Math.floor(sec / 60) + '-й минуте' : '') + (tgn ? ' · Telegram ' + tgn : '')).slice(0, 500), dst = S0 && S0.order_st === 'work' ? 'in_work' : 'new';
+        const j = await gcImport(env, 'deals', { user: { email: em, first_name: nm || undefined, phone: ph || undefined }, system: { refresh_if_exists: 0, return_deal_number: 1 }, deal: of.code ? { offer_code: of.code, deal_status: dst, deal_comment: cm } : { product_title: of.title.slice(0, 250), deal_cost: of.price || 0, deal_status: dst, quantity: 1, deal_comment: cm } });
         const RR = j.result || {}; if ((j.success === true || j.success === 'true') && (RR.success === true || RR.success === 'true')) deal = RR.deal_number || RR.deal_id || 1; else await logIt(env, 'efir-lead-gc-err', W.uid, JSON.stringify(j).slice(0, 300)) } } catch (x) { await logIt(env, 'efir-lead-gc-err', W.uid, String(x && x.message || x).slice(0, 200)) }
       if (deal) await env.DB.prepare('UPDATE efir_lead SET text=? WHERE id=?').bind(('Заказ GetCourse №' + deal + (o.text ? ' · ' + bStr(o.text, 400) : '')).slice(0, 500), r.id).run() }
     return json(req, { ok: true, id: r.id }) }
@@ -3694,6 +3700,9 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   /* 07.11 Эфиры Э0: кто я в разделе «Эфиры» и включён ли новый раздел (флаг efir_ui2); включить/выключить флаг — только админ */
   if (path === '/efir/host/me') { await ef2Ensure(env); return json(req, { ok: true, role: W.me, cid: W.cid || null, uid: W.uid || 0, ui2: (await efUi2(env, W.uid)) ? 1 : 0 }) }
   if (path === '/efir/host/ui2') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env);
+    /* 07.11 Э3: «Новый раздел эфиров (бета)» — админ включает и выключает флаг только себе; список других uid не трогаем */
+    if (req.method === 'POST' && (o.self || o.uid != null)) { const me = +W.uid || 0; if (!me || (o.uid != null && +o.uid !== me)) return json(req, { ok: false, err: 'Можно включить только себе' }, 403);
+      const L0 = (await kvGet(env, 'efir_ui2')) || [], L = (Array.isArray(L0) ? L0 : []).map(Number).filter(x => x && x !== me); if (o.on) L.push(me); await kvPut(env, 'efir_ui2', L); await logIt(env, 'efir-ui2-self', me, o.on ? 'on' : 'off'); return json(req, { ok: true, ui2: o.on ? 1 : 0 }) }
     if (req.method === 'POST') { const L = [...new Set((Array.isArray(o.uids) ? o.uids : String(o.uids || '').split(/[\s,;]+/)).map(x => String(x).trim()).filter(x => /^\d{3,12}$/.test(x)))].slice(0, 50).map(Number);
       await kvPut(env, 'efir_ui2', L); await logIt(env, 'efir-ui2', W.uid, L.join(',')); return json(req, { ok: true, uids: L }) }
     return json(req, { ok: true, uids: (await kvGet(env, 'efir_ui2')) || [] }) }
@@ -4040,7 +4049,8 @@ const EF2_COLS = {
   efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER'],
   efir_msg: ['title TEXT', 'note TEXT'],
   efir_pollv: ['opts TEXT'],
-  bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'] }; /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
+  bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'],
+  ev_form: ['ip TEXT'] }; /* 07.11 Э3: хеш IP анкеты гостя (защита от накрутки §3.4), стирается через 2 дня */ /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
 let EF2_OK = false;
 async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
   await env.DB.batch(EF2_SCHEMA.map(s => env.DB.prepare(s)));
@@ -4302,6 +4312,11 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
   if (path === '/efir/host/event/get') return json(req, await ev2Get(env, ev));
   if (path === '/efir/host/event/days' && req.method === 'POST') { const r = await ev2DaysSave(env, ev, o, W); return json(req, r, r.conflict ? 409 : 200) }
   if (path === '/efir/host/event/check') return json(req, await ev2Check(env, ev));
+  /* 07.11 Э3 (§3.2, §5): шаг 6 — скрипт таблицы, проверка таблицы и Google Формы, состояние подключения, вопросы прошлых мероприятий */
+  if (path === '/efir/host/event/form/script') { const t = await ev3Script(env, ev, new URL(req.url).origin); await logIt(env, 'ev-gas', W.uid, String(ev.id)); return json(req, { ok: true, text: t }) }
+  if (path === '/efir/host/event/form/check' && req.method === 'POST') { if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return json(req, { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' }, 409); return json(req, o.what === 'gform' ? await ev3CheckForm(env, ev, o, W) : await ev3CheckSheet(env, ev, o, W)) }
+  if (path === '/efir/host/event/form') return json(req, await ev3State(env, ev));
+  if (path === '/efir/host/event/qs') return json(req, await ev3PastQs(env, ev));
   if (path === '/efir/host/event/launch' && req.method === 'POST') return json(req, await ev2Launch(env, ev, o, W));
   if (path === '/efir/host/event/dup' && req.method === 'POST') return json(req, await ev2Dup(env, ev, W));
   if (path === '/efir/host/event/src' && req.method === 'POST') return json(req, await evSrcAdd(env, ev, o));
@@ -4354,6 +4369,8 @@ const ev2Sale = ev => { const S = efJ(ev.sale, null); if (S && typeof S === 'obj
 const ev2Acc = ev => { const A = efJ(ev.access, null) || {}; return { who: A.who === 'stream' ? 'stream' : 'open', streams: (Array.isArray(A.streams) ? A.streams : []).map(x => bStr(x, 60)).filter(Boolean).slice(0, 30), tariffs: (Array.isArray(A.tariffs) ? A.tariffs : []).map(x => bStr(x, 60)).filter(Boolean).slice(0, 30) } };
 const ev2Rec = ev => { const R = efJ(ev.rec, null) || {}; return { days: [1, 3, 7, 0, -1, 14, 30].includes(+R.days) && R.days != null ? +R.days : 1, after: R.after === 'closed' ? 'closed' : 'lead', chat: R.chat === 0 ? 0 : 1, pts: R.pts === 0 ? 0 : 1 } };
 const ev2DayPub = (e, now) => { const c = efJ(e.cfg, {}); return { id: e.id, title: e.title || '', short: c.short || '', start: e.start || null, dur: e.dur || null, status: e.status, hide: c.hide ? 1 : 0, at_live: e.at_live || null, at_end: e.at_end || null, past: !!(e.start && e.start < now && e.status !== 'draft' && e.status !== 'plan') || ['done', 'rec'].includes(e.status) } };
+/* §3.2 «Готовность шагов»; шаг 6 (Э3): режим выбран; «Продаём» — продукт; «Анкеты» — своя форма: таблица проверена, Google Форма: форма проверена и скрипт в её таблице ответов подключён */
+const ev3Ready = S => !!S && (S.mode === 'none' || (S.mode === 'sell' && !!(S.offer_id || S.legacy)) || (S.mode === 'form' && !!(S.sheet && S.sheet.ok_at) && ((S.form && S.form.src) !== 'gform' || !!(S.sheet.form && S.form.gform && S.form.gform.checked_at))));
 /* §3.2 «Готовность шагов» */
 async function ev2Calc(env, ev, D) { D = D || await ev2Days(env, ev.id); const R = efJ(ev.reg, null) || {}, S = ev2Sale(ev), F = evSteps(ev), st = ev2Status(ev);
   const m = await env.DB.prepare('SELECT COUNT(*) n FROM ev_mat WHERE ev_id=? AND del=0').bind(ev.id).first(), vis = D.filter(e => !efJ(e.cfg, {}).hide);
@@ -4363,7 +4380,7 @@ async function ev2Calc(env, ev, D) { D = D || await ev2Days(env, ev.id); const R
     3: bStr(g.text, 1500) && (R.email === 0 || bStr(a.text, 1000)) ? 'd' : 't',
     4: mats ? 'd' : 'o',
     5: F.length && F.filter(s => !s.off).every(s => String(s.text || '').trim()) ? 'd' : 't',
-    6: S && (S.mode === 'none' || (S.mode === 'sell' && (S.offer_id || S.legacy)) || (S.mode === 'form' && S.sheet && S.sheet.ok_at)) ? 'd' : 't',
+    6: ev3Ready(S) ? 'd' : 't',
     7: ev.access || ev.rec ? 'd' : 't',
     8: st === 'reg' || st === 'done' ? 'd' : 't' } }
 async function ev2SaveSteps(env, ev, D) { const s = await ev2Calc(env, ev, D); ev.steps = JSON.stringify(s); await env.DB.prepare('UPDATE efir_event SET steps=? WHERE id=?').bind(ev.steps, ev.id).run(); return s }
@@ -4408,11 +4425,11 @@ async function ev2Get(env, ev) { const now = msNow(), D = await ev2Days(env, ev.
   const R = evRegCfg(ev, D) || evRegCfg(Object.assign({}, ev, { reg: JSON.stringify(EV_REG_NEW), type }), D), raw = efJ(ev.reg, null) || {};
   const n = await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first(), S = ev2Sale(ev);
   const seen = D.length ? await qAll(env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n FROM efir_seen WHERE sess=0 AND efir_id IN (' + D.map(e => +e.id).join(',') + ') GROUP BY efir_id')) : [];
-  const host = ev2Host(ev.host || (D[0] && D[0].host_cid) || 'admin');
+  const host = ev2Host(ev.host || (D[0] && D[0].host_cid) || 'admin'), S3 = ev3Sale(ev, type);
   return { ok: true, now, ev: { id: ev.id, type, status: ev2Status(ev), title: ev.title || '', short: ev.short || '', about: ev.about || '', cover: ev.cover || null, host, host_name: ev2HostName(host),
     fmt: ev.fmt === 'room' ? 'room' : 'obs', dur: +ev.dur || (D[0] && D[0].dur) || 90, named: ev.named ? 1 : 0, upd: ev.upd || 0, steps,
     reg: { phone: R.phone, email: R.email, skip_email: R.skip_email, greet: R.greet, ask_email: R.ask_email, gc_group: R.gc_group, saved: raw.greet && raw.greet.text ? 1 : 0 },
-    sale: S ? { mode: S.mode || null } : null, access: ev2Acc(ev), rec: ev2Rec(ev), saved7: ev.access || ev.rec ? 1 : 0,
+    sale: ev3Pub(S3), prod: await ev3Prod(env, S3, ev), live: D.some(e => e.status === 'live') ? 1 : 0, lead_title: await ev3LeadTitle(env, ev, D), report_to: await ev3ReportTo(env), access: ev2Acc(ev), rec: ev2Rec(ev), saved7: ev.access || ev.rec ? 1 : 0,
     bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0 },
     days: D.map(e => Object.assign(ev2DayPub(e, now), { seen: ((seen.find(x => x.efir_id === e.id) || {}).n) | 0 })),
     hosts: [{ id: 'admin', name: 'Роман Одуванов' }].concat(CURATORS.map(c => ({ id: c.id, name: c.full }))), privacy: await evPrivacy(env) } }
@@ -4425,7 +4442,7 @@ async function ev2New(env, type, W) { const now = msNow(), t = type === 'mar' ? 
   await env.DB.batch(q); const ev = await evGet(env, r.id); await ev2SaveSteps(env, ev); await logIt(env, 'ev-new2', W.uid, r.id + ' ' + t); return { ok: true, id: r.id } }
 /* шаги 1, 3, 7: изменения полей (автосохранение 800 мс). upd — защита от правки в двух вкладках */
 async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' };
-  const set = [], b = [], D = await ev2Days(env, ev.id), st = ev2Status(ev), dq = [];
+  const set = [], b = [], D = await ev2Days(env, ev.id), st = ev2Status(ev), dq = []; let prod3 = null;
   const put = (c, v) => { set.push(c + '=?'); b.push(v); ev[c] = v };
   if ('title' in o) { const t = bStr(o.title, 140); put('title', t) }
   if ('short' in o) put('short', bStr(o.short, 24));
@@ -4440,6 +4457,7 @@ async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null &
       g = R.greet || {}, a = R.ask_email || {};
     c.greet = { text: bStr(g.text, 1500) || undefined, btn: bStr(g.btn, 40) || undefined }; c.ask_email = { text: bStr(a.text, 1000) || undefined, err: bStr(a.err, 500) || undefined };
     if (old.gc_group) c.gc_group = old.gc_group; put('reg', JSON.stringify(c)) }
+  if ('sale' in o && o.sale && typeof o.sale === 'object') { const r = await ev3SaleSave(env, ev, o.sale, D, W); if (r.err) return { ok: false, err: r.err }; put('sale', r.json); if (r.offer !== undefined) put('offer', r.offer); if (r.prod) prod3 = r.prod } /* 07.11 Э3: шаг 6 */
   if ('access' in o && o.access) { const A = ev2Acc({ access: JSON.stringify(o.access) }); put('access', JSON.stringify(A)) }
   if ('rec' in o && o.rec) { const R = ev2Rec({ rec: JSON.stringify(o.rec) }); if (![1, 3, 7, 0, -1].includes(R.days) && R.days !== ev2Rec(ev).days) R.days = 1; put('rec', JSON.stringify(R)) }
   if (!set.length) return { ok: false, err: 'Нечего сохранять' };
@@ -4457,7 +4475,7 @@ async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null &
     s2.push('cfg=?', 'upd=?'); b2.push(JSON.stringify(c), now); dq.push(env.DB.prepare('UPDATE efir SET ' + s2.join(', ') + ' WHERE id=?').bind(...b2, e.id)) }
   if (dq.length) await env.DB.batch(dq);
   const steps = await ev2SaveSteps(env, ev); await logIt(env, 'ev-save2', W.uid, ev.id + ' ' + set.map(x => x.split('=')[0]).join(','));
-  return { ok: true, upd: now, steps } }
+  return Object.assign({ ok: true, upd: now, steps }, prod3 ? { prod: prod3 } : {}) }
 /* шаг 2: дни [{id?, title, short, start, del?, hide?}] — 2–7 дней у марафона, 1 у вебинара. Удалить — только будущий день без зрителей; прошедший — скрыть */
 async function ev2DaysSave(env, ev, o, W) { const now = msNow(); if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' };
   const D = await ev2Days(env, ev.id), type = ev2Type(ev, D), L = Array.isArray(o.days) ? o.days.slice(0, 10) : null; if (!L) return { ok: false, err: 'Нет дней' };
@@ -4498,7 +4516,7 @@ async function ev2Launch(env, ev, o, W) { const to = String(o.mode || ''), from 
 /* «Дублировать» (1.1, 1.2): копия настроек, дней без дат, материалов и меток — черновиком */
 async function ev2Dup(env, ev, W) { const now = msNow(), D = await ev2Days(env, ev.id), type = ev2Type(ev, D);
   const r = await env.DB.prepare("INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd, reg, type, status, host, fmt, dur, short, sale, access, rec, named) VALUES (?,?,?,?,?,?,?,?,?, 'draft', ?,?,?,?,?,?,?, 1) RETURNING id")
-    .bind(bStr((ev.title || '') + ' (копия)', 140), ev.about || '', ev.cover || null, ev.offer || null, ev.funnel || null, now, now, ev.reg || JSON.stringify(EV_REG_NEW), type, ev.host || 'admin', ev.fmt || 'obs', ev.dur || 90, ev.short || '', ev.sale || null, ev.access || null, ev.rec || null).first();
+    .bind(bStr((ev.title || '') + ' (копия)', 140), ev.about || '', ev.cover || null, ev.offer || null, ev.funnel || null, now, now, ev.reg || JSON.stringify(EV_REG_NEW), type, ev.host || 'admin', ev.fmt || 'obs', ev.dur || 90, ev.short || '', ev.sale ? ev3DupSale(ev) : null, ev.access || null, ev.rec || null).first();
   const q = [env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT ?, code, title, ? FROM ev_src WHERE ev_id=?").bind(r.id, now, ev.id),
     env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now),
     env.DB.prepare('INSERT INTO ev_mat (ev_id, kind, data, days, ord, del, at) SELECT ?, kind, data, days, ord, 0, ? FROM ev_mat WHERE ev_id=? AND del=0').bind(r.id, now, ev.id)];
@@ -4558,6 +4576,230 @@ async function ev2Prod(env, req, o, W) { const now = msNow();
     if (+o.id) { await env.DB.prepare('UPDATE ev_prod SET title=?, price=?, code=?, at=? WHERE id=?').bind(t, p, c, now, +o.id).run(); return { ok: true, id: +o.id } }
     const r = await env.DB.prepare('INSERT INTO ev_prod (title, price, code, del, at) VALUES (?,?,?,0,?) RETURNING id').bind(t, p, c, now).first(); await logIt(env, 'ev-prod', W.uid, r.id + ' ' + t); return { ok: true, id: r.id } }
   return { ok: true, prods: await qAll(env.DB.prepare('SELECT id, title, price, code FROM ev_prod WHERE del=0 ORDER BY at DESC LIMIT 200')) } }
+/* ===== 07.11 «Эфиры 2.0», этап Э3 (docs/plan/efiry-tz.md v6 §2.1 sale, §3.2, §5, §6.4 2.6–2.6в): режимы продаж, продукт из справочника, анкеты (своя форма / Google Форма),
+   скрипт Google Таблицы (server/gas/efiry.gs — GAS_SRC ниже, копия 1:1; server/test_efir_form.js сверяет), очередь записи ev_form_q, статусы менеджеров, защита анкет от накрутки.
+   Токен скрипта (sale.token, 32 hex) — секрет мероприятия: наружу — только в тексте скрипта для админа, в логи не пишется. Персональные данные анкет — только в D1 (ev_form) и в таблице заказчика. ===== */
+const GAS_SRC = "/* OduvanovSchool · Эфиры: анкеты и заявки → эта Google Таблица (ТЗ docs/plan/efiry-tz.md §5.1).\n   Один скрипт на таблицу. Вставить: «Расширения» → «Apps Script» → заменить всё этим текстом → «Развернуть» → «Новое развёртывание» →\n   «Веб-приложение», запуск от моего имени, доступ «Все» → ссылку развёртывания (…/exec) вставить на шаге 6 мастера.\n   Ключей Google Cloud не нужно. Скрипт отвечает только тому, кто знает код мероприятия (TOKEN). Наружу отдаёт только то, что пишет сам. */\nvar EV_ID = '{{EV_ID}}';\nvar TOKEN = '{{TOKEN}}';\nvar HOOK = '{{HOOK}}';\nvar BASE = ['дата и время', 'эфир · день', 'минута эфира', 'имя', 'телефон', 'почта', 'Telegram', 'откуда пришёл (UTM)', 'сколько смотрел'];\nvar STATUS = 'статус менеджера';\nvar KEY = 'k';\n\nfunction out_(x) { return ContentService.createTextOutput(JSON.stringify(x)).setMimeType(ContentService.MimeType.JSON) }\nfunction same_(a, b) { a = String(a || ''); b = String(b || ''); if (!a || a.length !== b.length) return false; var x = 0; for (var i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0 }\n\nfunction doGet() { return out_({ ok: false }) }\n\nfunction doPost(e) {\n  var o = {};\n  try { o = JSON.parse((e && e.postData && e.postData.contents) || '{}') } catch (x) { return out_({ ok: false }) }\n  if (!same_(o.token, TOKEN)) return out_({ ok: false });\n  var lock = LockService.getScriptLock();\n  try { lock.waitLock(20000) } catch (x) { return out_({ ok: false, err: 'busy' }) }\n  try {\n    if (o.op === 'rows') return out_(rows_(o));\n    if (o.op === 'test') return out_(test_(o));\n    if (o.op === 'status') return out_(status_(o));\n    return out_({ ok: false, err: 'op' });\n  } catch (x) {\n    return out_({ ok: false, err: String(x && x.message || x).slice(0, 200) });\n  } finally { lock.releaseLock() }\n}\n\n/* лист с заголовками: базовые колонки, по колонке на вопрос, «статус менеджера», скрытая последняя k */\nfunction sheet_(name, qs) {\n  var ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(name);\n  if (!sh) {\n    sh = ss.insertSheet(name);\n    var head = BASE.concat(qs || []).concat([STATUS, KEY]);\n    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');\n    sh.setFrozenRows(1); sh.hideColumns(head.length);\n    return sh;\n  }\n  var H = head_(sh), st = H.indexOf(STATUS);\n  (qs || []).forEach(function (q) {\n    if (H.indexOf(q) >= 0) return;\n    var at = st >= 0 ? st + 1 : H.length + 1;\n    sh.insertColumnBefore(at); sh.getRange(1, at).setValue(q).setFontWeight('bold');\n    H = head_(sh); st = H.indexOf(STATUS);\n  });\n  if (H.indexOf(STATUS) < 0) { sh.getRange(1, H.length + 1).setValue(STATUS).setFontWeight('bold'); H = head_(sh) }\n  if (H.indexOf(KEY) < 0) { sh.getRange(1, H.length + 1).setValue(KEY); sh.hideColumns(H.length + 1) }\n  return sh;\n}\nfunction head_(sh) { var n = sh.getLastColumn(); return n ? sh.getRange(1, 1, 1, n).getValues()[0].map(function (x) { return String(x) }) : [] }\n\n/* пачка до 100 строк {sheet, qs:[вопросы], rows:[{k, at, day, min, name, phone, email, tg, src, watched, a:{вопрос: ответ}}]}; тот же k — обновить строку */\nfunction rows_(o) {\n  var L = (o.rows || []).slice(0, 100), sh = sheet_(o.sheet === 'Заявки' ? 'Заявки' : 'Анкеты', o.qs || []), H = head_(sh), kc = H.indexOf(KEY) + 1, out = [];\n  var last = sh.getLastRow(), K = last > 1 ? sh.getRange(2, kc, last - 1, 1).getValues().map(function (r) { return String(r[0]) }) : [];\n  L.forEach(function (r) {\n    var v = H.map(function (h, i) {\n      var b = BASE.indexOf(h);\n      if (b === 0) return r.at || ''; if (b === 1) return r.day || ''; if (b === 2) return r.min == null ? '' : r.min; if (b === 3) return r.name || '';\n      if (b === 4) return r.phone ? \"'\" + r.phone : ''; if (b === 5) return r.email || ''; if (b === 6) return r.tg || ''; if (b === 7) return r.src || ''; if (b === 8) return r.watched || '';\n      if (h === STATUS) return null; if (h === KEY) return r.k || '';\n      var a = (r.a || {})[h]; return a == null ? '' : Array.isArray(a) ? a.join(', ') : a;\n    });\n    var at = r.k ? K.indexOf(String(r.k)) : -1, row;\n    if (at >= 0) { row = at + 2; v.forEach(function (x, i) { if (x !== null) sh.getRange(row, i + 1).setValue(x) }) }\n    else { row = sh.getLastRow() + 1; sh.getRange(row, 1, 1, v.length).setValues([v.map(function (x) { return x === null ? '' : x })]); K.push(String(r.k || '')) }\n    out.push({ k: r.k, row: row });\n  });\n  return { ok: true, rows: out };\n}\n\n/* проверка: таблица не привязана к форме — тестовая строка «тест»; привязана — только ставим триггер onFormSubmit (если его ещё нет) */\nfunction test_(o) {\n  var ss = SpreadsheetApp.getActiveSpreadsheet(), form = '';\n  try { form = ss.getFormUrl() || '' } catch (x) {}\n  if (form) {\n    var have = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'onFormSubmit' });\n    if (!have) ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();\n    return { ok: true, title: ss.getName(), sheet: '', url: ss.getUrl(), form: true, trigger: true };\n  }\n  var name = o.sheet === 'Заявки' ? 'Заявки' : 'Анкеты', sh = sheet_(name, o.qs || []);\n  rows_({ sheet: name, qs: o.qs || [], rows: [{ k: 'test', at: Utilities.formatDate(new Date(), 'Europe/Moscow', 'dd.MM.yyyy HH:mm'), day: 'тест', name: 'тест' }] });\n  return { ok: true, title: ss.getName(), sheet: name, url: ss.getUrl() + '#gid=' + sh.getSheetId(), form: false, trigger: false };\n}\n\n/* статусы менеджеров: {sheet, ks:[k]} — по скрытой колонке k; {sheet, rows:[номер строки]} — для таблицы ответов формы (колонка «статус…») */\nfunction status_(o) {\n  var ss = SpreadsheetApp.getActiveSpreadsheet(), sh = o.sheet ? ss.getSheetByName(o.sheet) : null, st = {}, rn = {};\n  if (!sh) return { ok: true, st: st, rn: rn };\n  var H = head_(sh), sc = -1, kc = H.indexOf(KEY), last = sh.getLastRow();\n  H.forEach(function (h, i) { if (sc < 0 && /^статус/i.test(String(h).trim())) sc = i });\n  if (sc < 0 || last < 2) return { ok: true, st: st, rn: rn };\n  var V = sh.getRange(2, 1, last - 1, H.length).getValues(), want = {};\n  (o.ks || []).forEach(function (k) { want[String(k)] = 1 });\n  V.forEach(function (r, i) { if (kc >= 0 && want[String(r[kc])]) st[String(r[kc])] = String(r[sc]) });\n  (o.rows || []).forEach(function (n) { n = +n; if (n >= 2 && n - 2 < V.length) rn[n] = String(V[n - 2][sc]) });\n  return { ok: true, st: st, rn: rn };\n}\n\n/* ответ в Google Форме → нам сразу (устанавливаемый триггер ставит op:\"test\") */\nfunction onFormSubmit(e) {\n  var row = 0, sheet = '';\n  try { row = e.range.getRow(); sheet = e.range.getSheet().getName() } catch (x) {}\n  UrlFetchApp.fetch(HOOK, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,\n    payload: JSON.stringify({ token: TOKEN, ev: EV_ID, named: e.namedValues || {}, values: e.values || [], row: row, sheet: sheet, ts: Date.now() }) });\n}\n";
+const EV3_KIND = ['one', 'many', 'text', 'num'], EV3_FREQ = ['req', 'opt', 'off'];
+const ev3Hex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
+const ev3Lc = s => String(s == null ? '' : s).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+const ev3Digits = s => String(s || '').replace(/\D/g, '');
+/* sale целиком с умолчаниями (§2.1): контакты — имя и телефон обязательно, почта по желанию, Telegram берём из бота сами (доска M6b) */
+function ev3Sale(ev, type) { const S0 = ev2Sale(ev) || {}, S = JSON.parse(JSON.stringify(S0)), t = type || ev.type, F = S.form && typeof S.form === 'object' ? S.form : {}, G = F.gform && typeof F.gform === 'object' ? F.gform : {}, fl = F.fields || {};
+  return { mode: ['sell', 'form', 'none'].includes(S.mode) ? S.mode : null, offer_id: +S.offer_id || null, legacy: S.legacy ? 1 : 0, order_st: S.order_st === 'work' ? 'work' : 'new',
+    comment: typeof S.comment === 'string' ? S.comment : (t === 'web' ? 'Заявка с вебинара «{марафон}», на {минута}-й минуте' : 'Заявка с марафона «{марафон}», день {день}, на {минута}-й минуте'),
+    report: S.report === 0 ? 0 : 1, copy_sheet: S.copy_sheet ? 1 : 0,
+    form: { src: F.src === 'gform' ? 'gform' : 'own', fields: { name: EV3_FREQ.includes(fl.name) ? fl.name : 'req', phone: EV3_FREQ.includes(fl.phone) ? fl.phone : 'req', email: EV3_FREQ.includes(fl.email) ? fl.email : 'opt', tg: EV3_FREQ.includes(fl.tg) ? fl.tg : 'off' },
+      questions: Array.isArray(F.questions) ? F.questions : [], one_per_person: F.one_per_person === 0 ? 0 : 1, dup: F.dup === 0 ? 0 : 1,
+      gform: { url: G.url || '', link: G.link || '', title: G.title || '', n: +G.n || 0, accepting: G.accepting === 0 ? 0 : 1, login: G.login ? 1 : 0, open: G.login ? 'tab' : (G.open === 'tab' ? 'tab' : 'inside'), questions: Array.isArray(G.questions) ? G.questions : [], map: G.map && typeof G.map === 'object' ? G.map : {}, test_at: +G.test_at || 0, checked_at: +G.checked_at || 0 } },
+    sheet: S.sheet && typeof S.sheet === 'object' ? { exec: S.sheet.exec || '', url: S.sheet.url || '', title: S.sheet.title || '', sheet: S.sheet.sheet || '', ok_at: +S.sheet.ok_at || 0, form: S.sheet.form ? 1 : 0, last_err: S.sheet.last_err || '', fails: +S.sheet.fails || 0, fsheet: S.sheet.fsheet || '' } : null,
+    token: /^[0-9a-f]{32}$/.test(S.token || '') ? S.token : '' } }
+/* то, что видит мастер (без токена) */
+function ev3Pub(S) { const P = JSON.parse(JSON.stringify(S)); delete P.token; delete P.legacy; return P }
+const ev3SaleJson = S => { const P = JSON.parse(JSON.stringify(S)); if (!P.legacy) delete P.legacy; return JSON.stringify(P) };
+async function ev3Prod(env, S, ev) { let p = S.offer_id ? await env.DB.prepare('SELECT id, title, price, code FROM ev_prod WHERE id=?').bind(+S.offer_id).first() : null;
+  if (!p && S.mode === 'sell') { const of = efJ(ev.offer, null); if (of && of.title) p = { id: null, title: of.title, price: +of.price || 0, code: of.code || '' } } return p || null }
+/* мастер: изменения sale (POST /efir/host/event/save {sale:{…}}); sheet, token, адрес и вопросы Google Формы меняет только «Проверить» */
+async function ev3SaleSave(env, ev, p, D, W) { const type = ev2Type(ev, D), S = ev3Sale(ev, type), now = msNow(), out = {};
+  if ('mode' in p) { const m = ['sell', 'form', 'none'].includes(p.mode) ? p.mode : null; if (m !== S.mode && D.some(e => e.status === 'live')) return { err: 'Нельзя сменить во время эфира — только между днями' }; S.mode = m }
+  if (p.offer && typeof p.offer === 'object') { const t = bStr(p.offer.title, 200), pr = Math.max(0, Math.min(1e8, +String(p.offer.price == null ? 0 : p.offer.price).replace(/\D/g, '') | 0)), c = bStr(p.offer.code, 60) || null;
+    if (!t) { S.offer_id = null; S.legacy = 0; out.offer = null }
+    else { /* справочник: тот же продукт — берём его; выбранный правят и он нигде больше не используется — правим; иначе — новый продукт (сохраняется при первом сохранении) */
+      const ex = await env.DB.prepare("SELECT id FROM ev_prod WHERE del=0 AND title=? AND COALESCE(price,0)=? AND COALESCE(code,'')=? ORDER BY id LIMIT 1").bind(t, pr, c || '').first();
+      let id = ex ? ex.id : 0; const cur = +p.offer.id || 0;
+      if (!id && cur) { const used = await env.DB.prepare("SELECT COUNT(*) n FROM efir_event WHERE del=0 AND id<>? AND CAST(json_extract(sale, '$.offer_id') AS INTEGER)=?").bind(ev.id, cur).first(), own = await env.DB.prepare('SELECT id FROM ev_prod WHERE id=? AND del=0').bind(cur).first();
+        if (own && !((used && used.n) | 0)) { await env.DB.prepare('UPDATE ev_prod SET title=?, price=?, code=?, at=? WHERE id=?').bind(t, pr, c, now, cur).run(); id = cur } }
+      if (!id) { id = (await env.DB.prepare('INSERT INTO ev_prod (title, price, code, del, at) VALUES (?,?,?,0,?) RETURNING id').bind(t, pr, c, now).first()).id; await logIt(env, 'ev-prod', W.uid, id + ' ' + t) }
+      S.offer_id = id; S.legacy = 0; out.offer = JSON.stringify({ title: t, price: pr, code: c }); out.prod = { id, title: t, price: pr, code: c || '' } } }
+  if ('order_st' in p) S.order_st = p.order_st === 'work' ? 'work' : 'new';
+  if ('comment' in p) S.comment = bStr(p.comment, 500);
+  if ('report' in p) S.report = p.report ? 1 : 0;
+  if ('copy_sheet' in p) S.copy_sheet = p.copy_sheet ? 1 : 0;
+  const F = p.form && typeof p.form === 'object' ? p.form : null;
+  if (F) { const f = S.form;
+    if ('src' in F) f.src = F.src === 'gform' ? 'gform' : 'own';
+    if (F.fields && typeof F.fields === 'object') for (const k of ['name', 'phone', 'email', 'tg']) if (EV3_FREQ.includes(F.fields[k])) f.fields[k] = F.fields[k];
+    if (Array.isArray(F.questions)) { const seen = new Set(); f.questions = F.questions.slice(0, 6).map(q => { q = q && typeof q === 'object' ? q : {}; let id = /^q[a-z0-9]{1,12}$/.test(String(q.id || '')) ? String(q.id) : 'q' + ev3Hex(4); while (seen.has(id)) id = 'q' + ev3Hex(4); seen.add(id);
+      const kind = EV3_KIND.includes(q.kind) ? q.kind : 'one'; return { id, t: bStr(q.t, 200), kind, opts: kind === 'one' || kind === 'many' ? (Array.isArray(q.opts) ? q.opts : []).map(x => bStr(x, 80)).filter(Boolean).slice(0, 10) : [], req: q.req === 0 || q.req === false ? 0 : 1 } }).filter(q => q.t) }
+    if ('one_per_person' in F) f.one_per_person = F.one_per_person ? 1 : 0;
+    if ('dup' in F) f.dup = F.dup ? 1 : 0;
+    const G = F.gform && typeof F.gform === 'object' ? F.gform : null;
+    if (G) { if ('open' in G) f.gform.open = f.gform.login ? 'tab' : (G.open === 'tab' ? 'tab' : 'inside');
+      if (G.map && typeof G.map === 'object') for (const k of ['name', 'phone', 'email', 'mark']) if (k in G.map) { const v = G.map[k], q = v && f.gform.questions.find(x => String(x.entry) === String(v.entry || v));
+        if (q) f.gform.map[k] = { entry: String(q.entry), title: q.title }; else f.gform.map[k] = null } } } /* null — «не подставлять» (повторная проверка формы не угадывает заново) */
+  out.json = ev3SaleJson(S); out.S = S; return out }
+/* текст скрипта для «Скопировать скрипт»: код мероприятия и токен уже подставлены; токен создаётся при первом запросе */
+async function ev3Token(env, ev) { const S = ev3Sale(ev); if (S.token) return S; S.token = ev3Hex(16); ev.sale = ev3SaleJson(S); await env.DB.prepare('UPDATE efir_event SET sale=? WHERE id=?').bind(ev.sale, ev.id).run(); return S }
+async function ev3Script(env, ev, origin) { const S = await ev3Token(env, ev); return GAS_SRC.replace('{{EV_ID}}', String(ev.id)).replace('{{TOKEN}}', S.token).replace('{{HOOK}}', origin + '/efir/form/hook') }
+const EV3_EXEC = /^https:\/\/script\.google\.com\/(?:a\/[A-Za-z0-9.-]{1,80}\/)?macros\/s\/[A-Za-z0-9_-]{20,120}\/exec$/;
+/* запрос к скрипту таблицы (Apps Script отвечает 302 на script.googleusercontent.com — fetch идёт следом сам) */
+async function ev3Gas(env, exec, body) { if (!EV3_EXEC.test(exec)) return { bad: 'url' };
+  let r; try { r = await fetch(exec, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined }) } catch (e) { return { bad: 'net' } }
+  const t = await r.text().catch(() => ''); let j = null; try { j = JSON.parse(t) } catch (e) {} if (!j || typeof j !== 'object') return { bad: 'html', st: r.status }; return { j } }
+const EV3_ERR = { url: 'Это не ссылка развёртывания: она начинается с https://script.google.com/macros/s/ и заканчивается на /exec', net: 'Скрипт не ответил — проверь ссылку и попробуй ещё раз',
+  html: 'Скрипт не пустил нас — при развёртывании выбери «Веб-приложение», запуск от моего имени, доступ «Все»', token: 'Скрипт ответил, но код марафона не совпал — скопируй скрипт заново кнопкой «Скопировать скрипт»',
+  form: 'Эта таблица не связана с формой — в форме открой «Ответы» → «Связать с Таблицами» и вставь скрипт в эту таблицу ответов' };
+/* «Проверить» ссылку развёртывания (2.6б, 2.6в шаг 3, копия заявок 2.6): op:test — тестовая строка или триггер формы */
+async function ev3CheckSheet(env, ev, o, W) { const D = await ev2Days(env, ev.id), S0 = await ev3Token(env, ev), S = ev3Sale(ev), exec = String(o.exec || '').trim().replace(/\?.*$/, ''), now = msNow();
+  const sheet = S.mode === 'sell' ? 'Заявки' : 'Анкеты', qs = S.mode === 'form' && S.form.src === 'own' ? S.form.questions.map(q => q.t) : [];
+  const r = await ev3Gas(env, exec, { token: S0.token, op: 'test', sheet, qs }); let err = r.bad ? EV3_ERR[r.bad] : !r.j.ok ? EV3_ERR.token : '';
+  if (!err && S.mode === 'form' && S.form.src === 'gform' && !r.j.form) err = EV3_ERR.form;
+  if (err) { const sh = S.sheet || { exec: '', url: '', title: '', sheet: '', ok_at: 0, form: 0, fails: 0 }; sh.last_err = err; if (r.j && r.j.ok && !r.j.form) Object.assign(sh, { exec, url: bStr(r.j.url, 400), title: bStr(r.j.title, 200), sheet: bStr(r.j.sheet, 100), ok_at: now, form: 0 }); S.sheet = sh;
+    await env.DB.prepare('UPDATE efir_event SET sale=?, upd=? WHERE id=?').bind(ev3SaleJson(S), now, ev.id).run(); ev.sale = ev3SaleJson(S); ev.upd = now; const steps = await ev2SaveSteps(env, ev, D);
+    await logIt(env, 'ev-sheet-err', W.uid, ev.id + ' ' + (r.bad || 'ok:' + (r.j && r.j.ok) + ' form:' + (r.j && r.j.form))); return { ok: false, err, sheet: ev3Pub(S).sheet, steps, upd: now } }
+  S.sheet = { exec, url: bStr(r.j.url, 400), title: bStr(r.j.title, 200), sheet: bStr(r.j.sheet, 100), ok_at: now, form: r.j.form ? 1 : 0, last_err: '', fails: 0, fsheet: (S.sheet && S.sheet.fsheet) || '' };
+  ev.sale = ev3SaleJson(S); ev.upd = now; await env.DB.prepare('UPDATE efir_event SET sale=?, upd=? WHERE id=?').bind(ev.sale, now, ev.id).run(); const steps = await ev2SaveSteps(env, ev, D);
+  await logIt(env, 'ev-sheet-ok', W.uid, ev.id + ' form:' + (r.j.form ? 1 : 0)); return { ok: true, sheet: ev3Pub(S).sheet, steps, upd: now } }
+/* «Проверить» Google Форму (2.6в): название, вопросы с entry, принимает ли ответы, открыта ли всем (вход Google — ошибка §5.2) */
+function ev3FormUrl(u) { u = String(u || '').trim(); let m = u.match(/^https:\/\/forms\.gle\/([A-Za-z0-9_-]{4,40})\/?$/); if (m) return 'https://forms.gle/' + m[1];
+  m = u.match(/^https:\/\/docs\.google\.com\/forms\/(?:u\/\d\/)?d\/(e\/)?([A-Za-z0-9_-]{10,120})(?:\/[a-z]*)?\/?(?:[?#].*)?$/); return m ? 'https://docs.google.com/forms/d/' + (m[1] || '') + m[2] + '/viewform' : '' }
+function ev3FormParse(html) { const m = String(html).match(/FB_PUBLIC_LOAD_DATA_\s*=\s*(\[[\s\S]*?\]);\s*<\/script>/); if (!m) return null; let d; try { d = JSON.parse(m[1]) } catch (e) { return null }
+  const it = (d[1] && d[1][1]) || [], Q = [], T = { 0: 'text', 1: 'text', 2: 'one', 3: 'one', 4: 'many', 5: 'one', 9: 'text', 10: 'text' }; let pages = 1;
+  for (const x of it) { if (!Array.isArray(x)) continue; if (x[3] === 8) pages++; const e = Array.isArray(x[4]) && x[4][0]; if (!e || e[0] == null) continue; Q.push({ title: bStr(x[1], 200) || 'Вопрос без названия', entry: String(e[0]), kind: T[x[3]] || 'text' }) }
+  return { title: bStr((d[1] && d[1][8]) || d[3] || '', 200), questions: Q.slice(0, 60), pages } }
+async function ev3CheckForm(env, ev, o, W) { const D = await ev2Days(env, ev.id), S = ev3Sale(ev), now = msNow(); let url = ev3FormUrl(o.url);
+  const fail = async (err, x) => { S.form.gform = Object.assign(S.form.gform, x || {}, { checked_at: 0 }); ev.sale = ev3SaleJson(S); ev.upd = now; await env.DB.prepare('UPDATE efir_event SET sale=?, upd=? WHERE id=?').bind(ev.sale, now, ev.id).run();
+    const steps = await ev2SaveSteps(env, ev, D); return { ok: false, err, gform: ev3Pub(S).form.gform, steps, upd: now } };
+  if (!url) return fail('Это не ссылка на Google Форму — скопируй её в форме: «Отправить» → значок ссылки', { url: '', link: bStr(o.url, 400), title: '', questions: [], n: 0 });
+  const lnk = { link: bStr(o.url, 400) };
+  let html = '', login = 0, closed = 0, cur = url;
+  for (let i = 0; i < 5; i++) { let r; try { r = await fetch(cur, { redirect: 'manual', headers: { 'Accept-Language': 'ru' }, signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined }) } catch (e) { return { ok: false, err: 'Google не ответил — попробуй ещё раз' } }
+    if (r.status >= 300 && r.status < 400) { const loc = new URL(r.headers.get('Location') || '', cur); if (/(^|\.)accounts\.google\.com$/.test(loc.hostname)) { login = 1; break }
+      if (!/^(docs\.google\.com|forms\.gle)$/.test(loc.hostname)) return { ok: false, err: 'Ссылка ведёт не на Google Форму' }; cur = loc.href; continue }
+    if (r.status === 404) return fail('Форма не найдена — проверь ссылку', Object.assign({ url, title: '', questions: [], n: 0 }, lnk)); html = await r.text(); if (/\/closedform/.test(cur)) closed = 1; break }
+  const P = login ? null : ev3FormParse(html);
+  if (login || (!P && /accounts\.google\.com\/(ServiceLogin|v3\/signin)/.test(html))) return fail('Форма просит вход в Google — в настройках формы сними «Только для пользователей…»', Object.assign({ url: cur.replace(/\?.*$/, ''), login: 1, open: 'tab', title: '', questions: [], n: 0 }, lnk));
+  if (!P) return fail(closed ? 'Форма не принимает ответы — включи «Принимать ответы» во вкладке «Ответы»' : 'Не получилось прочитать форму — проверь, что ссылка открывается без входа', Object.assign({ url: cur.replace(/\?.*$/, ''), accepting: closed ? 0 : 1, title: '', questions: [], n: 0 }, lnk));
+  const G = S.form.gform, warn = [], old = G.map || {}, map = {};
+  /* сопоставление: вопрос переименовали — находим по entry и предупреждаем; пустые — угадываем по названию */
+  for (const k of ['name', 'phone', 'email', 'mark']) { const m0 = old[k]; if (m0 === null) { map[k] = null; continue } if (!m0) continue; const q = P.questions.find(x => x.entry === String(m0.entry)) || P.questions.find(x => ev3Lc(x.title) === ev3Lc(m0.title));
+    if (!q) { warn.push('Вопрос «' + m0.title + '» пропал из формы — проверь сопоставление'); continue } if (ev3Lc(q.title) !== ev3Lc(m0.title)) warn.push('Вопрос «' + m0.title + '» переименован — проверь сопоставление'); map[k] = { entry: q.entry, title: q.title } }
+  const guess = { name: /(имя|зовут|фио|name)/, phone: /(телефон|номер|phone|whatsapp)/, email: /(почт|e-?mail)/, mark: /(откуда|метк|источник|узнал)/ };
+  for (const k of Object.keys(guess)) if (!map[k] && !(k in old)) { const q = P.questions.find(x => guess[k].test(ev3Lc(x.title)) && !Object.values(map).some(m => m.entry === x.entry)); if (q) map[k] = { entry: q.entry, title: q.title } }
+  S.form.gform = Object.assign(G, { link: bStr(o.url, 400), url: cur.replace(/\?.*$/, '').replace(/\/(formResponse|closedform)$/, '/viewform'), title: P.title, n: P.questions.length, pages: P.pages, accepting: closed ? 0 : 1, login: 0, open: !G.login && G.open === 'tab' ? 'tab' : 'inside', questions: P.questions, map, checked_at: now });
+  ev.sale = ev3SaleJson(S); ev.upd = now; await env.DB.prepare('UPDATE efir_event SET sale=?, upd=? WHERE id=?').bind(ev.sale, now, ev.id).run(); const steps = await ev2SaveSteps(env, ev, D);
+  await logIt(env, 'ev-gform', W.uid, ev.id + ' ' + P.questions.length); return { ok: true, gform: ev3Pub(S).form.gform, warn, steps, upd: now } }
+/* состояние для опроса мастера 2.6в (ждём тестовый ответ) и счётчики «открыли · заполнили» */
+async function ev3State(env, ev) { const S = ev3Sale(ev), D = await ev2Days(env, ev.id), ids = D.map(e => +e.id);
+  const [f, op] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n, SUM(CASE WHEN row_ok=1 THEN 1 ELSE 0 END) ok FROM ev_form WHERE ev_id=? AND COALESCE(test,0)=0 AND COALESCE(outside,0)=0').bind(ev.id),
+    env.DB.prepare("SELECT COUNT(DISTINCT data) n FROM efir_ev WHERE kind='fopen' AND efir_id IN (" + (ids.length ? ids.join(',') : '0') + ')')]);
+  const P = ev3Pub(S); return { ok: true, sheet: P.sheet, gform: P.form.gform, forms: ((f.results || [])[0] || {}).n | 0, in_sheet: ((f.results || [])[0] || {}).ok | 0, opened: ((op.results || [])[0] || {}).n | 0, upd: ev.upd || 0 } }
+/* «Взять вопросы из прошлого марафона» (2.6б): мероприятия с вопросами своей анкеты, новые сверху */
+async function ev3PastQs(env, ev) { const L = await qAll(env.DB.prepare("SELECT id, title, type, created, sale FROM efir_event WHERE del=0 AND id<>? AND sale LIKE '%\"questions\":[{%' ORDER BY created DESC, id DESC LIMIT 40").bind(ev.id));
+  return { ok: true, events: L.map(x => { const S = ev3Sale(x); return { id: x.id, title: x.title || 'Без названия', type: x.type || 'mar', questions: S.form.questions } }).filter(x => x.questions.length) } }
+
+/* «Кому приходит сводка» (2.6): kv efir_report_to (chat) — по умолчанию все админы бота; имена — из tg_admin */
+async function ev3ReportTo(env) { const A = await qAll(env.DB.prepare('SELECT chat, name FROM tg_admin')), L = await kvGet(env, 'efir_report_to').catch(() => null), C = Array.isArray(L) && L.length ? L.map(String) : A.map(x => String(x.chat));
+  return A.filter(x => C.includes(String(x.chat))).map(x => bStr(x.name, 60) || 'Админ') }
+/* «Дублировать»: настройки продаж копируются, подключение таблицы и токен — нет (у копии своя таблица и свой скрипт) */
+function ev3DupSale(ev) { const S = ev3Sale(ev); S.sheet = null; S.token = ''; S.form.gform.test_at = 0; return ev3SaleJson(S) }
+/* ---------- зритель: своя анкета, открытие формы, ответы Google Формы (§3.4 защита, §5.2) ---------- */
+function ev3Status(s) { const t = ev3Lc(s); if (!t) return null; if (/не дозвон|не отвеча/.test(t)) return 'noans'; if (/купил|оплатил|оплата/.test(t)) return 'buy'; if (/связал|написал/.test(t)) return 'call'; if (/отказ|(^|\s)нет($|\s|\.)/.test(t)) return 'no'; return null }
+const ev3Mark = (ev, D, e, sec) => (ev.short || ev.title || '') + ' · день ' + (Math.max(0, D.findIndex(x => x.id === e.id)) + 1) + (sec != null ? ' · ' + Math.floor(sec / 60) + '-я мин' : '');
+const ev3At = ms => { const d = msk(new Date(ms)); return String(d.getUTCDate()).padStart(2, '0') + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + d.getUTCFullYear() + ' ' + efHM(ms) };
+/* подстановка контактов (§6.4 4.4): последняя анкета / заявка этого k → регистрация в боте → почта ученика → username Telegram */
+async function ev3Prefill(env, ev, W) { const out = { name: '', phone: '', email: '', tg: '' }; if (!W.k || W.web) return out;
+  const f = await env.DB.prepare('SELECT name, phone, email, tg FROM ev_form WHERE ev_id=? AND k=? ORDER BY id DESC LIMIT 1').bind(ev.id, W.k).first().catch(() => null), l = f ? null : await env.DB.prepare('SELECT name, phone, email, tg FROM efir_lead WHERE k=? ORDER BY id DESC LIMIT 1').bind(W.k).first().catch(() => null);
+  for (const s of [f, l]) if (s) for (const k of Object.keys(out)) if (!out[k] && s[k]) out[k] = String(s[k]);
+  const r = await env.DB.prepare('SELECT name, phone, email, chat FROM ev_reg WHERE ev_id=? AND k=?').bind(ev.id, W.k).first().catch(() => null); if (r) for (const k of ['name', 'phone', 'email']) if (!out[k] && r[k]) out[k] = String(r[k]);
+  if (!out.email && W.uid) { const g = await env.DB.prepare('SELECT email FROM gc_name WHERE uid=?').bind(W.uid).first().catch(() => null); if (g && g.email) out.email = String(g.email) }
+  if (!out.name) out.name = await efName(env, W).catch(() => '') || '';
+  const chat = W.chat || (r && r.chat); if (!out.tg && chat) { const u = await env.DB.prepare('SELECT username FROM tg_user WHERE chat=?').bind(String(chat)).first().catch(() => null); if (u && u.username) out.tg = '@' + u.username }
+  return out }
+async function ev3LeadTitle(env, ev, D) { const m = await env.DB.prepare("SELECT data FROM ev_mat WHERE ev_id=? AND kind='lead' AND del=0 ORDER BY ord, id LIMIT 1").bind(ev.id).first().catch(() => null), d = m ? efJ(m.data, {}) : null;
+  if (d && d.title) return bStr(d.title, 120); for (const e of D || []) { const L = efJ(e.cfg, {}).lead; if (L && L.title) return bStr(L.title, 120) } return '' }
+/* строка для таблицы (лист «Анкеты»): дата, эфир · день, минута, контакты, метка, сколько смотрел, ответы по вопросам */
+async function ev3Row(env, ev, e, F, S) { const D = await ev2Days(env, ev.id), r = F.k ? await env.DB.prepare('SELECT src_code FROM ev_reg WHERE ev_id=? AND k=?').bind(ev.id, F.k).first().catch(() => null) : null;
+  const src = r ? (r.src_code ? ((await env.DB.prepare('SELECT title FROM ev_src WHERE ev_id=? AND code=?').bind(ev.id, r.src_code).first().catch(() => null)) || {}).title || r.src_code : 'Основная') : '';
+  const sn = F.k && e ? await env.DB.prepare('SELECT MAX(min) m FROM efir_seen WHERE efir_id=? AND k=?').bind(e.id, F.k).first().catch(() => null) : null, A = efJ(F.answers, {}), a = {};
+  for (const q of S.form.questions) { const v = A[q.id]; if (v != null && v !== '') a[q.t] = Array.isArray(v) ? v.join(', ') : String(v) }
+  return { k: F.k || ('f' + F.id), at: ev3At(F.at), day: e ? ev3Mark(ev, D, e) : '', min: F.sec != null ? Math.floor(F.sec / 60) : null, name: F.name || '', phone: F.phone || '', email: F.email || '', tg: F.tg || '', src, watched: sn && sn.m ? sn.m + ' мин' : '', a } }
+async function ev3Queue(env, evId, formId, sheet, row) { const q = await env.DB.prepare('SELECT id FROM ev_form_q WHERE ev_id=? AND form_id=? AND sheet=?').bind(evId, formId, sheet).first();
+  if (q) await env.DB.prepare('UPDATE ev_form_q SET payload=?, next_at=MIN(COALESCE(next_at, ?), ?) WHERE id=?').bind(JSON.stringify(row), msNow(), msNow(), q.id).run();
+  else await env.DB.prepare('INSERT INTO ev_form_q (ev_id, form_id, sheet, payload, tries, next_at, err) VALUES (?,?,?,?,0,?,NULL)').bind(evId, formId, sheet, JSON.stringify(row), msNow()).run() }
+const EV3_OPEN = e => e.status === 'live' || ((e.status === 'done' || e.status === 'rec') && e.at_end && msNow() - e.at_end < 864e5);
+async function ev3Flood(env, e, ip, now) { const [a, b] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n FROM ev_form WHERE efir_id=? AND ip=? AND at>?').bind(e.id, ip, now - 6e5), env.DB.prepare('SELECT COUNT(*) n FROM ev_form WHERE efir_id=? AND ip=?').bind(e.id, ip)]);
+  return (((a.results || [])[0] || {}).n | 0) >= 3 || (((b.results || [])[0] || {}).n | 0) >= 30 }
+async function efFormApi(env, req, path, u, o, W, e, now) { await ef2Ensure(env); const evId = +efJ(e.cfg, {}).ev, ev = evId ? await evGet(env, evId) : null; if (!ev) return json(req, { ok: false, err: 'В этом эфире анкеты нет' }, 400);
+  const D = await ev2Days(env, ev.id), S = ev3Sale(ev, ev2Type(ev, D)); if (S.mode !== 'form') return json(req, { ok: false, err: 'В этом эфире анкеты нет' }, 400);
+  if (path === '/efir/form' && req.method === 'GET') { const P = await ev3Prefill(env, ev, W), f = W.k ? await env.DB.prepare('SELECT id, answers, at FROM ev_form WHERE ev_id=? AND k=?' + (S.form.one_per_person ? '' : ' AND efir_id=' + (+e.id)) + ' ORDER BY id DESC LIMIT 1').bind(ev.id, W.k).first() : null;
+    let gf = null; if (S.form.src === 'gform' && S.form.gform.url) { const G = S.form.gform, q = new URLSearchParams(); q.set('usp', 'pp_url'); if (G.open !== 'tab') q.set('embedded', 'true');
+      const sec = e.status === 'live' && e.at_live ? Math.floor((now - e.at_live) / 1000) : null, val = { name: P.name, phone: P.phone, email: P.email, mark: ev3Mark(ev, D, e, sec) };
+      for (const k of Object.keys(val)) { const m = G.map[k]; if (m && m.entry && val[k]) q.set('entry.' + m.entry, val[k]) } gf = { url: G.url + '?' + q.toString(), open: G.open, login: G.login } }
+    return json(req, { ok: true, src: S.form.src, title: await ev3LeadTitle(env, ev, D) || 'Анкета', fields: S.form.fields, questions: S.form.src === 'own' ? S.form.questions : [], gform: gf, prefill: P, done: f ? 1 : 0, answers: f && S.form.src === 'own' ? efJ(f.answers, {}) : null, open: EV3_OPEN(e) ? 1 : 0 }) }
+  if (W.ro) return json(req, { ok: false, err: 'Режим просмотра — только чтение' }, 403);
+  if (path === '/efir/form/open' && req.method === 'POST') { if (W.k && EV3_OPEN(e)) { const ex = await env.DB.prepare("SELECT id FROM efir_ev WHERE efir_id=? AND kind='fopen' AND data=? LIMIT 1").bind(e.id, W.k).first();
+      if (!ex) await env.DB.prepare("INSERT INTO efir_ev (efir_id, sess, sec, kind, data, at) VALUES (?, 0, ?, 'fopen', ?, ?)").bind(e.id, e.at_live ? Math.floor((now - e.at_live) / 1000) : null, W.k, now).run() } return json(req, { ok: true }) }
+  if (path !== '/efir/form' || req.method !== 'POST') return json(req, { ok: false, err: 'not found' }, 404);
+  if (S.form.src !== 'own') return json(req, { ok: false, err: 'Эта анкета заполняется в Google Форме' }, 400);
+  if (!EV3_OPEN(e)) return json(req, { ok: false, err: 'Анкета принимается во время эфира и сутки после него' }, 400);
+  const fl = S.form.fields, ph = String(o.phone || '').replace(/[^\d+]/g, '').slice(0, 20), em = String(o.email || '').trim().toLowerCase().slice(0, 120), nm = bStr(String(o.name || '').replace(/\s+/g, ' '), 80), tgn = bStr(String(o.tg || '').trim().replace(/^https?:\/\/t\.me\//, '@'), 40);
+  if (fl.name === 'req' && nm.length < 2) return json(req, { ok: false, err: 'Напиши имя' }, 400);
+  if (fl.phone !== 'off' && (ph || fl.phone === 'req') && ev3Digits(ph).length < 10) return json(req, { ok: false, err: 'Проверь телефон' }, 400);
+  if (fl.email !== 'off' && (em || fl.email === 'req') && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return json(req, { ok: false, err: 'Проверь почту' }, 400);
+  if (fl.tg === 'req' && !tgn) return json(req, { ok: false, err: 'Напиши Telegram' }, 400);
+  const A0 = o.answers && typeof o.answers === 'object' ? o.answers : {}, A = {};
+  for (const q of S.form.questions) { let v = A0[q.id];
+    if (q.kind === 'one') v = q.opts.includes(String(v)) ? String(v) : ''; else if (q.kind === 'many') v = (Array.isArray(v) ? v : []).map(String).filter(x => q.opts.includes(x));
+    else if (q.kind === 'num') { v = bStr(v, 40); if (v && !/^[\d+\-() ]+$/.test(v)) return json(req, { ok: false, err: 'В ответе «' + q.t + '» — только цифры' }, 400) } else v = bStr(v, 1000);
+    if (q.req && (!v || (Array.isArray(v) && !v.length))) return json(req, { ok: false, err: 'Ответь на вопрос «' + q.t + '»' }, 400); if (v && (!Array.isArray(v) || v.length)) A[q.id] = v }
+  /* защита от накрутки (§3.4): гость без бота — не больше 3 анкет с одного IP за 10 мин и 30 за эфир; ученики и записавшиеся через бота — без лимита */
+  const reg = W.k ? await env.DB.prepare('SELECT chat FROM ev_reg WHERE ev_id=? AND k=?').bind(ev.id, W.k).first() : null, free = !!W.uid || !!W.staff || !!(reg && (reg.chat || W.chat)); let ip = null;
+  if (!free) { ip = (await hmacHex(env, 'efip|' + (req.headers.get('CF-Connecting-IP') || ''))).slice(0, 24);
+    if (await ev3Flood(env, e, ip, now)) { await logIt(env, 'efir-flood', 0, e.id + ' form ' + ip.slice(0, 8)); return json(req, { ok: false, err: 'Слишком много заявок — попробуй позже' }, 429) } }
+  const sec = e.status === 'live' && e.at_live ? Math.max(0, Math.floor((now - e.at_live) / 1000)) : null, test = ev2Status(ev) === 'test' || ev2Status(ev) === 'draft' ? 1 : 0, chat = W.chat || (reg && reg.chat) || null;
+  const ex = W.k ? await env.DB.prepare('SELECT id, sec, at FROM ev_form WHERE ev_id=? AND k=?' + (S.form.one_per_person ? '' : ' AND efir_id=? AND at>?') + ' ORDER BY id DESC LIMIT 1').bind(...(S.form.one_per_person ? [ev.id, W.k] : [ev.id, W.k, e.id, now - 6 * 36e5])).first() : null;
+  let id; if (ex) { id = ex.id; await env.DB.prepare('UPDATE ev_form SET name=?, phone=?, email=?, tg=?, answers=?, row_ok=0, upd=? WHERE id=?').bind(nm, ph || null, em || null, tgn || null, JSON.stringify(A), now, id).run() }
+  else id = (await env.DB.prepare("INSERT INTO ev_form (ev_id, efir_id, k, uid, chat, name, phone, email, tg, answers, sec, src, row_ok, st, test, outside, at, upd, ip) VALUES (?,?,?,?,?,?,?,?,?,?,?,'own',0,'new',?,0,?,?,?) RETURNING id")
+    .bind(ev.id, e.id, W.k || null, W.uid || null, chat, nm, ph || null, em || null, tgn || null, JSON.stringify(A), sec, test, now, now, ip).first()).id;
+  const F = { id, k: W.k, name: nm, phone: ph, email: em, tg: tgn, answers: JSON.stringify(A), sec: ex ? ex.sec : sec, at: ex ? ex.at : now };
+  await ev3Queue(env, ev.id, id, 'Анкеты', await ev3Row(env, ev, e, F, S)); await logIt(env, 'ev-form', W.uid, ev.id + ' ' + id + (ex ? ' upd' : ''));
+  return json(req, { ok: true, id, upd: ex ? 1 : 0, msg: '✓ Анкета получена' }) }
+/* ответ Google Формы от скрипта таблицы (onFormSubmit): по токену → мероприятие; ответы по сопоставлению (заголовок вопроса); привязка к зрителю по телефону / почте */
+async function efFormHook(env, req, o) { await ef2Ensure(env); const ev = await evGet(env, o.ev); if (!ev) return json(req, { ok: false }, 404); const S = ev3Sale(ev), now = msNow();
+  if (!S.token || !same(String(o.token || ''), S.token)) { await logIt(env, 'ev-hook-bad', 0, String(ev.id)); return json(req, { ok: false }, 403) }
+  const N = o.named && typeof o.named === 'object' ? o.named : {}, G = S.form.gform, val = k => { const m = G.map[k]; if (!m) return ''; let key = Object.keys(N).find(x => ev3Lc(x) === ev3Lc(m.title)); const v = key ? N[key] : ''; return bStr(Array.isArray(v) ? v.join(', ') : v, 200) };
+  const ph = val('phone').replace(/[^\d+]/g, '').slice(0, 20), em = val('email').toLowerCase(), nm = val('name'), d10 = ev3Digits(ph).slice(-10);
+  let who = null; if (d10.length === 10 || em) { const L = await qAll(env.DB.prepare('SELECT k, uid, chat, name, phone, email FROM ev_reg WHERE ev_id=? AND (lower(email)=? OR phone LIKE ?) LIMIT 20').bind(ev.id, em || '-', d10.length === 10 ? '%' + d10 : '-'));
+    who = L.find(r => d10.length === 10 && ev3Digits(r.phone).slice(-10) === d10) || L.find(r => em && String(r.email || '').toLowerCase() === em) || null }
+  const D = await ev2Days(env, ev.id), live = D.find(e => e.status === 'live'), sec = live && live.at_live ? Math.floor((now - live.at_live) / 1000) : null;
+  const test = !G.test_at || ['draft', 'test'].includes(ev2Status(ev)) ? 1 : 0, ans = {}; for (const k of Object.keys(N).slice(0, 60)) { const v = N[k]; ans[bStr(k, 200)] = bStr(Array.isArray(v) ? v.join(', ') : v, 1000) }
+  const ex = who && S.form.one_per_person ? await env.DB.prepare("SELECT id FROM ev_form WHERE ev_id=? AND k=? AND src='gform' ORDER BY id DESC LIMIT 1").bind(ev.id, who.k).first() : null;
+  if (ex) await env.DB.prepare('UPDATE ev_form SET name=?, phone=?, email=?, answers=?, row_n=?, row_ok=1, upd=? WHERE id=?').bind(nm || who.name || '', ph || null, em || null, JSON.stringify(ans), +o.row || null, now, ex.id).run();
+  else await env.DB.prepare("INSERT INTO ev_form (ev_id, efir_id, k, uid, chat, name, phone, email, tg, answers, sec, src, row_ok, row_n, st, test, outside, at, upd) VALUES (?,?,?,?,?,?,?,?,NULL,?,?,'gform',1,?,'new',?,?,?,?)")
+    .bind(ev.id, live ? live.id : null, who ? who.k : null, who ? who.uid : null, who ? who.chat : null, nm || (who && who.name) || '', ph || null, em || null, JSON.stringify(ans), sec, +o.row || null, test, live ? 0 : 1, now, now).run();
+  if (!G.test_at) await env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.form.gform.test_at', ?) WHERE id=?").bind(now, ev.id).run().catch(() => null);
+  if (o.sheet && S.sheet && S.sheet.fsheet !== bStr(o.sheet, 100)) await env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.fsheet', ?) WHERE id=?").bind(bStr(o.sheet, 100), ev.id).run().catch(() => null);
+  await logIt(env, 'ev-hook', 0, ev.id + (who ? ' k' : ' ?') + (test ? ' test' : '') + (live ? '' : ' outside')); return json(req, { ok: true }) }
+
+/* ---------- фон: очередь ev_form_q → op:"rows" пачками; статусы менеджеров op:"status" (§3.1, §5.2) ---------- */
+async function evFormTick(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ok: 0, fail: 0 }; if (lim == null) lim = (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 10 : 3;
+  const Q = await qAll(env.DB.prepare('SELECT * FROM ev_form_q WHERE COALESCE(next_at, 0)<=? ORDER BY next_at, id LIMIT 300').bind(now)); if (!Q.length) return out;
+  const G = {}; for (const q of Q) { const k = q.ev_id + '|' + q.sheet; (G[k] = G[k] || []).push(q) }
+  for (const k of Object.keys(G).slice(0, lim)) { if (!B.ok(1)) break; const L = G[k].slice(0, 100), ev = await evGet(env, L[0].ev_id), ids = L.map(q => q.id).join(',');
+    if (!ev) { await env.DB.prepare('DELETE FROM ev_form_q WHERE id IN (' + ids + ')').run(); continue }
+    const S = ev3Sale(ev); if (!S.sheet || !S.sheet.exec || !S.token) { await env.DB.prepare('UPDATE ev_form_q SET next_at=?, err=? WHERE id IN (' + ids + ')').bind(now + 5 * 6e4, 'таблица не подключена').run(); continue }
+    B.use(1); const r = await ev3Gas(env, S.sheet.exec, { token: S.token, op: 'rows', sheet: L[0].sheet, qs: L[0].sheet === 'Анкеты' ? S.form.questions.map(q => q.t) : [], rows: L.map(q => efJ(q.payload, {})) });
+    if (r.j && r.j.ok) { const R = Array.isArray(r.j.rows) ? r.j.rows : [], st = [];
+      for (const q of L) { if (q.form_id > 0) { const x = R.find(y => String(y.k) === String(efJ(q.payload, {}).k)); st.push(env.DB.prepare('UPDATE ev_form SET row_ok=1, row_n=COALESCE(?, row_n) WHERE id=?').bind(x ? +x.row || null : null, q.form_id)) } }
+      st.push(env.DB.prepare('DELETE FROM ev_form_q WHERE id IN (' + ids + ')')); if (S.sheet.fails || S.sheet.last_err) st.push(env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.fails', 0, '$.sheet.last_err', '') WHERE id=?").bind(ev.id));
+      await env.DB.batch(st); out.ok += L.length }
+    else { const err = r.bad ? EV3_ERR[r.bad] : EV3_ERR.token; out.fail += L.length;
+      await env.DB.batch([env.DB.prepare('UPDATE ev_form_q SET tries=tries+1, next_at=?, err=? WHERE id IN (' + ids + ')').bind(now + 5 * 6e4, err.slice(0, 200)),
+        env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.fails', COALESCE(json_extract(sale, '$.sheet.fails'), 0) + 1, '$.sheet.last_err', ?) WHERE id=?").bind(err, ev.id)]);
+      await logIt(env, 'ev-sheet-q-err', 0, ev.id + ' ' + (r.bad || 'ok:false') + ' ' + L.length) } }
+  return out }
+async function evFormStatus(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ev: 0, st: 0 }; if (lim == null) lim = (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 10 : 3;
+  await env.DB.prepare('UPDATE ev_form SET ip=NULL WHERE ip IS NOT NULL AND at<?').bind(now - 2 * 864e5).run().catch(() => null); /* IP (хеш) — только на время эфира */
+  const E = await qAll(env.DB.prepare("SELECT id, sale, status FROM efir_event WHERE del=0 AND json_extract(sale, '$.mode')='form' AND COALESCE(json_extract(sale, '$.sheet.ok_at'), 0)>0 AND COALESCE(status, 'reg')<>'draft' ORDER BY COALESCE(json_extract(sale, '$.sheet.st_at'), 0) LIMIT ?").bind(lim));
+  for (const ev of E) { const S = ev3Sale(ev); await env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.st_at', ?) WHERE id=?").bind(now, ev.id).run();
+    if (!S.form.dup) await env.DB.prepare('DELETE FROM ev_form WHERE ev_id=? AND row_ok=1 AND upd<?').bind(ev.id, now - 30 * 864e5).run(); /* dup=0: ev_form — буфер до записи в таблицу и ещё 30 дней */
+    const F = await qAll(env.DB.prepare('SELECT id, k, row_n, src FROM ev_form WHERE ev_id=? AND row_ok=1 AND COALESCE(test,0)=0 ORDER BY id DESC LIMIT 500').bind(ev.id)); if (!F.length || !B.ok(1)) continue; B.use(1);
+    const gf = S.form.src === 'gform', body = gf ? { token: S.token, op: 'status', sheet: S.sheet.fsheet || '', rows: F.filter(f => f.row_n).map(f => f.row_n) } : { token: S.token, op: 'status', sheet: 'Анкеты', ks: F.filter(f => f.k).map(f => f.k) };
+    if (gf && !body.sheet) continue; const r = await ev3Gas(env, S.sheet.exec, body); out.ev++; if (!r.j || !r.j.ok) continue; const st = [];
+    for (const f of F) { const v = gf ? (r.j.rn || {})[f.row_n] : (r.j.st || {})[f.k]; if (v == null) continue; const t = bStr(v, 100); st.push(env.DB.prepare('UPDATE ev_form SET sheet_st=?, st=COALESCE(?, st) WHERE id=?').bind(t || null, ev3Status(t), f.id)) }
+    if (st.length) { await env.DB.batch(st); out.st += st.length } }
+  return out }
 /* 06.11 (Роман): вместо уведомления о каждой заявке — одна сводка админам после «Завершить эфир» */
 async function efReport(env, e) { const id = e.id, dur = Math.max(1, Math.round(((e.at_end || msNow()) - (e.at_live || e.start || msNow())) / 6e4));
   const [rg, sn, ms, qs, ld, wk, vc] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(id), env.DB.prepare('SELECT COUNT(DISTINCT k) n, AVG(min) a, SUM(CASE WHEN min>=?2 THEN 1 ELSE 0 END) half FROM efir_seen WHERE efir_id=?1 AND sess=0').bind(id, Math.max(1, Math.round(dur / 2))),
