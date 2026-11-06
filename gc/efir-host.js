@@ -479,6 +479,421 @@
   var TOK2_EMPTY = function (O) { return '<div class="col ehd"><h1 class="h1">Пустые состояния и ошибки</h1><span class="mut">Каждый блок стоит на месте списка, когда в нём ничего нет. Всегда: что это, зачем, и одна кнопка, с которой начать.</span></div>' +
     '<div class="g3">' + ['mar', 'mat', 'leads', 'stats', 'auto', 'cur'].map(function (k) { return emp2(O, k, { lbl: 1, n: 214 }) }).join('') + err2('obs', { lbl: 1 }) + err2('gc', { lbl: 1, n: 3 }) + skel2({ lbl: 1 }) + '</div>' };
 
+
+  /* ================= 07.11 «Эфиры 2.0», этап Э2: списки 1.1 / 1.2, окно «Создать» 1.3, мастер мероприятия (Steps, шаги 1, 2, 3, 7, 8) — docs/plan/efiry-tz.md §6.4 =================
+     Разметка — как на досках (docs/mockups/efiry/boards), инлайн-стили досок — классами .efn .x… с теми же числами. Тексты из данных — через typoDom() после отрисовки.
+     Сервер: GET /efir/host/events?type=web|mar, POST /efir/host/event/new|save (v:2)|days|launch|dup|del|src, GET /efir/host/event/get|check|src, /efir/host/img, /efir/host/streams. */
+  var CSSH = [
+    /* радио и флажки — как на досках (страница-хозяин efir.html в color-scheme:dark рисует их серыми) */
+    ".efn input[type=radio],.efn input[type=checkbox]{color-scheme:light}",
+    ".efn .xhd{align-items:flex-end}.efn .xg0{gap:0}.efn .xg2{gap:2px}.efn .xg4{gap:4px}.efn .xg6{gap:6px}.efn .xg8{gap:8px}.efn .xg10{gap:10px}.efn .xg12{gap:12px}.efn .xg16{gap:16px}",
+    ".efn .x14{font-size:14px}.efn .x18{font-size:18px}.efn .x20{font-size:20px}.efn .xf1{flex:1}.efn .xas{align-self:flex-start}.efn .row.xend{justify-content:flex-end}",
+    ".efn a.xback{font-size:14px;text-decoration:none}",
+    /* 1.1 */
+    ".efn .c.xlivec{flex-direction:row;align-items:center;flex-wrap:wrap;gap:18px}.efn .xlvt{flex:1 1 320px;gap:4px}.efn .in.xsrch{max-width:300px}",
+    ".efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.6fr)}.efn .live.xl24{height:24px;font-size:12px}.efn .row.xact{justify-content:flex-end;gap:6px}",
+    ".efn .c.xempt{align-items:center;text-align:center;padding:40px 20px}.efn .xempt>b{font-size:18px}.efn .xempt>.mut{max-width:460px}",
+    /* 1.2 */
+    ".efn .b3.sm.xdots{width:36px;padding:0}.efn .c0.xrow{flex-direction:row;align-items:center;gap:10px}",
+    /* 1.3 и окна поверх экрана: затемнение на весь экран, окно по центру */
+    ".efn.pg.xrel{position:relative}.efn .ov.xovc{position:fixed;z-index:60;flex-direction:column;align-items:center;justify-content:flex-start;padding:28px 40px;box-sizing:border-box;overflow:auto}",
+    ".efn .xwin{max-width:980px;width:100%;gap:20px;padding:28px;border-radius:28px;background:#121214;border:1px solid rgba(255,255,255,.08);box-sizing:border-box;margin:auto 0}",
+    ".efn a.c.xcard{text-decoration:none;color:#fff;gap:8px}.efn a.c.xcard.off{pointer-events:none;cursor:default}",
+    ".efn .ov.xovr{position:fixed;z-index:60;overflow:auto}.efn .drw .xdrwb{margin-top:auto}",
+    /* Steps (доска Steps) */
+    ".efn .estp{width:280px;box-sizing:border-box;padding:14px;display:flex;flex-direction:column;gap:4px;border-radius:22px;background:#0e0e10;border:1px solid rgba(255,255,255,.06);font-family:'Inter Tight',system-ui,sans-serif;color:#fff}",
+    ".efn .estph{display:flex;justify-content:space-between;align-items:center;padding:6px 10px 12px}.efn .estph>b{font-size:14px}.efn .estph>span{font-size:12px;color:rgba(255,255,255,.55)}",
+    ".efn a.estpi{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border-radius:14px;text-decoration:none;color:#fff;font-size:15px}.efn a.estpi:hover{color:#fff}",
+    ".efn a.estpi.on{background:#1f1f22;font-weight:600;box-shadow:inset 0 0 0 1px rgba(215,127,255,.35)}",
+    ".efn .estpi>.num{background:#262626;color:rgba(255,255,255,.6)}.efn .estpi.on>.num{background:#9657e8;color:#fff}.efn .estpi>.num.d{background:rgba(34,197,94,.2);color:#86efac}.efn .estpi>.num.o{background:rgba(251,191,36,.18);color:#fde68a}",
+    ".efn .estpt{display:flex;flex-direction:column;gap:1px;min-width:0}.efn .estpt>span+span{font-size:12px;color:rgba(255,255,255,.5)}",
+    ".efn .estpl{height:1px;background:rgba(255,255,255,.07);margin:8px 6px}.efn a.estpx{display:flex;align-items:center;min-height:44px;padding:0 12px;border-radius:12px;color:rgba(255,255,255,.75);text-decoration:none}",
+    /* мастер */
+    ".efn .row.xwz{align-items:flex-start;gap:20px}.efn .xwzm{flex:999 1 560px;gap:16px;max-width:900px}.efn .xwzm.xw940{max-width:940px}",
+    ".efn label.c0.xrad{flex-direction:row;gap:12px;align-items:flex-start;cursor:pointer}.efn label.c0.xrad.on{box-shadow:inset 0 0 0 1px rgba(215,127,255,.5)}.efn .xrad input[type=radio]{margin-top:3px}",
+    ".efn .row.xm3r{gap:16px;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.06)}.efn .xm3l{flex:1 1 380px;gap:10px}.efn .xm3c{gap:16px;align-items:center}.efn .xm3c>.col{flex:1 1 380px;gap:6px}",
+    ".efn .xm3p{flex:1 1 300px;gap:6px;padding:14px;border-radius:18px;background:#0e1621}.efn .xcons{font-size:13px;color:rgba(255,255,255,.6)}.efn .tgb.xtgk{background:#3a4a5e}",
+    ".efn .tgm.xme{align-self:flex-end;background:#2b5278;border-radius:16px 16px 4px 16px}",
+    ".efn .xgs{grid-template-columns:minmax(0,1.4fr) minmax(0,3fr) minmax(0,.9fr) minmax(0,.9fr) minmax(0,.9fr) minmax(0,1fr)}.efn .xgs.xgs5{grid-template-columns:minmax(0,1.4fr) minmax(0,3fr) minmax(0,.9fr) minmax(0,.9fr) minmax(0,1fr)}",
+    ".efn .xgs>.dim{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.efn .c0.xnew{flex-direction:row;align-items:flex-end;gap:10px;flex-wrap:wrap}.efn .xnew>.lb{flex:1 1 220px}",
+    ".efn .c.xwc{border-color:rgba(251,191,36,.4)}.efn .b1.xdis{opacity:.45;cursor:default}.efn .c0.xmv{flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap}",
+    ".efn .xf300{flex:1 1 300px}.efn .ph.xcov{background-size:cover;background-position:center}.efn .lb .bad,.efn .xerr{color:#fca5a5;font-size:13px}",
+    /* меню «···», подтверждение, календарь (§7.6) */
+    ".efn .xpop{position:absolute;z-index:70;border:1px solid rgba(255,255,255,.08)}.efn .xpop.xmenu{min-width:220px;gap:6px}.efn .xmenu>.sm{width:100%;justify-content:flex-start}",
+    ".efn .c.xconf{flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px}.efn .xconf>span{flex:1 1 200px;font-size:14px}",
+    ".efn .xpop.xcal{width:300px;gap:8px}.efn .xcalg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.efn .xcalg>.sm{padding:0;min-width:0}.efn .xcalg>.sm:disabled{opacity:.35}.efn .xcalg>i{font-style:normal;font-size:11px;text-align:center;color:rgba(255,255,255,.45)}",
+    ".efn .in[readonly]{cursor:pointer}.efn .xsk{min-height:240px}.efn .xw280{width:280px;flex:none}.efn .x14t{margin-top:14px}",
+    /* §7.5 < 1100: Steps — лента кружков с названием текущего шага; окна — на всю ширину */
+    "@media (max-width:1099px){.efn .row.xwz{flex-direction:column;align-items:stretch;flex-wrap:nowrap}.efn .xwz .estp{width:auto;flex-direction:row;align-items:center;overflow-x:auto;scrollbar-width:none;padding:8px 10px;border-radius:16px}.efn .xwz .estph{display:none}.efn .xwz a.estpi{min-height:44px;padding:0 6px;gap:8px;flex:none}.efn .xwz a.estpi .estpt{display:none}.efn .xwz a.estpi.on .estpt{display:flex}.efn .xwz a.estpi.on{padding:0 14px 0 8px}.efn .xwz .estpt>span+span{display:none}.efn .xwz .estpl{width:1px;height:28px;margin:0 6px;flex:none}.efn .xwz a.estpx{flex:none;white-space:nowrap}.efn .xwzm,.efn .xwzm.xw940{max-width:none;flex:none}.efn .drw{width:100%}.efn .ov.xovc{padding:20px 16px}}",
+    /* < 768: таблицы → карточки «подпись: значение» */
+    "@media (max-width:767px){.efn .th{display:none}.efn .tb{display:flex;flex-direction:column;align-items:stretch;gap:6px;background:#0e0e10;border:0;border-radius:16px;padding:14px;margin-top:8px}.efn .tb>[data-l]::before{content:attr(data-l) ': ';color:rgba(255,255,255,.5)}.efn .tb>.row.xact{justify-content:flex-start}.efn .xwin{padding:20px}.efn .in.xsrch{max-width:none}}"
+  ];
+  function cssh() { if (document.getElementById('efnCssH')) return; var s = document.createElement('style'); s.id = 'efnCssH'; s.textContent = CSSH.join('\n'); document.head.appendChild(s) }
+
+  /* время — МСК */
+  var MO3 = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'], MOG = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'],
+    MON = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'], WD2 = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+  function mp(ms) { var d = new Date(+ms + 3 * 36e5); return { y: d.getUTCFullYear(), mo: d.getUTCMonth(), d: d.getUTCDate(), wd: d.getUTCDay(), h: d.getUTCHours(), mi: d.getUTCMinutes(), day: Math.floor((+ms + 3 * 36e5) / 864e5) } }
+  var p2 = function (n) { return (n < 10 ? '0' : '') + n };
+  function hm2(ms) { var a = mp(ms); return p2(a.h) + ':' + p2(a.mi) }
+  function dS(ms) { var a = mp(ms); return a.d + ' ' + MO3[a.mo] }
+  function dL(ms) { var a = mp(ms); return a.d + ' ' + MOG[a.mo] + ', ' + WD2[a.wd] }
+  function mskAt(y, mo, d, h, mi) { return Date.UTC(y, mo, d, h, mi) - 3 * 36e5 }
+  function nf(n) { return String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') }
+  /* «через N дней» — по календарным датам МСК, завтра — «завтра», < 24 ч — «через N ч» */
+  function until2(ms, now) { if (!ms) return ''; var dt = ms - now; if (dt <= 0) return ''; if (dt < 864e5) { var hh = Math.max(1, Math.round(dt / 36e5)); if (mp(ms).day === mp(now).day || hh < 24) return dt < 36e5 ? 'через ' + Math.max(1, Math.round(dt / 6e4)) + ' мин' : 'через ' + hh + ' ч' }
+    var n = mp(ms).day - mp(now).day; return n === 1 ? 'завтра' : 'через ' + n + ' ' + plr(n, 'день', 'дня', 'дней') }
+  function tmr(sec) { sec = Math.max(0, sec | 0); var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return h ? h + ':' + p2(m) + ':' + p2(s) : m + ':' + p2(s) }
+  var lc = function (s) { return String(s || '').toLowerCase().replace(/ё/g, 'е') };
+  var short = function (s) { return String(s || '').replace(/^https?:\/\//, '') };
+  var APIB = 'https://oduvanov-api.romanoduvanov52.workers.dev';
+  function copy2(t, ok) { var done = function () { ok && ok() }; try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, function () { fb() }); return } } catch (e) {} fb();
+    function fb() { try { var a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;left:-9999px'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove() } catch (e) {} done() } }
+  /* код метки из названия (§6.4 2.3): латинские слова и цифры слитно; латиницы нет — транслит; [a-z0-9], до 24 */
+  var TR2 = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+  function srcCode(t, busy) { t = String(t || '').toLowerCase(); var lat = /[a-z]/.test(t), c = lat ? t.replace(/[^a-z0-9]/g, '') : t.replace(/[а-яё]/g, function (x) { return TR2[x] }).replace(/[^a-z0-9]/g, ''); c = c.slice(0, 24);
+    if (!c) return ''; var b = busy || [], n = 2, base = c; while (b.indexOf(c) >= 0 || c === 'test') { c = base.slice(0, 22) + n; n++ } return c }
+
+  var STP = [['Основное', 'название, обложка, ведущий'], ['Дни марафона', ''], ['Регистрация в боте', 'телефон, почта, ссылки'], ['Материалы эфира', 'заявка, баннеры, опросы'], ['Бот и напоминания', 'сообщения по шагам'], ['Продажи и заявки', 'или без продаж'], ['Доступ и запись', 'кто видит, сколько хранится'], ['Проверка и запуск', 'всё ли готово']];
+  /* Steps (§6.4): ✓ d, • o, номер — t; текущий подсвечен; «N из 8 готово»; у вебинара шаг 2 — «Дата и время»; после запуска — «Обзор и участники · N», «Разовая рассылка», «Итоги» */
+  function steps2(O, o) { var hf = O.href || function (h) { return h }, m = o.steps || {}, mar = o.type !== 'web', n = 0, days = o.days || 0;
+    var it = STP.map(function (s, i) { var k = m[i + 1] || 't', on = String(i + 1) === String(o.cur); if (k === 'd') n++;
+      var t = i === 1 && !mar ? 'Дата и время' : s[0], sub = i === 1 ? (mar ? days + ' ' + plr(days, 'эфир', 'эфира', 'эфиров') : '1 эфир') : s[1];
+      return '<a class="estpi' + (on ? ' on' : '') + '" href="' + esc(hf('#host/ev/' + o.id + '/' + (i + 1))) + '"' + (on ? ' aria-current="step"' : '') + '><span class="num' + (k === 'd' ? ' d' : k === 'o' ? ' o' : '') + '">' + (k === 'd' ? '✓' : k === 'o' ? '•' : i + 1) + '</span><span class="estpt"><span>' + esc(t) + '</span><span>' + esc(sub) + '</span></span></a>' }).join('');
+    var pub = o.status === 'reg' || o.status === 'done' ? '<div class="estpl"></div><a class="estpx" href="' + esc(hf('#host/ev/' + o.id + '/info')) + '">Обзор и участники · ' + nf(o.regs) + '</a><a class="estpx" href="' + esc(hf('#host/ev/' + o.id + '/info/bc')) + '">Разовая рассылка</a><a class="estpx" href="' + esc(hf('#host/ev/' + o.id + '/stats')) + '">Итоги</a>' : '';
+    return '<nav class="estp" aria-label="Шаги настройки"><div class="estph"><b>' + (mar ? 'Настройка марафона' : 'Настройка вебинара') + '</b><span>' + n + ' из 8 готово</span></div>' + it + pub + '</nav>' }
+
+  /* ---------- экраны Э2 внутри host2: E2(ctx) → { draw(P, q) } ---------- */
+  function E2(O, X) { cssh(); var S = { L: {}, E: null, menu: null, sv: null }, hf = O.href || function (h) { return h }, FXON = X.fx, fxd = function () { return FXON ? R.fx.data() : null };
+    var el = X.el, now = function () { return Date.now() };
+    function fin() { X.done() }
+    function open2(u) { (O.open || function (x) { window.open(x, '_blank', 'noopener') })(u) }
+    function toast(t) { X.toast(t) }
+    function go(h) { X.go(h) }
+    function frm(nav, inner, scr, cls) { return '<div class="efn pg' + (cls ? ' ' + cls : '') + '" data-fx-screen="' + esc(scr) + '">' + (nav ? X.nav(nav) : '') + '<main class="mn">' + inner + '</main></div>' }
+    function put(html) { el.innerHTML = html; typoDom(el); }
+    function errBox(t, act) { return '<div class="c ece ece-bad"><b>' + esc(t || 'Не загрузилось') + '</b><span class="mut">Проверь связь и попробуй ещё раз.</span><button type="button" class="b2" data-a="' + (act || 'reload') + '">Повторить</button></div>' }
+
+    /* ===== 1.1 Вебинары / 1.2 Марафоны ===== */
+    function tabOf(x, n) { var st = x.status, first = x.k === 'efir' ? x.start : ((x.days || []).filter(function (d) { return d.start })[0] || {}).start;
+      if (x.k === 'efir') return st === 'done' ? 'past' : st === 'draft' ? 'draft' : 'up';
+      if (st === 'done') return 'past'; if (st === 'test') return x.type === 'web' ? 'test' : 'draft'; if (st === 'reg') return 'up';
+      return first && first > n ? 'up' : 'draft' }
+    function firstStart(x) { if (x.k === 'efir') return x.start || 0; var d = (x.days || []).filter(function (d) { return d.start }); return d.length ? d[0].start : 0 }
+    function firstT(st) { for (var i = 1; i <= 8; i++) if ((st || {})[i] === 't') return i; for (i = 1; i <= 8; i++) if ((st || {})[i] === 'o') return i; return 1 }
+    function setHref(x) { return x.k === 'efir' ? '#host/web/edit/' + x.id : x.status === 'draft' ? '#host/ev/' + x.id + '/1' : '#host/ev/' + x.id + '/info' }
+    function accPill(x) { var a = x.access || {}; if (x.k === 'efir' && !(a.streams || []).length) return '<span class="pill pv">' + (a.all ? 'все ученики' : 'выбранные ученики') + '</span>';
+      return a.who === 'stream' ? '<span class="pill pv">' + esc('ученики ' + (a.streams || []).join(' · ')) + '</span>' : '<span class="pill pb">по ссылке</span>' }
+    function list(type, P, q, create) { var key = type, c = S.L[key], tab = P[1] && (type === 'web' ? ['up', 'draft', 'past', 'test'] : ['up', 'draft', 'past']).indexOf(P[1]) >= 0 ? P[1] : 'up';
+      if (create) tab = 'up';
+      if (c && now() - c.at < 30e3 && !c.err) return drawList(type, tab, c.j, create);
+      if (!c || c.err) put(frm(type, '<div class="col ehd"><h1 class="h1">' + (type === 'web' ? 'Вебинары' : 'Марафоны') + '</h1></div>' + skel2() + skel2(), type));
+      api(O, '/efir/host/events?type=' + type).then(function (j) { if (X.dead()) return; if (!j || !j.ok) { S.L[key] = { at: now(), err: 1 }; if (X.cur() === key) { put(frm(type, '<div class="col ehd"><h1 class="h1">' + (type === 'web' ? 'Вебинары' : 'Марафоны') + '</h1></div>' + errBox(j && j.err), type)); fin() } return }
+        S.L[key] = { at: now(), j: j }; if (X.cur() === key || (key === 'web' && X.cur() === 'new')) drawList(type, tab, j, create) }) }
+    function drawList(type, tab, j, create) { var n = j.now || now(), items = j.items || [], T = { up: [], draft: [], past: [], test: [] };
+      items.forEach(function (x) { T[tabOf(x, n)].push(x) });
+      T.up.sort(function (a, b) { return (a.live ? 0 : 1) - (b.live ? 0 : 1) || (firstStart(a) || 9e15) - (firstStart(b) || 9e15) }); T.past.sort(function (a, b) { return firstStart(b) - firstStart(a) });
+      T.draft.sort(function (a, b) { return b.id - a.id }); T.test.sort(function (a, b) { return b.id - a.id });
+      var web = type === 'web', tabs = web ? [['up', 'Предстоящие'], ['draft', 'Черновики'], ['past', 'Прошедшие'], ['test', 'Тестовые']] : [['up', 'Идут и предстоящие'], ['draft', 'Черновики'], ['past', 'Прошедшие']];
+      var h = '<div class="row sp xhd"><div class="col xg6"><h1 class="h1">' + (web ? 'Вебинары' : 'Марафоны') + '</h1><span class="mut">' + (web ? 'Одиночные эфиры: открытые по ссылке или для учеников. Марафоны из нескольких дней — в разделе «Марафоны».' : 'Несколько эфиров по дням с одной регистрацией, одной ссылкой и одной цепочкой сообщений в боте.') + '</span></div>' +
+        (web ? '<a class="b1" href="' + esc(hf('#host/new')) + '">+ Создать вебинар</a>' : '<a class="b1" href="' + esc(hf('#host/ev/new')) + '" data-a="newmar">+ Создать марафон</a>') + '</div>';
+      var lv = web ? items.filter(function (x) { return x.live })[0] : null;
+      if (lv) { var L = lv.live, m = lv.mode, at = L.at_live || n; h += '<section class="c cv xlivec" aria-label="Сейчас в эфире"><span class="live" data-lt="' + at + '">● LIVE ' + tmr((n - at) / 1e3) + '</span><div class="col xlvt"><b class="x18">' + esc(lv.title) + '</b><span class="mut">' +
+        esc(['Онлайн ' + nf(L.online)].concat(m === 'none' ? [] : [(m === 'form' ? 'анкет ' : 'заявок ') + nf(m === 'form' ? lv.forms : L.leads)]).concat(lv.fmt === 'room' ? ['комната'] : L.sig ? ['OBS: сигнал ' + (L.sig === 'on' ? 'есть' : 'нет')] : []).join(' · ')) + '</span></div><a class="b1" href="' + esc(hf('#host/live/' + L.efir_id)) + '">Открыть пульт</a></section>' }
+      h += (web ? '<div class="row sp">' : '') + '<div class="seg" role="tablist" aria-label="' + (web ? 'Какие вебинары показать' : 'Какие марафоны показать') + '">' + tabs.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (t[0] === tab) + '"' + (t[0] === tab ? ' class="on"' : '') + ' data-tab="' + t[0] + '">' + t[1] + ' · ' + T[t[0]].length + '</button>' }).join('') + '</div>' +
+        (web ? '<input class="in xsrch" aria-label="Поиск по названию" placeholder="Найти по названию" data-srch value="' + esc(S.q || '') + '"></div>' : '');
+      var L2 = T[tab];
+      if (web) h += '<div class="col xg10" data-rows>' + webRows(L2, n, tab) + '</div>';
+      else h += marCards(L2, n, tab, items.length);
+      put(frm(type, h, create ? 'Create' : type, create ? 'xrel' : '')); S.list = { type: type, tab: tab, j: j };
+      if (create) createWin(j); else if (X.P()[1] === 'edit') stubWin('Эфир для учеников', 7, 'Окно «Эфир для учеников» (тема, дата, ведущий, кто видит, работы) собирается из формы «Эфиры кураторов» — она в этапе 7.'); fin(); tick() }
+    function webRows(L, n, tab) { var q = lc(S.q || ''); L = L.filter(function (x) { return !q || lc(x.title).indexOf(q) >= 0 });
+      if (!L.length) { var E = { up: 'Предстоящих вебинаров нет', draft: 'Черновиков нет', past: 'Прошедших вебинаров нет', test: 'Тестовых вебинаров нет' }[tab];
+        return q ? '<div class="enone mut">Ничего не нашлось</div>' : '<section class="c xempt"><b>' + E + '</b><span class="mut">Создай вебинар — мастер проведёт по шагам: тема, время, регистрация в боте, материалы, напоминания и продажи.</span><a class="b1" href="' + esc(hf('#host/new')) + '">+ Создать вебинар</a></section>' }
+      return '<div class="th xgw"><span>Вебинар</span><span>Когда</span><span>Кто видит</span><span>Записались</span><span>Готовность</span><span></span></div>' + L.map(function (x) { var st = firstStart(x), live = !!x.live, draft = x.status === 'draft' && x.k === 'ev';
+        var dd = st ? mp(st).day - mp(n).day : 0, dl = dd === 0 ? 'сегодня' : dd === 1 ? 'завтра' : st ? dS(st) : '', un = st ? until2(st, n) : '', un2 = un === 'завтра' ? '' : un; /* «сегодня» / «завтра» — по календарной дате МСК (§6.4 6.3) */
+        var when = live ? '<span><span class="live xl24">● идёт</span></span>' : st ? '<span data-l="Когда">' + esc(dl + ', ' + hm2(st)) + (un2 ? '<br><span class="dim">' + esc(un2) + '</span>' : '') + '</span>' : '<span class="dim" data-l="Когда">без даты</span>';
+        var act = live ? '<a class="b1 sm" href="' + esc(hf('#host/live/' + x.live.efir_id)) + '">Пульт</a><a class="b2 sm" href="' + esc(hf(setHref(x))) + '">Настройки</a>'
+          : draft ? '<a class="b2 sm" href="' + esc(hf('#host/ev/' + x.id + '/' + firstT(x.steps))) + '">Доделать настройку</a>'
+          : x.status === 'done' ? '<a class="b2 sm" href="' + esc(hf(x.k === 'ev' ? '#host/ev/' + x.id + '/stats' : '#host/web/edit/' + x.id)) + '">' + (x.k === 'ev' ? 'Итоги' : 'Настройки') + '</a>'
+          : (x.status === 'reg' && (x.days || [])[0] ? '<a class="b2 sm" href="' + esc(hf('#host/live/' + ((x.days || []).filter(function (d) { return d.status === 'plan' || d.status === 'live' })[0] || x.days[0]).id)) + '">Пульт</a>' : '') + '<a class="b2 sm" href="' + esc(hf(x.status === 'test' ? '#host/ev/' + x.id + '/8' : setHref(x))) + '">Настройки</a>';
+        return '<div class="tb xgw" data-row="' + x.k + x.id + '"><span class="col xg2"><b>' + esc(x.title || 'Без названия') + '</b><span class="dim">' + esc('ведёт ' + x.host_name + ' · ' + (x.fmt === 'room' ? 'видеовстреча' : 'трансляция OBS')) + '</span></span>' + when + accPill(x) +
+          '<span data-l="Записались">' + (x.k === 'ev' ? nf(x.regs) : '—') + '</span>' + (draft ? '<span class="warn" data-l="Готовность">' + (x.ready | 0) + ' из 8</span>' : '<span class="dim">—</span>') +
+          '<span class="row xact">' + act + (live ? '' : '<button type="button" class="b3 sm" aria-label="Ещё действия" data-a="menu" data-k="' + x.k + '" data-id="' + x.id + '">···</button>') + '</span></div>' }).join('') }
+    function stepName(i, mode) { return ['основного', 'дней', 'текстов регистрации', 'материалов эфира', 'текстов бота', mode === 'form' ? 'таблицы анкет' : 'продукта для заявок', 'доступа и записи'][i - 1] }
+    function andList(L) { return L.length < 2 ? L.join('') : L.slice(0, -1).join(', ') + ' и ' + L[L.length - 1] }
+    function marCards(L, n, tab, total) { if (!L.length) return total ? '<div class="enone mut">' + { up: 'Идущих и предстоящих марафонов нет', draft: 'Черновиков нет', past: 'Прошедших марафонов нет' }[tab] + '</div>' : emp2(O, 'mar').replace('href="' + esc(hf('#host/new')) + '"', 'href="' + esc(hf('#host/ev/new')) + '" data-a="newmar"');
+      return '<div class="g2">' + L.map(function (x) { var D = x.days || [], liveI = -1, doneN = 0; D.forEach(function (d, i) { if (d.status === 'live') liveI = i; if (d.status === 'done' || d.status === 'rec') doneN++ });
+        var first = firstStart(x), next = D.filter(function (d) { return d.start && d.start > n && (d.status === 'plan' || d.status === 'draft') })[0], draft = x.status === 'draft' || x.status === 'test';
+        var pill = liveI >= 0 ? '<span class="pill pr">● идёт день ' + (liveI + 1) + ' из ' + D.length + '</span>' : x.status === 'done' || (doneN && doneN === D.length) ? '<span class="pill">прошёл</span>'
+          : doneN && next ? '<span class="pill pv">' + esc('день ' + (D.indexOf(next) + 1) + ' из ' + D.length + ' · ' + until2(next.start, n)) + '</span>' : first && first > n ? '<span class="pill pv">' + esc('старт ' + until2(first, n)) + '</span>' : '<span class="pill">черновик</span>';
+        var chips = D.map(function (d, i) { var nm = d.short || d.title, dt = d.start ? dS(d.start) : 'день ' + (i + 1), t = nm && !(draft && !d.title) ? dt + ' · ' + nm : dt;
+          return d.status === 'live' ? '<span class="pill pr">● ' + esc(t) + '</span>' : '<span class="pill">' + (d.status === 'done' || d.status === 'rec' ? '✓ ' : '') + esc(t) + '</span>' }).join('');
+        var today = D.filter(function (d) { return d.start && mp(d.start).day === mp(n).day && (d.status === 'plan' || d.status === 'live') })[0];
+        var hd = '<div class="row sp">' + pill + (x.status === 'test' ? '<span class="pill">тест</span>' : '') + '<span class="row xg8"><span class="dim">ссылка: ' + esc(short(x.bot)) + '</span><button type="button" class="b3 sm xdots" aria-label="Ещё действия" data-a="menu" data-k="ev" data-id="' + x.id + '">···</button></span></div>';
+        var body;
+        if (draft) { var miss = []; for (var i = 1; i <= 7; i++) if ((x.steps || {})[i] !== 'd') miss.push(stepName(i, x.mode));
+          body = (miss.length ? '<div class="c0 xrow"><span class="warn">●</span><span class="dim xf1">' + esc('Настроено ' + (x.ready | 0) + ' из 8: нет ' + andList(miss)) + '</span><a class="b2 sm" href="' + esc(hf('#host/ev/' + x.id + '/' + firstT(x.steps))) + '">Доделать</a></div>' : '') +
+            '<div class="row"><a class="b2" href="' + esc(hf('#host/ev/' + x.id + '/' + (x.status === 'test' ? 8 : 1))) + '">Настройки</a><button type="button" class="b3" data-a="copy" data-u="' + esc(x.bot) + '">Скопировать ссылку</button></div>' }
+        else { var K = [['Записались', x.regs], ['Пришли хоть раз', x.came]]; if (x.mode === 'sell' || x.mode === 'form') K.push([x.mode === 'form' ? 'Анкеты' : 'Заявки', x.mode === 'form' ? x.forms : x.leads]); if (x.mode === 'sell') K.push(['Оплаты', x.pays]);
+          body = '<div class="g4">' + K.map(function (k) { return '<div class="k"><span>' + k[0] + '</span><b>' + (k[1] == null ? '—' : nf(k[1])) + '</b></div>' }).join('') + '</div>' +
+            '<div class="row">' + (today ? '<a class="b1" href="' + esc(hf('#host/live/' + today.id)) + '">Пульт дня ' + (D.indexOf(today) + 1) + '</a>' : '') + '<a class="b2" href="' + esc(hf(setHref(x))) + '">Настройки</a><a class="b2" href="' + esc(hf('#host/ev/' + x.id + '/stats')) + '">Итоги</a><button type="button" class="b3" data-a="copy" data-u="' + esc(x.bot) + '">Скопировать ссылку</button></div>' }
+        return '<article class="c">' + hd + '<b class="x20">' + esc(x.title || 'Без названия') + '</b><div class="row xg6">' + chips + '</div>' + body + '</article>' }).join('') + '</div>' }
+    /* LIVE-таймер плашки 1.1 — раз в секунду (в режиме сверки не тикает) */
+    function tick() { if (FXON || S.tk) return; S.tk = setInterval(function () { if (X.dead() || !el.isConnected) { clearInterval(S.tk); S.tk = 0; return } var t = el.querySelector('[data-lt]'); if (!t) { clearInterval(S.tk); S.tk = 0; return }
+      t.textContent = '● LIVE ' + tmr((now() - +t.getAttribute('data-lt')) / 1e3) }, 1000) }
+    /* 1.3 «Создать» — окно поверх 1.1 */
+    function createWin(j) { var pg = el.querySelector('.pg'), rec = !!(j && j.rec_ok), d = document.createElement('div'); d.className = 'ov xovc'; d.setAttribute('data-a', 'ovclose');
+      d.innerHTML = '<div class="col xwin" role="dialog" aria-modal="true" aria-label="Что создаём?"><div class="col xg6"><h1 class="h1">Что создаём?</h1><span class="mut">Черновик сохранится сам — можно закрыть и вернуться.</span></div><div class="g2">' +
+        '<a href="' + esc(hf('#host/ev/new')) + '" class="c xcard" data-a="new" data-t="web"><span class="pill pv xas">1 эфир</span><b class="x20">Вебинар</b><span class="mut">Один эфир с регистрацией по ссылке или для учеников. Трансляция из OBS, материалы, бот, заявки.</span><span class="dim">8 шагов настройки</span></a>' +
+        '<a href="' + esc(hf('#host/ev/new')) + '" class="c xcard" data-a="new" data-t="mar"><span class="pill pv xas">2–7 эфиров</span><b class="x20">Марафон</b><span class="mut">Несколько эфиров по дням. Одна регистрация и одна ссылка на всё, напоминания перед каждым днём, дожим после.</span><span class="dim">8 шагов, шаг 2 — дни марафона</span></a>' +
+        '<a href="' + esc(hf('#host/auto/new')) + '" class="c xcard' + (rec ? '' : ' off') + '"' + (rec ? '' : ' aria-disabled="true" tabindex="-1"') + '><span class="pill pb xas">по расписанию</span><b class="x20">Автовебинар</b><span class="mut">Запись прошедшего эфира, которая идёт как живая: по дням и часам, с чатом, заявкой и опросами по сценарию.</span><span class="dim">Нужен прошедший вебинар с записью</span></a>' +
+        '<a href="' + esc(hf('#host/cur/new')) + '" class="c xcard"><span class="pill pgr xas">для потока</span><b class="x20">Эфир куратора</b><span class="mut">Видеовстреча куратора с учениками (комната Kinescope). Без продаж и бота — только тема, время и кто видит.</span><span class="dim">1 экран</span></a>' +
+        '</div><div class="row xend"><button type="button" class="b3" data-a="ovclose">Отмена</button></div></div>';
+      typoDom(d); pg.appendChild(d); var f = d.querySelector('a.xcard'); try { if (!FXON) f.focus({ preventScroll: true }) } catch (e) {} }
+    function newEv(t, btn) { if (S.busy) return; S.busy = 1; if (btn) btn.setAttribute('aria-busy', 'true');
+      api(O, '/efir/host/event/new', { type: t }).then(function (j) { S.busy = 0; if (!j || !j.ok) { toast((j && j.err) || 'Не создалось — попробуй ещё раз'); return } S.L = {}; S.E = null; go('#host/ev/' + j.id + '/1') }) }
+    /* меню «···» (§7.6): Скопировать ссылку · Дублировать · Удалить (+ Вернуть в черновик у test) */
+    function menu(b) { closePop(); var k = b.getAttribute('data-k'), id = +b.getAttribute('data-id'), x = ((S.list && S.list.j.items) || []).filter(function (i) { return i.k === k && i.id === id })[0]; if (!x) return;
+      var canDel = x.k === 'ev' ? (x.status === 'draft' || !x.regs) : !x.regn, pg = el.querySelector('.pg'), r = b.getBoundingClientRect(), pr = pg.getBoundingClientRect(), m = document.createElement('div');
+      m.className = 'c0 xpop xmenu'; m.setAttribute('role', 'menu');
+      m.innerHTML = (x.type === 'mar' ? '' : '<button type="button" class="b3 sm" role="menuitem" data-a="copy" data-u="' + esc(x.k === 'ev' ? x.bot : x.link) + '">Скопировать ссылку</button>') + /* у марафона ссылка — кнопкой на карточке (§6.4 1.2) */ (x.k === 'ev' ? '<button type="button" class="b3 sm" role="menuitem" data-a="dup" data-id="' + id + '">Дублировать</button>' : '') +
+        (x.status === 'test' ? '<button type="button" class="b3 sm" role="menuitem" data-a="todraft" data-id="' + id + '">Вернуть в черновик</button>' : '') +
+        (canDel ? '<button type="button" class="bd sm" role="menuitem" data-a="delask" data-k="' + k + '" data-id="' + id + '">Удалить</button>' : '<span class="dim">Удалить нельзя: есть записавшиеся</span>');
+      m.style.top = (r.bottom - pr.top + 6) + 'px'; m.style.right = Math.max(8, pr.right - r.right) + 'px'; pg.appendChild(m); S.menu = m; typoDom(m); try { m.querySelector('button').focus({ preventScroll: true }) } catch (e) {} }
+    function closePop() { if (S.menu) { S.menu.remove(); S.menu = null } if (S.cal) { S.cal.remove(); S.cal = null } }
+    function delAsk(b) { var k = b.getAttribute('data-k'), id = +b.getAttribute('data-id'), x = ((S.list && S.list.j.items) || []).filter(function (i) { return i.k === k && i.id === id })[0]; closePop(); var row = el.querySelector('[data-row="' + k + id + '"]') || el.querySelector('[data-a="menu"][data-id="' + id + '"]');
+      var box = document.createElement('div'); box.className = 'c xconf'; box.innerHTML = '<span>' + esc('Удалить «' + ((x && x.title) || 'без названия') + '»?') + '</span><button type="button" class="bd sm" data-a="del" data-k="' + k + '" data-id="' + id + '">Да, удалить</button><button type="button" class="b3 sm" data-a="delno">Нет</button>';
+      typoDom(box); var host = row && row.closest('.tb, article'); if (host) host.parentNode.insertBefore(box, host.nextSibling); S.conf = box; try { box.querySelector('.bd').focus({ preventScroll: true }) } catch (e) {} }
+    function listAct(a, b) { var id = +b.getAttribute('data-id');
+      if (a === 'dup') { closePop(); api(O, '/efir/host/event/dup', { ev: id }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Не получилось'); return } toast('Копия — в черновиках'); S.L = {}; go('#host/ev/' + j.id + '/1') }) }
+      else if (a === 'todraft') { closePop(); api(O, '/efir/host/event/launch', { ev: id, mode: 'draft' }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Не получилось'); return } toast('Вернули в черновик'); S.L = {}; X.redraw() }) }
+      else if (a === 'del') { var k = b.getAttribute('data-k'); api(O, k === 'ev' ? '/efir/host/event/del' : '/efir/host/del', k === 'ev' ? { ev: id, v2: 1 } : { id: id, v2: 1 }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Не удалилось'); return } toast('Удалено'); S.L = {}; X.redraw() }) }
+      else if (a === 'delno') { if (S.conf) S.conf.remove(); S.conf = null } }
+
+    /* ===== мастер мероприятия: #host/ev/<id>/<N> ===== */
+    function wiz(id, step, sub) { if (!id) { go('#host/web'); return }
+      var E = S.E && S.E.id === id ? S.E : null, need = [];
+      if (!E || now() - E.at > 60e3 && !S.sv) need.push(['j', '/efir/host/event/get?ev=' + id]);
+      if (step === '3' && (!E || !E.src)) need.push(['src', '/efir/host/event/src?ev=' + id]);
+      if (step === '8') need.push(['chk', '/efir/host/event/check?id=' + id]);
+      if (!need.length) return drawWiz(step, sub);
+      if (!E) put(frm('', '<div class="col ehd"><span class="eskl"></span></div><div class="row xwz"><div class="c xsk xw280"></div><section class="col xwzm">' + skel2() + skel2() + '</section></div>', 'ev'));
+      Promise.all(need.map(function (n) { return api(O, n[1]) })).then(function (R2) { if (X.dead() || X.cur() !== 'ev' || X.P()[1] !== String(id)) return; var bad = R2.filter(function (r) { return !r || !r.ok })[0];
+        if (bad && (!E || need[0][0] === 'j')) { put(frm('web', '<div class="col ehd"><h1 class="h1">Мероприятие</h1></div>' + errBox(bad.err, 'reload'), 'ev')); fin(); return }
+        if (!E || need[0][0] === 'j') { var j = R2[0]; E = S.E = { id: id, at: now(), ev: j.ev, days: j.days || [], hosts: j.hosts || [], now: j.now, privacy: j.privacy, src: E && E.src } }
+        need.forEach(function (n, i) { if (n[0] !== 'j' && R2[i] && R2[i].ok) E[n[0]] = R2[i] }); drawWiz(step, sub) }) }
+    function savedTxt(E) { var e = E.ev, st = { draft: 'черновик', test: 'тестовый прогон', reg: 'идёт регистрация', done: 'прошёл' }[e.status] || 'черновик';
+      if (S.svErr) return st + ' · <span class="bad">' + esc(S.svErr) + '</span>';
+      return st + ' · ' + (S.sv ? 'сохраняю…' : 'сохранено автоматически' + (e.upd && now() - e.upd < 60e3 ? ' только что' : '')) }
+    function drawWiz(step, sub) { var E = S.E, e = E.ev, mar = e.type !== 'web', nav = mar ? 'mar' : 'web', title = !e.named || !e.title ? (mar ? 'Новый марафон' : 'Новый вебинар') : e.title;
+      var right = step === '1' || (step === '2' && mar) ? '<div class="row"><button type="button" class="b3" data-a="viewer">Как увидит зритель</button></div>' : step === '3' ? '<button type="button" class="b3" data-a="selftest">Пройти регистрацию самому</button>' : '';
+      var hd = '<div class="row sp xhd"><div class="col xg4"><a href="' + esc(hf(mar ? '#host/mar' : '#host/web')) + '" class="xback">' + (mar ? '← Марафоны' : '← Вебинары') + '</a><h1 class="h1" data-h1>' + esc(title) + '</h1><span class="dim" data-saved>' + savedTxt(E) + '</span></div>' + right + '</div>';
+      var body = step === '1' ? w1(E) : step === '2' ? (mar ? w2(E) : w2w(E)) : step === '3' ? w3(E) : step === '7' ? w7(E) : step === '8' ? w8(E) : wStub(E, step);
+      put(frm(nav, hd + '<div class="row xwz"><div data-steps>' + steps2(O, { id: e.id, cur: step, steps: e.steps, type: e.type, days: E.days.filter(function (d) { return !d.hide }).length, status: e.status, regs: e.regs }) + '</div><section class="col xwzm' + (step === '3' ? ' xw940' : '') + '">' + body + '</section></div>', 'ev'));
+      S.step = step; if (step === '3' && !FXON && !e.reg.saved) sv({ reg: regOf(E) }, 1); fin() }
+    function navRow(back, fwd) { return '<div class="row sp">' + (back ? '<a class="b3" href="' + esc(hf(back[0])) + '"' + (back[1] ? ' data-a="' + back[1] + '"' : '') + '>← Назад</a>' : '<span></span>') + (fwd ? '<a class="b1" href="' + esc(hf(fwd[0])) + '" data-a="fwd">' + fwd[1] + '</a>' : '<span></span>') + '</div>' }
+    var EH = function (n) { return '#host/ev/' + S.E.id + '/' + n };
+    function wStub(E, step) { var st = step === '6' ? 3 : step === 'stats' ? 6 : 4; return '<div class="c estub"><b class="h2">Экран появится в этапе ' + st + '</b><span class="mut">Раздел «Эфиры» переделывается по новому макету. Пока этим экраном можно пользоваться в старом пульте.</span><a class="b2" href="' + esc(hf('#host/old')) + '" data-a="old">Открыть старый пульт</a></div>' +
+      (/^[4-6]$/.test(step) ? navRow([EH(+step - 1)], [EH(+step + 1), 'Дальше →']) : '') }
+    /* шаг 1 — основное (доска M1) */
+    function w1(E) { var e = E.ev, mar = e.type !== 'web', cov = e.cover ? (/^\//.test(e.cover) ? APIB + e.cover : e.cover) : '';
+      return '<div class="c"><h2 class="h2">Основное</h2>' +
+        '<label class="lb">' + (mar ? 'Название марафона *' : 'Название вебинара *') + '<input class="in" data-f="title" maxlength="140" value="' + esc(e.title) + '"><span class="dim">Видят участники: в боте и в комнате эфира</span></label>' +
+        '<label class="lb">Коротко (для пульта и списков)<input class="in" data-f="short" maxlength="24" value="' + esc(e.short) + '"><span class="dim">до 24 символов: шапка пульта, списки, сводка. Пусто — возьмём название</span></label>' +
+        '<label class="lb">' + (mar ? 'Коротко, о чём марафон' : 'Коротко, о чём вебинар') + '<textarea class="in" rows="3" data-f="about" maxlength="1500">' + esc(e.about) + '</textarea><span class="dim">2–3 предложения. Подставляется в приветствие бота</span></label>' +
+        '<div class="g2"><div class="lb">Обложка 16:9' + (cov ? '<div class="ph xcov" data-fx-mask style="background-image:url(\'' + esc(cov) + '\')"></div>' : '<div class="ph">1280×720, JPG или PNG</div>') +
+          '<div class="row"><button type="button" class="b2 sm" data-a="cover">Загрузить</button><span class="dim">' + (cov ? 'Обложка загружена' : 'Нет обложки — возьмём фон школы') + '</span><input type="file" accept="image/jpeg,image/png,image/webp" data-cover hidden></div></div>' +
+        '<div class="col xg12"><label class="lb">Ведущий<select class="in" data-f="host">' + E.hosts.map(function (h) { return '<option value="' + esc(h.id) + '"' + (h.id === e.host ? ' selected' : '') + '>' + esc(h.name) + '</option>' }).join('') + '</select></label>' +
+          '<div class="lb">Как идёт видео<div class="seg" role="radiogroup" aria-label="Формат"><button type="button" role="radio" aria-checked="' + (e.fmt !== 'room') + '"' + (e.fmt !== 'room' ? ' class="on"' : '') + ' data-fmt="obs">Трансляция из OBS</button><button type="button" role="radio" aria-checked="' + (e.fmt === 'room') + '"' + (e.fmt === 'room' ? ' class="on"' : '') + ' data-fmt="room">Видеовстреча (комната)</button></div>' +
+            '<span class="dim">OBS — программа на твоём компьютере, через неё картинка идёт в эфир. Ключ один раз вставляется в «Настройках эфиров», дальше ничего вводить не нужно. Видеовстреча — как Zoom: камера в браузере, до 100 человек.</span></div>' +
+          (mar ? '<label class="lb">Длительность одного дня, минут<input class="in" type="number" min="10" max="600" data-f="dur" value="' + esc(e.dur) + '"></label>' : '') + '</div></div></div>' +
+        '<div class="row sp"><span></span><a class="b1" href="' + esc(hf(EH(2))) + '" data-a="fwd">' + (mar ? 'Дальше: дни марафона →' : 'Дальше: дата и время →') + '</a></div>' }
+    /* поле даты (§7.6) и время ЧЧ:ММ */
+    function dayRow(d, i, n, E) { var past = d.past || d.status === 'live', lock = d.status === 'live' || d.status === 'done' || d.status === 'rec';
+      var del = past ? '<button type="button" class="b3 sm" data-a="dhide" data-i="' + i + '">' + (d.hide ? 'Показать' : 'Скрыть') + '</button>' : '<button type="button" class="b3 sm" data-a="ddel" data-i="' + i + '"' + (n <= 2 ? ' disabled' : '') + '>Удалить</button>';
+      return '<div class="c0" data-day="' + i + '"><div class="row sp"><b>День ' + (i + 1) + (d.hide ? ' <span class="pill">скрыт</span>' : '') + '</b><div class="row xg6">' + (n <= 2 && !past ? '<span class="dim">в марафоне минимум 2 дня</span>' : '') +
+        '<button type="button" class="b3 sm" aria-label="Поднять выше" data-a="dup2" data-i="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button><button type="button" class="b3 sm" aria-label="Опустить ниже" data-a="ddown" data-i="' + i + '"' + (i === n - 1 ? ' disabled' : '') + '>↓</button>' + del + '</div></div>' +
+        '<div class="g3"><label class="lb">Тема дня *<input class="in" data-d="title" data-i="' + i + '" maxlength="140" value="' + esc(d.title) + '"></label><label class="lb">Дата *<input class="in" readonly data-d="date" data-i="' + i + '" value="' + esc(d.start ? dL(d.start) : '') + '" placeholder="выбери дату"' + (lock ? ' disabled' : '') + '></label>' +
+        '<label class="lb">Начало *<input class="in" inputmode="numeric" maxlength="5" data-d="time" data-i="' + i + '" value="' + esc(d.start ? hm2(d.start) : (d.tm || '')) + '" placeholder="19:00"' + (lock ? ' disabled' : '') + '></label></div>' +
+        '<label class="lb">Коротко (для пульта и списков)<input class="in" data-d="short" data-i="' + i + '" maxlength="24" value="' + esc(d.short) + '"></label></div>' }
+    function w2(E) { var D = E.days, n = D.filter(function (d) { return !d.hide }).length, full = D.length >= 7;
+      return '<div class="c" data-days><div class="row sp"><h2 class="h2">Дни марафона</h2><span class="dim">время — по Москве</span></div>' + D.map(function (d, i) { return dayRow(d, i, D.length, E) }).join('') +
+        '<div class="row"><button type="button" class="b2" data-a="dadd"' + (full ? ' disabled' : '') + '>+ Добавить день</button><span class="dim">' + (full ? 'не больше 7 дней' : 'новый день встанет на следующий вечер в то же время') + '</span></div></div>' +
+        (S.moved && S.moved.length ? '<div class="c0 xmv"><span class="warn">●</span><span class="dim xf1">До перенесённого эфира меньше суток — предупреди записавшихся.</span><a class="b2 sm" href="' + esc(hf(EH('info/bc'))) + '">Разослать «эфир перенесён»</a></div>' : '') +
+        '<div class="c0"><span class="dim">У дня можно поменять тему, дату и время в любой момент — напоминания в боте пересчитаются сами. Удалить день, который уже прошёл, нельзя (у него есть запись и статистика) — только скрыть.</span></div>' + navRow([EH(1)], [EH(3), 'Дальше: регистрация в боте →']) }
+    var DUR = [[90, '1 час 30 минут'], [60, '1 час'], [120, '2 часа']];
+    function w2w(E) { var d = E.days[0] || { title: '', start: null }, lock = d.status === 'live' || d.status === 'done' || d.status === 'rec', dur = +E.ev.dur || 90, has = DUR.some(function (x) { return x[0] === dur });
+      return '<div class="c"><div class="row sp"><h2 class="h2">Дата и время</h2><span class="dim">время — по Москве</span></div><div class="g3">' +
+        '<label class="lb">Дата *<input class="in" readonly data-d="date" data-i="0" value="' + esc(d.start ? dL(d.start) : '') + '" placeholder="выбери дату"' + (lock ? ' disabled' : '') + '></label>' +
+        '<label class="lb">Начало *<input class="in" inputmode="numeric" maxlength="5" data-d="time" data-i="0" value="' + esc(d.start ? hm2(d.start) : (d.tm || '')) + '" placeholder="19:00"' + (lock ? ' disabled' : '') + '></label>' +
+        '<label class="lb">Длительность<select class="in" data-f="dur">' + (has ? '' : '<option value="' + dur + '" selected>' + dur + ' мин</option>') + DUR.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === dur ? ' selected' : '') + '>' + x[1] + '</option>' }).join('') + '</select></label></div>' +
+        '<div class="c0 xmv"><span class="dim xf300">Нужно несколько дней? Это марафон — у него одна регистрация на все эфиры.</span><button type="button" class="b3 sm" data-a="tomar">Сделать марафоном</button></div></div>' + navRow([EH(1)], [EH(3), 'Дальше: регистрация в боте →']) }
+    /* шаг 3 — регистрация в боте и ссылки (доска M3) */
+    function regOf(E) { var r = E.ev.reg; return { phone: r.phone, email: r.email, skip_email: r.skip_email, greet: { text: r.greet.text, btn: r.greet.btn }, ask_email: { text: r.ask_email.text, err: r.ask_email.err } } }
+    function tgHtml(t) { return esc(typo(t)).replace(/\n/g, '<br>') }
+    function pv1(E) { var r = E.ev.reg; return '<span class="dim">так увидит человек</span><div class="tgm">' + tgHtml(r.greet.text) + '<br><br><span class="xcons">' + (r.phone ? 'Нажимая «Поделиться номером», ты соглашаешься с' : 'Продолжая, ты соглашаешься с') + NB + '<a href="' + esc(E.privacy || '#') + '" target="_blank" rel="noopener">политикой обработки персональных данных</a>.</span></div>' +
+      (r.phone ? '<span class="tgb xtgk">' + esc(r.greet.btn) + '</span><span class="dim">кнопка внизу экрана, вместо клавиатуры</span>' : '') }
+    function pv2(E) { var r = E.ev.reg; return r.email ? '<span class="dim">так увидит человек</span><div class="tgm">' + tgHtml(r.ask_email.text) + '</div>' + (r.skip_email ? '<span class="tgb">Пропустить</span>' : '') + '<div class="tgm xme">anna@mail.ru</div>' : '<span class="dim">Почту бот не спрашивает — после номера человек сразу записан.</span>' }
+    function tgl(k, on, lab) { return '<button type="button" class="tg' + (on ? ' on' : '') + '" aria-label="' + esc(lab + ': ' + (on ? 'да' : 'нет')) + '" aria-pressed="' + (on ? 'true' : 'false') + '" data-tgl="' + k + '"></button>' }
+    function w3(E) { var e = E.ev, r = e.reg, mode = e.sale && e.sale.mode, src = (E.src && E.src.src) || [], cols = mode === 'none' ? ' xgs5' : '', lab = mode === 'form' ? 'Анкеты' : 'Заявки';
+      return '<div class="c"><h2 class="h2">Как человек записывается</h2><span class="mut">Регистрация только через бота. Отдельной страницы нет: ссылка на бота ставится куда угодно — в пост канала, в другой бот, в кнопку на сайте.</span><div class="g5">' +
+        [['1', 'Жмёт ссылку', 'в посте, в другом боте или на сайте'], ['2', '«Старт» в боте', 'приветствие и кнопка «Поделиться номером»'], ['3', 'Номер одной кнопкой', 'Telegram сам подставит номер'], ['4', 'Пишет почту', 'бот проверит, что почта настоящая'], ['✓', 'Записан', 'расписание и личная ссылка на эфиры']].map(function (s) {
+          return '<div class="c0"><span class="pill ' + (s[0] === '✓' ? 'pgr' : 'pv') + ' xas">' + s[0] + '</span><b class="x14">' + s[1] + '</b><span class="dim">' + s[2] + '</span></div>' }).join('') + '</div>' +
+        '<span class="dim">Ученик школы или тот, кто уже записывался раньше, пропускает шаги 3–4: бот его знает. Телефон и почта уходят в GetCourse (пользователь + группа «' + esc(r.gc_group) + '»).</span></div>' +
+        '<div class="c"><h2 class="h2">Сообщения регистрации</h2>' +
+        '<div class="row xm3r"><div class="col xm3l"><b>1. Приветствие — после «Старт»</b><label class="lb">Текст<textarea class="in" rows="3" data-r="greet.text" maxlength="1500">' + esc(r.greet.text) + '</textarea></label><label class="lb">Текст кнопки<input class="in" data-r="greet.btn" maxlength="40" value="' + esc(r.greet.btn) + '"></label>' +
+          '<div class="sw"><span>Спрашивать телефон</span>' + tgl('phone', r.phone, 'Спрашивать телефон') + '</div></div><div class="col xm3p" data-pv1>' + pv1(E) + '</div></div>' +
+        '<div class="row xm3r"><div class="col xm3l"><b>2. Почта</b><label class="lb">Вопрос<textarea class="in" rows="2" data-r="ask_email.text" maxlength="1000">' + esc(r.ask_email.text) + '</textarea></label><label class="lb">Если почта с ошибкой<input class="in" data-r="ask_email.err" maxlength="500" value="' + esc(r.ask_email.err) + '"></label>' +
+          '<div class="sw"><span>Спрашивать почту</span>' + tgl('email', r.email, 'Спрашивать почту') + '</div>' + (mode === 'sell' && !r.email ? '<span class="warn x14" data-mailwarn>Для заказа в GetCourse нужна почта — без неё заказ не создастся</span>' : '') +
+          '<div class="sw"><span class="col xg2"><span>Можно пропустить</span><span class="dim">под вопросом кнопка «Пропустить»</span></span>' + tgl('skip_email', r.skip_email, 'Можно пропустить') + '</div></div><div class="col xm3p" data-pv2>' + pv2(E) + '</div></div>' +
+        '<div class="row xm3c"><div class="col"><b>3. «Ты записан» + расписание</b><span class="dim">Это первое сообщение цепочки бота — настраивается в шаге 5 вместе с напоминаниями.</span></div><a class="b2" href="' + esc(hf(EH(5))) + '">Открыть в шаге 5</a></div></div>' +
+        '<div class="c"><h2 class="h2">Ссылки и метки</h2><span class="mut">Одна ссылка на бота — для всего. Для каждого места, где рекламируешь, делай свою ссылку с меткой: в «Итогах» видно, сколько записались, пришли и оставили заявку с каждой.</span>' +
+        '<div class="col xg0" data-src><div class="th xgs' + cols + '"><span>Метка</span><span>Ссылка</span><span>Записались</span><span>Пришли</span>' + (cols ? '' : '<span>' + lab + '</span>') + '<span></span></div>' +
+          (E.src ? src.map(function (s) { return '<div class="tb xgs' + cols + '"><b>' + esc(s.title) + '</b><span class="dim" data-l="Ссылка">' + esc(short(s.link)) + '</span><span data-l="Записались">' + nf(s.regs) + '</span><span data-l="Пришли">' + nf(s.came) + '</span>' + (cols ? '' : '<span data-l="' + lab + '">' + nf(mode === 'form' ? s.forms || 0 : s.leads) + '</span>') + '<span class="row xact"><button type="button" class="b2 sm" data-a="copy" data-u="' + esc(s.link) + '">Скопировать</button></span></div>' }).join('') : '<div class="enone mut">Метки не загрузились</div>') + '</div>' +
+        '<div class="c0 xnew"><label class="lb">Название метки<input class="in" data-src-t maxlength="60" value="' + esc(S.srcT || '') + '"></label><label class="lb">Код в ссылке<input class="in" data-src-c maxlength="24" value="' + esc(S.srcC || '') + '"><span class="dim" data-src-h>придумается сам из названия</span></label><button type="button" class="b1" data-a="srcadd">Создать ссылку</button></div>' +
+        '<span class="dim">Код — латиница и цифры, его видно в конце ссылки. Сайт делаем отдельно: в его кнопки вставляется ссылка «Сайт».</span></div>' + navRow([EH(2)], [EH(4), 'Дальше: материалы эфира →']) }
+    /* шаг 7 — доступ и запись (доска M7) */
+    var RECO = [[1, '24 часа после эфира'], [3, '3 дня'], [7, '7 дней'], [0, 'Всегда'], [-1, 'Не показывать запись']];
+    function w7(E) { var e = E.ev, A = e.access, R = e.rec, mar = e.type !== 'web', sel = (A.streams || []).concat(A.tariffs || []).join(' · '), extra = [14, 30].indexOf(R.days) >= 0 ? [[R.days, R.days + ' дней']] : [];
+      return '<div class="c"><h2 class="h2">Кто может смотреть</h2><div class="col xg8">' +
+        '<label class="c0 xrad' + (A.who !== 'stream' ? ' on' : '') + '"><input type="radio" name="acc" value="open" data-acc' + (A.who !== 'stream' ? ' checked' : '') + '><span class="col xg2"><b>Все, у кого есть ссылка</b><span class="dim">' + (mar ? 'Открытый марафон.' : 'Открытый вебинар.') + ' В списке эфиров учеников и в поиске его нет — только по ссылке.</span></span></label>' +
+        '<label class="c0 xrad' + (A.who === 'stream' ? ' on' : '') + '"><input type="radio" name="acc" value="stream" data-acc' + (A.who === 'stream' ? ' checked' : '') + '><span class="col xg2"><b>Ученики потока</b><span class="dim">Виден в кабинете у выбранных потоков и тарифов' + (sel ? ': ' + esc(sel) : ' — выбери, у каких') + '</span></span></label></div></div>' +
+        '<div class="c"><h2 class="h2">Запись</h2><div class="g2"><label class="lb">Запись доступна<select class="in" data-rec="days">' + RECO.concat(extra).map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === R.days ? ' selected' : '') + '>' + o[1] + '</option>' }).join('') + '</select></label>' +
+        '<label class="lb">После срока зритель видит<select class="in" data-rec="after"><option value="lead"' + (R.after !== 'closed' ? ' selected' : '') + '>«Запись закрыта» + кнопка заявки (если есть продажи)</option><option value="closed"' + (R.after === 'closed' ? ' selected' : '') + '>Только «Запись закрыта»</option></select></label></div>' +
+        '<div class="sw"><span class="col xg2"><span>Сохранять чат в записи</span><span class="dim">в записи сообщения идут в той же минуте, что и в эфире</span></span>' + tgl('chat', R.chat, 'Сохранять чат') + '</div>' +
+        '<div class="sw"><span class="col xg2"><span>Баллы рейтинга за просмотр</span><span class="dim">5 баллов за каждые 15 минут, только ученикам</span></span>' + tgl('pts', R.pts, 'Баллы за просмотр') + '</div></div>' + navRow([EH(6)], [EH(8), 'Дальше: проверка и запуск →']) }
+    function accWin() { var E = S.E, A = E.ev.access, pg = el.querySelector('.pg'); closeWin();
+      var d = document.createElement('div'); d.className = 'ov xovr'; d.setAttribute('data-a', 'winclose'); d.innerHTML = '<div class="drw" role="dialog" aria-modal="true" aria-label="Ученики потока"><h2 class="h2">Ученики потока</h2><span class="dim">Загружаю потоки и тарифы…</span></div>'; pg.appendChild(d); S.win = d;
+      var fill = function (j) { if (S.win !== d) return; var L = function (k, t, arr, have) { return '<b class="x14">' + t + '</b>' + (arr.length ? arr.map(function (x) { return '<label class="sw"><span>' + esc(x) + '</span><input type="checkbox" data-pick="' + k + '" value="' + esc(x) + '"' + (have.indexOf(x) >= 0 ? ' checked' : '') + '></label>' }).join('') : '<span class="dim">Нет данных рейтинга</span>') };
+        d.firstChild.innerHTML = '<h2 class="h2">Ученики потока</h2><input class="in" placeholder="Найти поток или тариф" data-pickq><div class="col xg0" data-picks>' + L('streams', 'Потоки', j.streams || [], A.streams || []) + '<b class="x14 x14t">Тарифы</b><span class="dim">Ни один не отмечен — все тарифы потока</span>' + L('tariffs', '', j.tariffs || [], A.tariffs || []).replace('<b class="x14"></b>', '') + '</div>' +
+          '<div class="row sp xdrwb"><button type="button" class="b3" data-a="winclose">Отмена</button><button type="button" class="b1" data-a="accok">Готово</button></div>'; typoDom(d) };
+      if (S.streams) fill(S.streams); else api(O, '/efir/host/streams').then(function (j) { S.streams = j && j.ok ? j : { streams: [], tariffs: [] }; fill(S.streams) }) }
+    function closeWin() { if (S.win) { S.win.remove(); S.win = null } }
+    /* шаг 8 — проверка и запуск (доски M8, M8b) */
+    function w8(E) { var e = E.ev, C = E.chk || { rows: [], must: [], may: [] }, src = (E.src && E.src.src) || [], site = 'https://t.me/oduvanov_school_bot?start=v' + e.id + '_site', main = e.bot;
+      var row = function (x) { var h = x.set ? '#host/set' : EH(x.step); return '<div class="sw"><span>' + (x.ok ? '<span class="ok">✓</span> ' : '<span class="warn">•</span> ') + esc(x.text) + '</span><a href="' + esc(hf(h)) + '" class="dim">' + (x.set ? 'настройки' : 'открыть') + '</a></div>' };
+      var may = C.may.length ? '<div class="c"><h2 class="h2">Можно пропустить</h2>' + C.may.map(function (x) { return '<div class="sw"><span><span class="warn">•</span> ' + esc(x.text) + '</span><a class="b3 sm" href="' + esc(hf(EH(x.step))) + '">' + esc(x.fix || 'Открыть') + '</a></div>' }).join('') + '</div>' : '';
+      if (C.must.length) { var n = C.must.length;
+        return '<div class="c xwc"><h2 class="h2">Запуску мешают ' + n + ' ' + plr(n, 'шаг', 'шага', 'шагов') + '</h2><div class="col xg0">' + C.must.map(function (x) { return '<div class="sw"><span><span class="bad">✕</span> ' + esc(x.text) + '</span><a class="b2 sm" href="' + esc(hf(x.set ? '#host/set' : EH(x.step))) + '">Исправить</a></div>' }).join('') + '</div></div>' + may +
+          '<div class="c"><div class="row"><button type="button" class="b1 xdis" disabled>Запустить регистрацию</button><span class="dim">станет активной, когда исправишь ' + n + ' ' + plr(n, 'пункт', 'пункта', 'пунктов') + ' выше</span></div></div>' + navRow([EH(7)], null) }
+      var launched = e.status === 'reg' || e.status === 'done';
+      return '<div class="c"><h2 class="h2">Проверка перед запуском</h2><div class="col xg0">' + C.rows.map(row).join('') + '</div></div>' + may +
+        (launched ? '<div class="c cv"><h2 class="h2">Регистрация идёт</h2><span class="mut">Бот записывает людей по ссылке. Эфир стартует, когда ты нажмёшь «Начать эфир» в пульте.</span><div class="row"><a class="b1" href="' + esc(hf(EH('info'))) + '">Обзор и участники</a></div></div>'
+          : '<div class="c cv"><h2 class="h2">Запустить регистрацию</h2><span class="mut">После запуска бот начнёт записывать людей по ссылке. Эфир стартует только когда ты нажмёшь «Начать эфир» в пульте — пока ты настраиваешь OBS, зрители видят заставку.</span>' +
+            '<div class="row"><button type="button" class="b1" data-a="launch" data-m="reg">Запустить регистрацию</button>' + (e.status === 'test' ? '<span class="dim">Сейчас тестовый прогон — видит только команда</span>' : '<button type="button" class="b3" data-a="launch" data-m="test">Тестовый прогон (видит только команда)</button>') + '</div></div>') +
+        '<div class="c"><h2 class="h2">Ссылки</h2><div class="g2"><div class="c0"><span class="dim">Для сайта (вставить в кнопки)</span><b>' + esc(short(site)) + '</b><button type="button" class="b2 sm xas" data-a="copy" data-u="' + esc(site) + '">Скопировать</button></div>' +
+          '<div class="c0"><span class="dim">Основная ссылка</span><b>' + esc(short(main)) + '</b><button type="button" class="b2 sm xas" data-a="copy" data-u="' + esc(main) + '">Скопировать</button></div></div>' +
+          '<div class="row xg6"><span class="dim">Все ссылки с метками — в шаге 3</span><a class="b3 sm" href="' + esc(hf(EH(3))) + '">Открыть ссылки</a></div></div>' + navRow([EH(7)], null) }
+
+    /* ---------- автосохранение (800 мс после ввода, по одному запросу; конфликт — «Изменено в другой вкладке — обнови») ---------- */
+    var PQ = null, PT = 0, DQ = 0;
+    function sv(patch, now0) { PQ = Object.assign(PQ || {}, patch); clearTimeout(PT); if (FXON) return; if (now0) flush(); else PT = setTimeout(flush, 800) }
+    function flush() { if (!PQ || S.sv) return; var p = PQ, E = S.E; PQ = null; S.sv = 1; label();
+      api(O, '/efir/host/event/save', Object.assign({ v: 2, id: E.id, upd: E.ev.upd }, p)).then(function (j) { S.sv = 0; if (S.E !== E) return;
+        if (j && j.ok) { S.svErr = ''; E.ev.upd = j.upd; E.ev.steps = j.steps; if (p.reg) E.ev.reg.saved = 1; if ('access' in p || 'rec' in p) E.ev.saved7 = 1; S.L = {} } else { S.svErr = (j && j.err) || 'Не сохранилось — проверь связь'; if (!j || !j.conflict) PQ = Object.assign(p, PQ || {}) }
+        label(); stepsUp(); if (PQ && !S.svErr) PT = setTimeout(flush, 800); else if (PQ && S.svErr && !(j && j.conflict)) PT = setTimeout(flush, 5000) }) }
+    function daysSv(now0) { clearTimeout(DQ); if (FXON) return; DQ = setTimeout(daysFlush, now0 ? 0 : 800) }
+    function daysFlush() { var E = S.E; DQ = 0; if (!E) return; if (S.sv) { DQ = setTimeout(daysFlush, 300); return } S.sv = 1; label();
+      var L = E.days.map(function (d) { return { id: d.id || undefined, title: d.title, short: d.short, start: d.start || null, hide: d.hide ? 1 : 0 } }).concat(E.gone || []);
+      api(O, '/efir/host/event/days', { ev: E.id, upd: E.ev.upd, days: L }).then(function (j) { S.sv = 0; if (S.E !== E) return;
+        if (j && j.ok) { S.svErr = ''; E.gone = []; E.ev.upd = j.upd; E.ev.steps = j.steps; var nw = j.days || [], grew = E.days.some(function (d) { return !d.id });
+          E.days.forEach(function (d, i) { if (nw[i]) { d.id = nw[i].id; d.status = nw[i].status; d.past = nw[i].past } }); S.moved = j.moved || []; S.L = {}; if (grew || (S.moved.length && S.step === '2')) X.redraw() }
+        else S.svErr = (j && j.err) || 'Не сохранилось — проверь связь';
+        label(); stepsUp() }) }
+    function label() { var s = el.querySelector('[data-saved]'); if (s && S.E) { s.innerHTML = savedTxt(S.E); typoDom(s) } }
+    function stepsUp() { var b = el.querySelector('[data-steps]'), E = S.E; if (!b || !E) return; var e = E.ev; b.innerHTML = steps2(O, { id: e.id, cur: S.step, steps: e.steps, type: e.type, days: E.days.filter(function (d) { return !d.hide }).length, status: e.status, regs: e.regs }); typoDom(b) }
+    /* время и дата дня */
+    function setTime(i, v) { var d = S.E.days[i], m = String(v || '').match(/^(\d{1,2}):?(\d{2})$/); if (!m || +m[1] > 23 || +m[2] > 59) return false;
+      if (!d.start) { d.tm = p2(+m[1]) + ':' + m[2]; return 'wait' } var a = mp(d.start); d.start = mskAt(a.y, a.mo, a.d, +m[1], +m[2]); return true }
+    function calOpen(inp) { closePop(); var i = +inp.getAttribute('data-i'), d = S.E.days[i], base = d.start || (S.E.days[i - 1] && S.E.days[i - 1].start ? S.E.days[i - 1].start + 864e5 : now() + 864e5), a = mp(base);
+      S.calM = { y: a.y, mo: a.mo, i: i, sel: d.start ? mp(d.start) : null }; var pg = el.querySelector('.pg'), r = inp.getBoundingClientRect(), pr = pg.getBoundingClientRect(), c = document.createElement('div');
+      c.className = 'c0 xpop xcal'; c.setAttribute('role', 'dialog'); c.setAttribute('aria-label', 'Выбор даты'); c.style.left = (r.left - pr.left) + 'px'; c.style.top = (r.bottom - pr.top + 6) + 'px'; pg.appendChild(c); S.cal = c; calDraw() }
+    function calDraw() { var M = S.calM, c = S.cal; if (!c) return; var f = new Date(Date.UTC(M.y, M.mo, 1)), off = (f.getUTCDay() + 6) % 7, dn = new Date(Date.UTC(M.y, M.mo + 1, 0)).getUTCDate(), td = mp(now()), h = '';
+      for (var k = 0; k < 42; k++) { var dd = k - off + 1; if (dd < 1 || dd > dn) { h += '<span></span>'; continue } var on = M.sel && M.sel.y === M.y && M.sel.mo === M.mo && M.sel.d === dd, past = Date.UTC(M.y, M.mo, dd) < Date.UTC(td.y, td.mo, td.d);
+        h += '<button type="button" class="' + (on ? 'b1' : 'b2') + ' sm" data-a="calpick" data-d="' + dd + '"' + (past ? ' disabled' : '') + '>' + dd + '</button>' }
+      c.innerHTML = '<div class="row sp"><button type="button" class="b3 sm" data-a="calm" data-s="-1" aria-label="Предыдущий месяц">←</button><b class="x14">' + MON[M.mo] + ' ' + M.y + '</b><button type="button" class="b3 sm" data-a="calm" data-s="1" aria-label="Следующий месяц">→</button></div><div class="xcalg">' + ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(function (w) { return '<i>' + w + '</i>' }).join('') + h + '</div>' }
+    function calPick(dd) { var M = S.calM, d = S.E.days[M.i], tm = d.start ? hm2(d.start) : (d.tm || (S.E.days[M.i - 1] && S.E.days[M.i - 1].start ? hm2(S.E.days[M.i - 1].start) : '19:00')), t = tm.split(':');
+      d.start = mskAt(M.y, M.mo, dd, +t[0], +t[1]); delete d.tm; closePop(); var inp = el.querySelector('[data-d="date"][data-i="' + M.i + '"]'), ti = el.querySelector('[data-d="time"][data-i="' + M.i + '"]'); if (inp) inp.value = dL(d.start); if (ti) ti.value = hm2(d.start); daysSv() }
+    /* окно-заглушка экрана следующего этапа (§6.3 В3): «Как увидит зритель» (комната — Э5), «Эфир для учеников» (форма 5.3 — Э7) */
+    function stubWin(t, st, txt) { var pg = el.querySelector('.pg'); closeWin(); var d = document.createElement('div'); d.className = 'ov xovc'; d.setAttribute('data-a', 'winclose');
+      d.innerHTML = '<div class="col xwin" role="dialog" aria-modal="true" aria-label="' + esc(t) + '"><div class="row sp"><h2 class="h2">' + esc(t) + '</h2><button type="button" class="b3 sm" data-a="winclose" aria-label="Закрыть">✕</button></div><div class="c estub"><b class="h2">Экран появится в этапе ' + st + '</b><span class="mut">' + esc(txt) + '</span></div></div>';
+      typoDom(d); pg.appendChild(d); S.win = d }
+    function viewerWin() { stubWin('Как увидит зритель', 5, 'Комната зрителя переделывается по новому макету вместе с пультом.') }
+    function coverUp(fi) { var file = fi.files && fi.files[0]; fi.value = ''; if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) { toast('Нужна картинка JPG, PNG или WebP'); return } var im = new Image(), url = URL.createObjectURL(file); toast('Загружаю обложку…');
+      im.onload = function () { URL.revokeObjectURL(url); var W = 1280, H = 720, c = document.createElement('canvas'); c.width = W; c.height = H; var k = Math.max(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k;
+        c.getContext('2d').drawImage(im, (W - w) / 2, (H - h) / 2, w, h); var q = .86, dt = c.toDataURL('image/jpeg', q); while (dt.length > 1300000 && q > .5) { q -= .1; dt = c.toDataURL('image/jpeg', q) }
+        api(O, '/efir/host/img', { data: dt }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Обложка не загрузилась'); return } S.E.ev.cover = j.url; sv({ cover: j.url }, 1); if (S.step === '1') X.redraw() }) };
+      im.onerror = function () { toast('Не открылась картинка') }; im.src = url }
+
+    /* ---------- события ---------- */
+    function click(e) { var a = e.target.closest('[data-a],[data-tab],[data-fmt],[data-tgl]'); if (S.menu && !(a && S.menu.contains(a)) && !e.target.closest('.xmenu')) { if (!a || a.getAttribute('data-a') !== 'menu') closePop() }
+      if (S.cal && !e.target.closest('.xcal') && !(a && a.getAttribute('data-d') === 'date')) closePop();
+      /* «Ученики потока» — окно выбора и при повторном нажатии (клик по подписи доходит до радиокнопки) */
+      if (e.target.matches && e.target.matches('input[data-acc][value=stream]')) { accWin(); [].forEach.call(el.querySelectorAll('.xrad'), function (l) { l.classList.toggle('on', l.contains(e.target)) }); return true }
+      if (!a) { var di = e.target.closest('[data-d="date"]'); if (di && !di.disabled) calOpen(di); return false }
+      if (a.hasAttribute('data-tab')) { e.preventDefault(); var L = S.list; if (L) go('#host/' + L.type + (a.getAttribute('data-tab') === 'up' ? '' : '/' + a.getAttribute('data-tab'))); return true }
+      if (a.hasAttribute('data-fmt')) { e.preventDefault(); var f = a.getAttribute('data-fmt'); S.E.ev.fmt = f; [].forEach.call(a.parentNode.children, function (b) { var on = b === a; b.classList.toggle('on', on); b.setAttribute('aria-checked', on) }); sv({ fmt: f }); return true }
+      if (a.hasAttribute('data-tgl')) { e.preventDefault(); var k = a.getAttribute('data-tgl'), on = !a.classList.contains('on'); a.classList.toggle('on', on); a.setAttribute('aria-pressed', on); a.setAttribute('aria-label', a.getAttribute('aria-label').replace(/: (да|нет)$/, ': ' + (on ? 'да' : 'нет')));
+        if (S.step === '3') { S.E.ev.reg[k] = on ? 1 : 0; pvUp(); if (k === 'email') X.redraw(); sv({ reg: regOf(S.E) }) } else { S.E.ev.rec[k] = on ? 1 : 0; sv({ rec: S.E.ev.rec }) } return true }
+      var k2 = a.getAttribute('data-a'), E = S.E;
+      if (k2 === 'old') return false;
+      if (k2 === 'reload') { e.preventDefault(); S.L = {}; S.E = null; X.redraw(); return true }
+      if (k2 === 'newmar') { e.preventDefault(); newEv('mar', a); return true }
+      if (k2 === 'new') { e.preventDefault(); newEv(a.getAttribute('data-t'), a); return true }
+      if (k2 === 'ovclose') { if (e.target !== a && !e.target.closest('button[data-a="ovclose"]')) return false; e.preventDefault(); go('#host/web'); return true }
+      if (k2 === 'winclose') { if (e.target !== a && !e.target.closest('button[data-a="winclose"]')) return false; e.preventDefault(); closeWin(); if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); else if (S.step === '7' && X.cur() === 'ev') X.redraw(); return true }
+      if (k2 === 'menu') { e.preventDefault(); if (S.menu) { closePop(); return true } menu(a); return true }
+      if (k2 === 'copy') { e.preventDefault(); closePop(); copy2(a.getAttribute('data-u'), function () { toast('Скопировано') }); return true }
+      if (k2 === 'delask') { e.preventDefault(); delAsk(a); return true }
+      if (/^(dup|todraft|del|delno)$/.test(k2)) { e.preventDefault(); listAct(k2, a); return true }
+      if (k2 === 'fwd') { if (S.step === '1' && E && E.ev.title && !E.ev.named) { E.ev.named = 1; sv({ named: 1 }, 1) } return false }
+      if (k2 === 'viewer') { e.preventDefault(); viewerWin(); return true }
+      if (k2 === 'selftest') { e.preventDefault(); open2(E.ev.bot + '_test'); return true }
+      if (k2 === 'cover') { e.preventDefault(); var fi = el.querySelector('[data-cover]'); if (fi) fi.click(); return true }
+      if (k2 === 'calm') { e.preventDefault(); var M = S.calM, s = +a.getAttribute('data-s'); M.mo += s; if (M.mo < 0) { M.mo = 11; M.y-- } if (M.mo > 11) { M.mo = 0; M.y++ } calDraw(); return true }
+      if (k2 === 'calpick') { e.preventDefault(); calPick(+a.getAttribute('data-d')); return true }
+      if (/^(dup2|ddown)$/.test(k2)) { e.preventDefault(); var i = +a.getAttribute('data-i'), j2 = k2 === 'dup2' ? i - 1 : i + 1, A2 = E.days[i], B2 = E.days[j2]; if (!B2) return true;
+        var t = [A2.title, A2.short]; A2.title = B2.title; A2.short = B2.short; B2.title = t[0]; B2.short = t[1]; X.redraw(); daysSv(1); return true }
+      if (k2 === 'ddel') { e.preventDefault(); var di2 = +a.getAttribute('data-i'), dd = E.days[di2]; if (E.days.length <= 2) return true; E.days.splice(di2, 1); if (dd.id) (E.gone = E.gone || []).push({ id: dd.id, del: 1 }); X.redraw(); daysSv(1); return true }
+      if (k2 === 'dhide') { e.preventDefault(); var dh = E.days[+a.getAttribute('data-i')]; dh.hide = dh.hide ? 0 : 1; X.redraw(); daysSv(1); return true }
+      if (k2 === 'dadd') { e.preventDefault(); if (E.days.length >= 7) return true; var last = E.days[E.days.length - 1], ns = last && last.start ? last.start + 864e5 : null; E.days.push({ title: '', short: '', start: ns, status: E.ev.status === 'draft' ? 'draft' : 'plan' }); X.redraw(); daysSv(1); return true }
+      if (k2 === 'tomar') { e.preventDefault(); var d0 = E.days[0] || {}; api(O, '/efir/host/event/save', { v: 2, id: E.id, upd: E.ev.upd, type: 'mar' }).then(function (j) { if (!j || !j.ok) { toast((j && j.err) || 'Не получилось'); return } E.ev.upd = j.upd; E.ev.type = 'mar';
+        E.days = [Object.assign({}, d0, { title: E.ev.title, short: E.ev.short }), { title: '', short: '', start: d0.start ? d0.start + 864e5 : null, status: d0.status || 'draft' }]; S.sv = 0; daysFlush(); S.L = {}; go(EH(2)) }); return true }
+      if (k2 === 'srcadd') { e.preventDefault(); srcAdd(a); return true }
+      if (k2 === 'launch') { e.preventDefault(); a.disabled = true; api(O, '/efir/host/event/launch', { ev: E.id, mode: a.getAttribute('data-m') }).then(function (j) { a.disabled = false; if (!j || !j.ok) { toast((j && j.err) || 'Не запустилось'); if (j && j.must) { E.chk = null; X.redraw() } return }
+        E.ev.status = j.status; E.ev.steps = j.steps; S.L = {}; toast(j.status === 'test' ? 'Тестовый прогон: видит только команда' : 'Регистрация запущена'); go(EH('info')) }); return true }
+      if (k2 === 'accok') { e.preventDefault(); var pk = function (k) { return [].filter.call(el.querySelectorAll('[data-pick="' + k + '"]'), function (c) { return c.checked }).map(function (c) { return c.value }) };
+        E.ev.access = { who: 'stream', streams: pk('streams'), tariffs: pk('tariffs') }; closeWin(); sv({ access: E.ev.access }); X.redraw(); return true }
+      return false }
+    function srcAdd(b) { var E = S.E, t = (el.querySelector('[data-src-t]') || {}).value || '', c = ((el.querySelector('[data-src-c]') || {}).value || '').trim().toLowerCase(), h = el.querySelector('[data-src-h]');
+      if (!t.trim()) { h.className = 'bad'; h.textContent = 'Напиши название метки'; return } if (!/^[a-z0-9]{1,24}$/.test(c)) { h.className = 'bad'; h.textContent = 'Придумай код латиницей'; return }
+      b.disabled = true; api(O, '/efir/host/event/src', { ev: E.id, title: t.trim(), code: c }).then(function (j) { b.disabled = false; if (!j || !j.ok) { h.className = 'bad'; h.textContent = (j && j.err) || 'Не создалось'; return }
+        S.srcT = ''; S.srcC = ''; S.srcOwn = 0; copy2(j.link, function () { toast('Ссылка создана и скопирована') }); api(O, '/efir/host/event/src?ev=' + E.id).then(function (r) { if (r && r.ok) E.src = r; X.redraw() }) }) }
+    function pvUp() { var a = el.querySelector('[data-pv1]'), b = el.querySelector('[data-pv2]'); if (a) { a.innerHTML = pv1(S.E); typoDom(a) } if (b) { b.innerHTML = pv2(S.E); typoDom(b) } }
+    function input(e) { var t = e.target, E = S.E;
+      if (t.hasAttribute('data-srch')) { S.q = t.value; var L = S.list, box = el.querySelector('[data-rows]'); if (L && box) { var n = L.j.now || now(), T = (L.j.items || []).filter(function (x) { return tabOf(x, n) === L.tab }); box.innerHTML = webRows(T, n, L.tab); typoDom(box) } return }
+      if (t.hasAttribute('data-src-t')) { S.srcT = t.value; if (!S.srcOwn) { var busy = ((E && E.src && E.src.src) || []).map(function (s) { return s.code }), ci = el.querySelector('[data-src-c]'); S.srcC = srcCode(t.value, busy); if (ci) ci.value = S.srcC } return }
+      if (t.hasAttribute('data-src-c')) { S.srcOwn = 1; S.srcC = t.value; return }
+      if (t.hasAttribute('data-pickq')) { var q = lc(t.value); [].forEach.call(el.querySelectorAll('[data-picks] label'), function (l) { l.style.display = q && lc(l.textContent).indexOf(q) < 0 ? 'none' : '' }); return }
+      if (!E) return; var f = t.getAttribute('data-f'), r = t.getAttribute('data-r'), d = t.getAttribute('data-d');
+      if (f) { var v = t.value; if (f === 'dur') { if (!(+v >= 10 && +v <= 600)) return; v = +v } E.ev[f] = v; var p = {}; p[f] = v; sv(p);
+        if (f === 'title' && E.ev.named) { var h1 = el.querySelector('[data-h1]'); if (h1) h1.textContent = typo(v || (E.ev.type === 'web' ? 'Новый вебинар' : 'Новый марафон')) } return }
+      if (r) { var pp = r.split('.'); E.ev.reg[pp[0]][pp[1]] = t.value; pvUp(); sv({ reg: regOf(E) }); return }
+      if (d) { var i = +t.getAttribute('data-i'), dd = E.days[i]; if (!dd) return;
+        if (d === 'time') { var raw = t.value.replace(/[^\d]/g, '').slice(0, 4), nv = raw.length > 2 ? raw.slice(0, 2) + ':' + raw.slice(2) : raw; if (nv !== t.value) t.value = nv; if (nv.length === 5) { var ok = setTime(i, nv); t.classList.toggle('xbad', !ok); if (ok === true) daysSv() } return }
+        if (d === 'title' || d === 'short') { dd[d] = t.value; daysSv() } } }
+    function change(e) { var t = e.target, E = S.E; if (t.hasAttribute('data-cover')) { coverUp(t); return } if (!E) return;
+      if (t.getAttribute('data-f') === 'host') { E.ev.host = t.value; sv({ host: t.value }); return }
+      if (t.getAttribute('data-f') === 'dur' && t.tagName === 'SELECT') { E.ev.dur = +t.value; sv({ dur: +t.value }); return }
+      if (t.hasAttribute('data-acc')) { if (t.value === 'stream') return; E.ev.access = Object.assign({}, E.ev.access, { who: 'open' }); sv({ access: E.ev.access }); [].forEach.call(el.querySelectorAll('.xrad'), function (l) { l.classList.toggle('on', l.contains(t)) }); return }
+      var rk = t.getAttribute('data-rec'); if (rk) { E.ev.rec[rk] = rk === 'days' ? +t.value : t.value; sv({ rec: E.ev.rec }); return }
+      if (t.getAttribute('data-d') === 'time' && t.value && t.value.length !== 5) toast('Время в формате 19:00') }
+    function key(e) { if (e.key !== 'Escape') return; if (S.menu || S.cal) { closePop(); return } if (S.win) { closeWin(); if (X.cur() === 'web' && X.P()[1] === 'edit') go('#host/web'); return } if (S.conf) { S.conf.remove(); S.conf = null; return } if (X.cur() === 'new') go('#host/web') }
+    /* уход с экрана: несохранённое — сразу; ушли с шага 1 с названием — заголовок мастера становится названием (§6.4 2.1) */
+    function leave() { var E = S.E; if (E && S.step === '1' && X.cur() === 'ev' && E.ev.title && !E.ev.named) { E.ev.named = 1; PQ = Object.assign(PQ || {}, { named: 1 }) } if (PQ) { clearTimeout(PT); flush() } if (DQ) { clearTimeout(DQ); DQ = 0; daysFlush() } closePop(); closeWin() }
+    return { list: list, wiz: wiz, click: click, input: input, change: change, key: key, leave: leave, S: S, stepsHtml: function (o) { return steps2(O, o) } } }
+
   R.host2 = function (el, O) { css2(); var S = { h: '', P: [], n: null, tm: 0, cntAt: 0, dead: 0 }, FXON = R.fx && R.fx.on();
     var role = O.role || 'admin', ttl = function (t) { try { document.title = t + ' · Эфиры · OduvanovSchool' } catch (e) {} };
     function cnt(force) { if (role !== 'admin') return; if (!force && Date.now() - S.cntAt < 55e3) return; S.cntAt = Date.now();
@@ -487,8 +902,14 @@
     function frame(nv, inner, scr) { return '<div class="efn pg" data-fx-screen="' + esc(scr) + '">' + (nv ? nav2(O, nv, S.n) : '') + '<main class="mn">' + inner + '</main></div>' }
     function stub(s, st) { return '<div class="col ehd"><h1 class="h1">' + ty(s.t) + '</h1></div><div class="c estub"><b class="h2">' + ty('Экран появится в этапе ' + st) + '</b><span class="mut">' + ty('Раздел «Эфиры» переделывается по новому макету. Пока этим экраном можно пользоваться в старом пульте.') + '</span>' +
       '<a class="b2" href="' + esc((O.href || function (h) { return h })('#host/old')) + '" data-a="old">Открыть старый пульт</a></div>' }
+    /* 07.11 Э2: списки, «Создать», мастер — E2 (экраны выше); остальные разделы — заглушки своих этапов */
+    var X2 = E2(O, { el: el, fx: FXON, nav: function (a) { return nav2(O, a, S.n) }, done: function () { if (FXON) R.fx.done(el.querySelector('[data-fx-screen]')) }, toast: function (t) { toast2(t) },
+      go: function (h) { O.go(h) }, dead: function () { return S.dead }, cur: function () { return S.P[0] }, P: function () { return S.P }, redraw: function () { draw() } });
     function draw() { var P = S.P, k = P[0], s = SCR2[k], fx = FXON ? R.fx.data() : null;
+      if (k === 'web' || k === 'mar' || k === 'new') { ttl(k === 'mar' ? 'Марафоны' : 'Вебинары'); X2.list(k === 'new' ? 'web' : k, P, S.q, k === 'new'); return }
+      if (k === 'ev' && P[1] !== 'new') { ttl('Мероприятие'); X2.wiz(+P[1] || 0, P[2] || '1', P.slice(3)); return }
       if (k === '_tokens') { ttl('Токены'); var sub = P[1] || '';
+        if (sub === 'Steps') { el.innerHTML = '<div class="efn" data-fx-screen="Steps">' + X2.stepsHtml({ id: 12, cur: 1, steps: {}, type: 'mar', days: 3, status: 'draft' }) + '</div>'; if (fx) R.fx.done(el.querySelector('[data-fx-screen]')); return }
         if (sub === 'Nav') el.innerHTML = '<div class="efn" data-fx-screen="Nav">' + nav2(O, 'web', S.n == null ? 48 : S.n) + '</div>';
         else if (sub === 'Empty') el.innerHTML = '<div class="efn pg epgc" data-fx-screen="Empty">' + TOK2_EMPTY(O) + '</div>';
         else if (sub === 'bg') el.innerHTML = '<div class="efn pg" data-fx-screen="bg"></div>';
@@ -498,14 +919,17 @@
     function route(h) { if (S.dead) return; var X = hParse(h), P = X.p, s = SCR2[P[0]];
       /* неизвестный адрес или чужой раздел — экран по роли (§1); служебная страница — только в режиме сверки или админу */
       if (!s || !hCan(s, role) || (P[0] === '_tokens' && !FXON && role !== 'admin')) { var d = hDef(role); if (('#host/' + P.join('/')) !== d) { O.go(d, true); return } }
-      S.h = h; S.P = P; S.q = X.q; if (FXON && R.fx.data().api && R.fx.data().api['GET /efir/leads/count']) S.n = +R.fx.data().api['GET /efir/leads/count'].n || 0;
+      if (P[0] === 'ev' && P[1] === 'new') { O.go('#host/new', true); return }
+      X2.leave(); S.h = h; S.P = P; S.q = X.q; if (FXON && R.fx.data().api && R.fx.data().api['GET /efir/leads/count']) S.n = +R.fx.data().api['GET /efir/leads/count'].n || 0;
       draw(); if (!FXON) cnt(true) }
-    el.onclick = function (e) { var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (k === 'old') return; e.preventDefault(); toast2('Появится в своём этапе') };
+    el.onclick = function (e) { if (X2.click(e)) return; var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (/^(old|fwd|ovclose|winclose)$/.test(k)) return; e.preventDefault(); toast2('Появится в своём этапе') };
+    el.oninput = function (e) { X2.input(e) }; el.onchange = function (e) { X2.change(e) };
+    var kd = function (e) { if (!S.dead && el.isConnected) X2.key(e) }; document.addEventListener('keydown', kd);
     /* тост (§7.6): .pill .pgr снизу по центру, 2 с */
     function toast2(t) { if (O.toast) return O.toast(t); var d = document.querySelector('.efn-toast'); if (d) d.remove(); d = document.createElement('div'); d.className = 'efn efn-toast'; d.innerHTML = '<span class="pill pgr">' + ty(t) + '</span>'; document.body.appendChild(d); setTimeout(function () { d.remove() }, 2000) }
     /* счётчик новых заявок — при каждом переходе и раз в 60 с при видимой вкладке (§6.4 Nav) */
     if (!FXON) S.tm = setInterval(function () { if (!el.isConnected) { stop(); return } if (document.visibilityState === 'visible') cnt(true) }, 60e3);
-    function stop() { S.dead = 1; clearInterval(S.tm); S.tm = 0 }
+    function stop() { S.dead = 1; clearInterval(S.tm); S.tm = 0; try { X2.leave() } catch (e) {} document.removeEventListener('keydown', kd) }
     return { route: route, stop: stop } };
   R.h2 = { parse: hParse, def: hDef, stage: hStage, nav: nav2, emp: emp2, none: none2, err: err2, skel: skel2 };
 })();
