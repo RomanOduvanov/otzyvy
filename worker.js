@@ -2236,7 +2236,7 @@ async function srchCorpus(env) { const D = await loadData(env), X = (await kvGet
   for (const m of D.modules || []) for (const p of m.parts || []) for (const l of p.lessons || []) { const x = X[l.id] || {}, k = 'L' + l.id;
     ref[k] = { kind: 'lesson', id: l.id, module: m.name, part: p.name, title: l.t, tc: x.tc || [] };
     L.push(k + ' | ' + m.name + ' / ' + p.name + ' | ' + l.t + (x.a && x.a.length ? ' | о чём: ' + x.a.join('; ') : '') + (x.tc && x.tc.length ? ' | тайм-коды: ' + x.tc.map(t => hms0(t[0]) + ' ' + t[1]).join('; ') : '') + (x.m && x.m.length ? ' | материалы: ' + x.m.join(', ') : '')) }
-  try { const E = await qAll(env.DB.prepare("SELECT id, title, about, chapters, start FROM efir WHERE del=0 AND status IN ('done','rec') AND kind!='auto' ORDER BY start DESC LIMIT 40"));
+  try { const E = await qAll(env.DB.prepare("SELECT id, title, about, chapters, start FROM efir WHERE del=0 AND status IN ('done','rec') AND kind NOT IN ('auto','open') ORDER BY start DESC LIMIT 40"));
     for (const e of E) { const ch = efJ(e.chapters, []), k = 'E' + e.id; ref[k] = { kind: 'efir', id: e.id, module: 'Эфир · ' + dayStr(new Date(e.start || Date.now())), title: e.title, tc: ch.map(c => [c.t | 0, c.title]) };
       L.push(k + ' | Эфир | ' + e.title + (e.about ? ' | ' + String(e.about).slice(0, 200) : '') + (ch.length ? ' | главы: ' + ch.map(c => hms0(c.t) + ' ' + c.title).join('; ') : '')) } } catch (x) {}
   return { text: L.join('\n'), ref } }
@@ -3436,7 +3436,7 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
       env.DB.prepare('SELECT efir_id, sess FROM efir_reg WHERE k=?').bind(W.k), env.DB.prepare('SELECT efir_id, MAX(rec_pos) pos, MAX(rec_max) mx, MAX(rec_done) done FROM efir_seen WHERE k=? GROUP BY efir_id').bind(W.k)]);
     const R = {}, P = {}; for (const x of rr.results || []) R[x.efir_id] = x; for (const x of sr.results || []) P[x.efir_id] = x;
     const live = [], soon = [], rec = [];
-    for (const e of er.results || []) { if (!(await efCan(env, e, W))) { if (W.me === 'student' && e.tariff === 'amz') { const p = efPub(e, now); if (p.state === 'soon') soon.push(Object.assign(p, { locked: 1 })) } continue }
+    for (const e of er.results || []) { if ((e.tariff === 'open' || e.kind === 'open') && !W.staff && !R[e.id]) continue; /* 06.11 (Роман): открытый эфир — только по ссылке: в списке ученика его нет, пока он сам не записался */ if (!(await efCan(env, e, W))) { if (W.me === 'student' && e.tariff === 'amz') { const p = efPub(e, now); if (p.state === 'soon') soon.push(Object.assign(p, { locked: 1 })) } continue }
       const p = efPub(e, now, { reg: R[e.id] }); p.reg = R[e.id] ? 1 : 0; if (R[e.id] && R[e.id].sess) p.my_sess = R[e.id].sess;
       if (p.state === 'live') live.push(p); else if (p.state === 'soon') soon.push(p);
       /* 04.11: эфир прошёл, запись Kinescope ещё обрабатывается — карточка в «Записях» с «Запись скоро появится» (неделю) */ if (e.kind !== 'auto' && p.state === 'done' && !p.rec && (p.kin || p.room) && !p.rec_lost && (e.at_end || e.start || 0) > now - 7 * 864e5) p.rec_wait = 1;
