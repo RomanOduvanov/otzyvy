@@ -22,7 +22,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
 <div id="ef"></div>
 </div>
-<script defer src="efir.js?v=29"></script>
+<script defer src="efir.js?v=30"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -31,7 +31,9 @@ var EMB=/[?&]embed=1/.test(location.search);if(EMB)document.documentElement.clas
 var API='https://oduvanov-api.romanoduvanov52.workers.dev',TK=null,ROLE='';try{TK=localStorage.getItem('efTok');ROLE=localStorage.getItem('efRole')||''}catch(e){}
 function $(i){return document.getElementById(i)}
 function qs(k){var m=location.search.match(new RegExp('[?&]'+k+'=([^&#]+)'));return m?decodeURIComponent(m[1]):''}
-var GID=+qs('id')||0,GR=qs('r');if(!/^g-?\d{3,20}\.[0-9a-f]{20}$/.test(GR))GR='';
+var GID=+qs('id')||0,GR=qs('r');if(!/^(g-?\d{3,20}|w[0-9a-f]{16})\.[0-9a-f]{20}$/.test(GR))GR='';
+/* 06.11: гость из браузера (по имени) — метка запоминается на устройстве, прямая ссылка ?id= открывает комнату сразу */
+if(!GR&&GID&&!EMB){try{var gw=localStorage.getItem('efW');if(gw&&/^w[0-9a-f]{16}\.[0-9a-f]{20}$/.test(gw))GR=gw}catch(e){}}
 /* 31.10 QA Н6: 5–8 с чёрного экрана — efir.js (134 КБ) и шрифт грузились до первой отрисовки, потом ещё ждали вход от кабинета (до 5 с) и /login/fs по очереди.
    Теперь: шапка и скелет рисуются этим скриптом сразу (efir.js — defer, шрифт не блокирует), запрос входа к кабинету уходит сразу, параллельно с загрузкой efir.js;
    если на устройстве уже есть сессия того же пользователя — список открывается с ней, не дожидаясь кабинета. */
@@ -43,7 +45,7 @@ if(EMB&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage
 function apiF(p,o){o=o||{};var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
-var O={api:apiF,open:open,role:GR?'guest':'',fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
+var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r){try{localStorage.setItem('efW',r)}catch(e){}location.replace(location.pathname+'?id='+GID+'&r='+encodeURIComponent(r)+'#e'+GID)},fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
   top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4}};
 function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
