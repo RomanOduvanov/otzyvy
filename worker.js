@@ -3338,12 +3338,15 @@ async function efirWho(env, req, u, o) { const t = (req.headers.get('Authorizati
   else if (/^[0-9a-f]{32}$/.test(t)) { const s = await kvGet(env, 'sess:' + t); if (s && s.exp > msNow()) { if (s.role === 'student' && s.uid) return stu(+s.uid);
       if (s.role === 'admin' || s.role === 'curator') { const uid = s.role === 'admin' ? efAdminUid(env) : ((CURATORS.find(c => c.id === s.cid) || {}).uid || 0); return { me: s.role, s, cid: s.cid || null, adm: s.role === 'admin', uid, k: 'u' + uid, staff: true } } } }
   const m = String(r).match(/^g(-?\d{3,20})\.([0-9a-f]{20})$/); if (m && same(m[2], (await hmacHex(env, 'efr|' + m[1])).slice(0, 20))) return { me: 'guest', chat: m[1], k: 't' + m[1], uid: 0 };
+  /* 06.11 (Роман): гость открытого эфира из браузера — без бота, по имени (метка w<16hex>.<подпись>, выдаёт /efir/open/join) */
+  const mw = String(r).match(/^w([0-9a-f]{16})\.([0-9a-f]{20})$/); if (mw && same(mw[2], (await hmacHex(env, 'efw|' + mw[1])).slice(0, 20))) return { me: 'guest', web: 1, k: 'w' + mw[1], uid: 0 };
   return null }
 const EFN = new Map(); /* имена зрителей (кеш изолята) */
 async function efName(env, W) { if (W.nm) return W.nm; if (W.me === 'admin') return (W.nm = 'Роман'); if (W.me === 'curator') return (W.nm = ((CURATORS.find(c => c.id === W.cid) || {}).name || 'Куратор'));
   if (EFN.has(W.k)) return (W.nm = EFN.get(W.k)); let n = '';
   if (W.uid) { const c = CURATORS.find(x => x.uid === W.uid); n = c ? c.name : W.uid === efAdminUid(env) ? 'Роман' : efShort(await stuName(env, W.uid)) }
   else if (W.chat) { const g = await env.DB.prepare('SELECT name, username FROM tg_user WHERE chat=?').bind(W.chat).first().catch(() => null); n = efShort((g && (g.name || g.username)) || 'Гость') }
+  else if (W.web) { const g = await env.DB.prepare('SELECT name FROM efir_reg WHERE k=? ORDER BY at DESC LIMIT 1').bind(W.k).first().catch(() => null); n = efShort((g && g.name) || 'Гость') }
   EFN.set(W.k, n); return (W.nm = n) }
 /* может ли смотреть: команда — всё; ученик — по доступу эфира; гость — только открытые */
 async function efCan(env, e, W) { if (!e || e.del) return false; if (W.staff) return true; const acc = e.tariff || 'all'; if (acc === 'open') return true; if (W.me === 'guest') return false;
@@ -3408,6 +3411,12 @@ async function efirApi(env, req, path) { const u = new URL(req.url); await efirE
   if (path === '/efir/open') { const e = await efGet(env, u.searchParams.get('id')); if (!e || e.tariff !== 'open' || e.status === 'draft') return json(req, { ok: false, err: 'Эфир не найден' }, 404);
     const n = await env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(e.id).first(), p = efPub(e, now); delete p.chapters;
     return json(req, { ok: true, efir: p, regs: n ? n.n : 0, bot: 'https://t.me/' + BOT(env) + '?start=e' + e.id }) }
+  /* 06.11 (Роман): прямая ссылка на открытый эфир — смотреть в браузере без Telegram, только имя. Запись в efir_reg (src web), напоминаний нет (нет чата) */
+  if (path === '/efir/open/join' && req.method === 'POST') { const e = await efGet(env, o.id); if (!e || e.tariff !== 'open' || e.status === 'draft' || e.status === 'cancel') return json(req, { ok: false, err: 'Эфир не найден' }, 404);
+    const name = bStr(String(o.name || '').replace(/\s+/g, ' ').trim(), 40); if (name.length < 2) return json(req, { ok: false, err: 'Напиши имя' }, 400);
+    const gid = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join(''), r = 'w' + gid + '.' + (await hmacHex(env, 'efw|' + gid)).slice(0, 20);
+    await env.DB.prepare("INSERT INTO efir_reg (efir_id, k, uid, chat, name, sess, src, at, rem) VALUES (?,?,NULL,NULL,?,0,'web',?,'') ON CONFLICT(efir_id, k) DO NOTHING").bind(e.id, 'w' + gid, name, now).run();
+    await logIt(env, 'efir-web', 0, e.id + ' ' + name); return json(req, { ok: true, r }) }
   /* 31.10: обложки эфиров, загруженные в пульте (JPEG 1280×720) — открыто, как картинки на сайте */
   if (path === '/efir/cover') { const r = await env.DB.prepare('SELECT mime, data FROM efir_cover WHERE id=?').bind(+u.searchParams.get('id') || 0).first().catch(() => null); if (!r) return new Response('not found', { status: 404 });
     const bin = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)); return new Response(bin, { headers: { 'Content-Type': r.mime || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } }) }
@@ -3593,7 +3602,7 @@ const kinIsMine = (K, e) => { const v = efVideo(efJ(e.video, null) || e.video), 
 let KIN_LIVE = {};
 async function kinLiveNow(env, K) { if (!K || !K.id) return null; const c = KIN_LIVE[K.id]; if (c && msNow() - c.t < 2e4) return c.v; const z = KIN_LIVE[K.id] = { t: msNow(), v: null };
   const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id); if (!r.ok) return null;
-  const d = r.data || {}, st = String((d.stream && d.stream.status) || d.status || '').toLowerCase(); return (z.v = /^(live|active|online|streaming|started|running|on_air)$/.test(st) ? true : st ? false : null) }
+  const d = r.data || {}, st = String((d.stream && d.stream.status) || d.status || '').toLowerCase(); return (z.v = /^(live|active|online|streaming|started|running|on_air|on-air)$/.test(st) ? true : st ? false : null) }
 /* поток ведущего пошёл — его запланированный эфир с этим плеером (поток за 30 мин до начала … час после) сам становится «в эфире». Ведущие не мешают друг другу */
 async function kinAutoLive(env, now) { const L = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind!='auto' AND status='plan' AND start BETWEEN ? AND ? ORDER BY start").bind(now - 36e5, now + 18e5)); if (!L.length) return 0;
   let n = 0; const done = {}; for (const e of L) { const h = kinHost(e.host_cid); if (done[h]) continue; const K = await kinGet(env, h); if (!K || !K.id || !kinIsMine(K, e)) continue;
