@@ -17,6 +17,8 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 /* 31.10 QA Н6: скелет списка до загрузки efir.js — те же правила, что вставляет efir.js (css()) */
 .efx{--i2:rgba(255,255,255,.6);color:#fff;display:flex;flex-direction:column;gap:14px;min-width:0}.efx h2{margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1}.ef-row{display:flex;align-items:center;gap:10px;min-width:0}.ef-sp{justify-content:space-between}.ef-mut{color:var(--i2);font-size:13px}.ef-sk{display:block;border-radius:20px;background:linear-gradient(90deg,#141414,#1d1d1d,#141414);background-size:200% 100%;animation:efs 1.3s infinite}@keyframes efs{to{background-position:-200% 0}}
 @media (max-width:767px){.wrap{padding:12px 12px 60px}html.emb .wrap{padding:8px 12px 40px}}
+/* 07.11 Эфиры Э0: новый раздел команды (флаг efir_ui2) — вне .wrap, на всю ширину (ТЗ §7.4); старые экраны — в .wrap, как были */
+#efn:empty{display:none}body.efn-on>.wrap{display:none}
 </style></head><body>
 <div class="wrap">
 <div class="bar hid" id="bar"><button id="bBack" class="hid">← Все эфиры</button><span></span><button id="bHost" class="hid">Пульт эфиров</button></div>
@@ -24,7 +26,8 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
 <div id="ef"></div>
 </div>
-<script defer src="efir.js?v=33"></script>
+<div id="efn"></div>
+<script defer src="efir.js?v=34"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -36,15 +39,17 @@ function qs(k){var m=location.search.match(new RegExp('[?&]'+k+'=([^&#]+)'));ret
 var GID=+qs('id')||0,GEV=+qs('ev')||0,GR=qs('r');if(!/^(g-?\d{3,20}|w[0-9a-f]{16})\.[0-9a-f]{20}$/.test(GR))GR='';
 /* 06.11: гость из браузера (по имени) — метка запоминается на устройстве, прямая ссылка ?id= открывает комнату сразу */
 if(!GR&&(GID||GEV)&&!EMB){try{var gw=localStorage.getItem('efW');if(gw&&/^w[0-9a-f]{16}\.[0-9a-f]{20}$/.test(gw))GR=gw}catch(e){}}
+/* 07.11 Эфиры Э0 (ТЗ §6.0): режим сверки ?fx=<Доска>[&shell=gc] — ответы сервера из фикстуры, время заморожено; только localhost/127.0.0.1 или админ. Входа и запросов к серверу нет */
+var FXN=qs('fx');if(!/^[A-Za-z0-9_.-]{1,40}$/.test(FXN)||!(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)||ROLE==='admin'))FXN='';if(FXN){GR='';document.documentElement.classList.add('fx');if(qs('shell')==='gc'){EMB=true;document.documentElement.classList.add('emb')}}
 /* 31.10 QA Н6: 5–8 с чёрного экрана — efir.js (134 КБ) и шрифт грузились до первой отрисовки, потом ещё ждали вход от кабинета (до 5 с) и /login/fs по очереди.
    Теперь: шапка и скелет рисуются этим скриптом сразу (efir.js — defer, шрифт не блокирует), запрос входа к кабинету уходит сразу, параллельно с загрузкой efir.js;
    если на устройстве уже есть сессия того же пользователя — список открывается с ней, не дожидаясь кабинета. */
 var EFU='';try{EFU=localStorage.getItem('efU')||''}catch(e){}
-if(!GR){$('bar').classList.remove('hid');if(!/^#(e\d+|host)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
+if(!GR&&!FXN){$('bar').classList.remove('hid');if(!/^#(e\d+(\/days)?|host([\/?].*)?)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
   ef0.innerHTML=(d0?'<div class="ef-row ef-sp" style="align-items:flex-end;flex-wrap:wrap;gap:12px;min-height:66px"><div><h2>Эфиры</h2><div class="ef-mut" style="font-size:15px">Разборы, вопрос-ответ и&nbsp;встречи потока</div></div></div>':'')+'<span class="ef-sk" style="height:220px"></span><span class="ef-sk" style="height:70px"></span><span class="ef-sk" style="height:70px"></span>'}}
 /* раунд 3: кабинет держит поверх фрейма свою заставку, пока здесь пусто — шапка нарисована, можно убирать (комната #e — свой скелет в efir.js) */
-if(EMB&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage({efPaint:1},'*')}catch(e){}
-function apiF(p,o){o=o||{};var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
+if(EMB&&!FXN&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage({efPaint:1},'*')}catch(e){}
+function apiF(p,o){o=o||{};if(FXN)return window.ECOEFIR?ECOEFIR.fx.api(p,o):Promise.resolve({ok:false});var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
 var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r,eid){try{localStorage.setItem('efW',r)}catch(e){}var id=eid||GID;location.replace(location.pathname+'?'+(GEV?'ev='+GEV+'&':'')+(id?'id='+id+'&':'')+'r='+encodeURIComponent(r)+(id?'#e'+id:''))},fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
@@ -53,31 +58,43 @@ function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').c
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
   fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').textContent='Нажми «Старт» в боте. Жду подтверждения…';var n=0;
     var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}
-      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';save(c.token,'');$('login').classList.add('hid');route()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})};
+      fetch(API+'/app/api/login/check?n='+j.nonce).then(function(r){return r.json()}).then(function(c){if(c.token){clearInterval(iv);b.disabled=false;$('lgSt').textContent='';save(c.token,'');$('login').classList.add('hid');route();meCheck()}else if(c.err){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Ссылка устарела, нажми ещё раз'}})},2000)}).catch(function(){b.disabled=false;$('lgSt').textContent='Нет связи, попробуй ещё раз'})};
 function save(t,role,u){TK=t;ROLE=role||'';if(u!=null)EFU=String(u);try{localStorage.setItem('efTok',t);localStorage.setItem('efRole',ROLE);if(u!=null)localStorage.setItem('efU',EFU)}catch(e){}}
 function bridge(force){return new Promise(function(res){if(!EMB||window.parent===window)return res(null);var done=0,h=function(e){if(e.source!==window.parent||!e.data||!('ecoAuth' in e.data))return;removeEventListener('message',h);done=1;res(e.data.ecoAuth)};addEventListener('message',h);try{parent.postMessage({ecoNeedAuth:1,force:!!force},'*')}catch(x){}setTimeout(function(){if(!done){removeEventListener('message',h);res(null)}},4000)})}
 function viaSite(force){return bridge(force).then(function(a){if(!a||!a.t)return false;if(!force&&TK&&a.u&&String(a.u)===EFU)return 'same';return fetch(API+'/app/api/login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok)return false;save(j.token,j.role,a.u||'');return true})}).catch(function(){return false})}
 function nav(h){if(location.hash!==h)location.hash=h;else route()}
-var CUR=null;
+var CUR=null,RQ=0;
+/* 07.11 Эфиры Э0 (ТЗ §1, §8): новый раздел команды — только при флаге (UI2: ответ /efir/host/me, запомнен на устройстве для этого пользователя; в режиме сверки — из фикстуры).
+   Без флага — всё как раньше: #host — старый пульт, #e<id> — комната, иначе список. С флагом: #host/<раздел>… и пустой адрес — новый раздел (экран по роли), #host/old — старый пульт */
+var UI2=0,N2=null;try{var u2=(localStorage.getItem('efUi2')||'').split(':');if(u2[0]&&u2[0]===EFU)UI2=+u2[1]||0}catch(e){}
+function meCheck(){if(FXN||GR||!TK||!(ROLE==='admin'||ROLE==='curator'||ROLE==='mod'))return;apiF('/efir/host/me').then(function(j){var v=j&&j.ok&&j.ui2?1:0;if(j&&j.ok&&j.role&&j.role!==ROLE)return;try{localStorage.setItem('efUi2',EFU+':'+v)}catch(e){}if(v!==UI2){UI2=v;route()}}).catch(function(){})}
+function isNew(h){return UI2&&(ROLE==='admin'||ROLE==='curator'||ROLE==='mod')&&h!=='#host/old'&&(h===''||h==='#'||/^#host([\/?]|$)/.test(h))}
+var O2={api:function(p,o){return O.api(p,o)},open:open,go:function(h,rep){if(rep){try{history.replaceState(history.state,'',location.pathname+location.search+h)}catch(x){location.replace(h)}route()}else nav(h)}};
+function routeNew(h){var el=$('ef');if(CUR&&CUR.stop)CUR.stop();CUR=null;el.className='';el.innerHTML='';$('login').classList.add('hid');$('bar').classList.add('hid');document.body.classList.add('efn-on');document.documentElement.classList.add('efn-on');
+  ECOEFIR.loadHost(function(ok){if(!ok){$('efn').innerHTML='<div style="padding:40px;color:rgba(255,255,255,.6)">Раздел не загрузился. Обнови страницу.</div>';return}if(!isNew(location.hash||''))return;O2.role=ROLE;if(!N2)N2=ECOEFIR.host2($('efn'),O2);N2.route(location.hash||'')})}
 function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff=ROLE==='admin'||ROLE==='curator';
-  /* 06.11 (Роман): обновил страницу в эфире — остаёшься в эфире: кабинет запоминает комнату в своём адресе (&e=) */
-  if(EMB&&window.parent!==window)try{parent.postMessage({efRoute:h},'*')}catch(x){}
+  /* 06.11 (Роман): обновил страницу в эфире — остаёшься в эфире: кабинет запоминает в своём адресе, где фрейм (07.11: весь хеш — &h=) */
+  if(EMB&&!FXN&&window.parent!==window)try{parent.postMessage({efRoute:h},'*')}catch(x){}
+  if(isNew(h)){routeNew(h);return}
+  if(N2){N2.stop();N2=null}$('efn').innerHTML='';document.body.classList.remove('efn-on');document.documentElement.classList.remove('efn-on');if(h==='#host/old')h='#host';
  $('login').classList.add('hid');
   el.className='';el.innerHTML='';if(CUR&&CUR.stop)CUR.stop();CUR=null;
   $('bar').classList.toggle('hid',!!GR&&!m);$('bBack').classList.toggle('hid',!(m||h==='#host')||!!GR);$('bHost').classList.toggle('hid',!staff||h==='#host');
-  if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';CUR=ECOEFIR.host(el,O);return}
+  if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';var rq=RQ=(RQ||0)+1;ECOEFIR.loadHost(function(ok){if(rq!==RQ||(location.hash!=='#host'&&location.hash!=='#host/old'))return;if(!ok){el.innerHTML='<div class="ef-mut" style="padding:20px 0">Пульт не загрузился. Обнови страницу.</div>';return}CUR=ECOEFIR.host(el,O)});return}
   if(m){O.back=false;CUR=ECOEFIR.room(el,+m[1],O);return}
   document.title='Эфиры · OduvanovSchool';CUR=ECOEFIR.list(el,O)}
 $('bBack').onclick=function(){nav('#')};$('bHost').onclick=function(){nav('#host')};
 addEventListener('hashchange',route);
 /* гость открытого эфира (ссылка из бота): сразу комната; без метки и без входа — лендинг с «Напомнить в Telegram» */
 /* 30.10 QA №12: «Пульт эфиров» — одна кнопка справа вверху. 31.10 Н6: вход у кабинета запрашиваем сразу (P), efir.js догружается параллельно (defer) */
-var P=GR?null:viaSite(),RT=0;
+var P=GR||FXN?null:viaSite(),RT=0;
 function start(){if(!window.ECOEFIR){$('ef').innerHTML='<div class="ef-mut" style="padding:20px 0">Эфиры не загрузились. Обнови страницу.</div>';return}
+  if(FXN){ECOEFIR.fx.load(FXN).then(function(fx){if(!fx){$('ef').innerHTML='<div class="ef-mut" style="padding:20px 0">fx: нет фикстуры '+FXN+'</div>';return}
+    ROLE=fx.role||'admin';UI2=fx.me&&fx.me.ui2===0?0:1;if(fx.shell==='gc'){EMB=true;document.documentElement.classList.add('emb')}if(fx.hash)try{history.replaceState(null,'',location.pathname+location.search+fx.hash)}catch(x){}route()});return}
   if(GR){if(GEV&&!location.hash){$('ef').className='';ECOEFIR.evLanding($('ef'),GEV,O);return}if(!location.hash)location.replace('#e'+GID);route();return}
   /* есть сессия этого пользователя на устройстве — открываем сразу, кабинет подтвердит позже (другой пользователь — перезайдём и перерисуем) */
   if(TK&&EFU){RT=1;if(GID&&!location.hash)location.replace('#e'+GID);route()}
-  P.then(function(ok){if(RT){if(ok===true)route();return}if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();return}if(GEV){$('ef').className='';ECOEFIR.evLanding($('ef'),GEV,O);return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()})}
+  P.then(function(ok){if(RT){if(ok===true)route();meCheck();return}if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();meCheck();return}if(GEV){$('ef').className='';ECOEFIR.evLanding($('ef'),GEV,O);return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 </script></body></html>
