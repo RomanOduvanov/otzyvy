@@ -615,7 +615,7 @@
         var go = po + '/teach/control/stream?fs=pult&bc=ef' + eid + '#bc', w = null; try { w = window.open(go, '_blank') } catch (x) {} if (!w) { if (O.bc) O.bc(eid); else try { (window.top || window).location.href = go } catch (x) {} } }
       else if (h === 'lnk') { var le = (H.j.efirs || []).filter(function (z) { return z.id === +b.getAttribute('data-id') })[0]; if (!le) return;
         /* 31.10: открытый эфир — ссылка на бота с регистрацией (работает у любого человека); эфир для учеников — страница эфира в кабинете */
-        kCopy(le.access === 'open' || le.kind === 'open' ? 'https://romanoduvanov.github.io/otzyvy/gc/efir.html?id=' + le.id : 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&e=' + le.id) }
+        kCopy(le.access === 'open' || le.kind === 'open' ? 'https://oduvanovschool.pro/efir?id=' + le.id : 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&e=' + le.id) }
       else if (h === 'del') { if (!b._arm) { b._arm = 1; b.textContent = 'Точно удалить?'; setTimeout(function () { b._arm = 0; b.textContent = 'Удалить' }, 4000); return } api(O, '/efir/host/del', { id: id }).then(function (r) { if (r.ok) { toast(O, 'Эфир удалён'); load() } else toast(O, r.err) }) }
       else if (h === 'rmin') { rmHost(O, +b.getAttribute('data-id') || H.cur, function () { load(function () { if (H.tab === 'live') lpoll() }) }) }
       /* 06.11 (Роман: «Точно завершить?» мигало долю секунды — пульт перерисовывается каждые несколько секунд): подтверждение живёт в состоянии H.endArm до ответа */
