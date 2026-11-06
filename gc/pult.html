@@ -357,7 +357,7 @@ a.b1,a.b2{text-decoration:none}
 <div class="toast" id="toast"></div>
 <div id="tdToast" role="status"><span></span><button class="b2 sm" id="tdUndo">Вернуть</button></div>
 <script src="bank.js?v=20"></script>
-<script src="efir.js?v=28"></script>
+<script src="efir.js?v=29"></script>
 <script src="feed.js?v=10"></script>
 <script>
 (function(){
@@ -512,7 +512,7 @@ function bcReset(){['bcGoal','bcSubj','bcText','bcSrQ','bcAt'].forEach(function(
 function bcAtMs(){var v=$('bcAt').value;if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v))return 0;return Date.parse(v+':00Z')-3*36e5}
 function mskTxt(ms){var d=new Date(ms+3*36e5),M=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];return d.getUTCDate()+' '+M[d.getUTCMonth()]+', '+('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2)+' МСК'}
 function loadPlans(){api('bcplan?c='+CUR).then(function(j){var L=(j&&j.plans)||[];$('bcPlW').classList.toggle('hid',!L.length);$('bcPl').innerHTML=L.map(function(p){var st=p.st==='plan'?'':p.st==='run'?'отправляется · ':p.st==='done'?'отправлено '+(p.sent+p.msent)+' · ':p.st==='cancel'?'отменено · ':'';
-  return '<div><span class="muted" style="width:120px;flex:none">'+mskTxt(p.at)+'</span><span style="flex:1">'+esc(p.subj?p.subj+' — ':'')+esc(p.text)+'<br><small class="muted">'+st+p.n+' '+plr(p.n,'получатель','получателя','получателей')+' · '+(p.ch==='mail'?'почта':p.ch==='both'?'Telegram + почта':'Telegram')+'</small></span>'+(p.st==='plan'?'<button class="sb" data-pc="'+p.id+'" style="flex:none;height:30px">Отменить</button>':'')+'</div>'}).join('')}).catch(function(){})}
+  return '<div><span class="muted" style="width:120px;flex:none">'+mskTxt(p.at)+'</span><span style="flex:1">'+esc(p.subj?p.subj+' — ':'')+esc(p.text)+'<br><small class="muted">'+st+(p.efir?'напоминание об эфире · всем, кому он доступен':p.n+' '+plr(p.n,'получатель','получателя','получателей'))+' · '+(p.ch==='mail'?'почта':p.ch==='both'?'Telegram + почта':'Telegram')+'</small></span>'+(p.st==='plan'?'<button class="sb" data-pc="'+p.id+'" style="flex:none;height:30px">Отменить</button>':'')+'</div>'}).join('')}).catch(function(){})}
 $('bcPl').onclick=function(e){var b=e.target.closest('[data-pc]');if(!b)return;if(!b._arm){b._arm=1;b.textContent='Точно отменить?';setTimeout(function(){b._arm=0;b.textContent='Отменить'},4000);return}b.disabled=true;api('bcplan/cancel',{method:'POST',body:JSON.stringify({c:CUR,id:+b.getAttribute('data-pc')})}).then(function(j){toast(j&&j.ok?'Рассылка отменена':'Уже не отменить — она отправляется');loadPlans()})};
 $('bSend').onclick=function(){var R=rcpt(),to=bcTo(R),tg=R.filter(function(s){return s.tg}),b=this;
   if(BCW==='plan'){var at=bcAtMs();if(!at||at<Date.now()+60e3){toast('Выбери время в будущем');return}if(!b._arm){b._arm=1;b.textContent='Запланировать на '+mskTxt(at)+'?';setTimeout(function(){b._arm=0;b.textContent='Запланировать'},4000);return}b._arm=0;b.disabled=true;
