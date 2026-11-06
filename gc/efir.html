@@ -11,7 +11,9 @@ body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87
 .lg h2{margin:0;font-size:28px;font-weight:500;letter-spacing:-.02em}.lg p{margin:0;color:rgba(255,255,255,.6)}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}.btn:disabled{opacity:.5}
 .btn2{height:46px;width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#1c1c1c;color:#fff;font:500 15px "Inter Tight",sans-serif;cursor:pointer}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
-html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}html.emb .wrap{padding:20px 24px 48px}
+html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+/* 06.11 (Роман): внутри кабинета — без своего фона: под фреймом фон кабинета с фиолетовой подсветкой, чёрного прямоугольника нет */
+:root{color-scheme:dark}html.emb,html.emb body{background:transparent!important}html.emb .wrap{padding:20px 24px 48px}
 /* 31.10 QA Н6: скелет списка до загрузки efir.js — те же правила, что вставляет efir.js (css()) */
 .efx{--i2:rgba(255,255,255,.6);color:#fff;display:flex;flex-direction:column;gap:14px;min-width:0}.efx h2{margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1}.ef-row{display:flex;align-items:center;gap:10px;min-width:0}.ef-sp{justify-content:space-between}.ef-mut{color:var(--i2);font-size:13px}.ef-sk{display:block;border-radius:20px;background:linear-gradient(90deg,#141414,#1d1d1d,#141414);background-size:200% 100%;animation:efs 1.3s infinite}@keyframes efs{to{background-position:-200% 0}}
 @media (max-width:767px){.wrap{padding:12px 12px 60px}html.emb .wrap{padding:8px 12px 40px}}
@@ -22,7 +24,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
 <div id="ef"></div>
 </div>
-<script defer src="efir.js?v=30"></script>
+<script defer src="efir.js?v=31"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
