@@ -3617,7 +3617,10 @@ const kinIsMine = (K, e) => { const v = efVideo(efJ(e.video, null) || e.video), 
 let KIN_LIVE = {};
 async function kinLiveNow(env, K) { if (!K || !K.id) return null; const c = KIN_LIVE[K.id]; if (c && msNow() - c.t < 2e4) return c.v; const z = KIN_LIVE[K.id] = { t: msNow(), v: null };
   const r = await kinCall(env, 'GET', '/v2/live/events/' + K.id); if (!r.ok) return null;
-  const d = r.data || {}, st = String((d.stream && d.stream.status) || d.status || '').toLowerCase(); return (z.v = /^(live|active|online|streaming|started|running|on_air|on-air)$/.test(st) ? true : st ? false : null) }
+  const d = r.data || {}, st = String((d.stream && d.stream.status) || d.status || '').toLowerCase();
+  /* 06.11: Kinescope пишет «on-air», как только трансляция включена (и после «Завершить эфир» — тоже), даже без сигнала из OBS. Поток реально идёт, только если в плейлисте есть качества */
+  if (/^(on-air|on_air)$/.test(st) && d.stream && d.stream.id && d.workspace_id) { const m = await fetch('https://live.kinescopecdn.net/on-air/' + d.workspace_id + '/' + d.stream.id + '/master.m3u8').then(x => x.ok ? x.text() : '').catch(() => ''); return (z.v = /#EXT-X-STREAM-INF/.test(m)) }
+  return (z.v = /^(live|active|online|streaming|started|running)$/.test(st) ? true : st ? false : null) }
 /* поток ведущего пошёл — его запланированный эфир с этим плеером (поток за 30 мин до начала … час после) сам становится «в эфире». Ведущие не мешают друг другу */
 async function kinAutoLive(env, now) { const L = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind!='auto' AND status='plan' AND start BETWEEN ? AND ? ORDER BY start").bind(now - 36e5, now + 18e5)); if (!L.length) return 0;
   let n = 0; const done = {}; for (const e of L) { const h = kinHost(e.host_cid); if (done[h]) continue; const K = await kinGet(env, h); if (!K || !K.id || !kinIsMine(K, e)) continue;
