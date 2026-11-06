@@ -57,7 +57,10 @@ function bridge(force){return new Promise(function(res){if(!EMB||window.parent==
 function viaSite(force){return bridge(force).then(function(a){if(!a||!a.t)return false;if(!force&&TK&&a.u&&String(a.u)===EFU)return 'same';return fetch(API+'/app/api/login/fs',{method:'POST',body:JSON.stringify({t:a.t})}).then(function(r){return r.json()}).then(function(j){if(!j.ok)return false;save(j.token,j.role,a.u||'');return true})}).catch(function(){return false})}
 function nav(h){if(location.hash!==h)location.hash=h;else route()}
 var CUR=null;
-function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff=ROLE==='admin'||ROLE==='curator';$('login').classList.add('hid');
+function route(){var h=location.hash||'',el=$('ef'),m=h.match(/^#e(\d+)$/),staff=ROLE==='admin'||ROLE==='curator';
+  /* 06.11 (Роман): обновил страницу в эфире — остаёшься в эфире: кабинет запоминает комнату в своём адресе (&e=) */
+  if(EMB&&window.parent!==window)try{parent.postMessage({efRoute:h},'*')}catch(x){}
+ $('login').classList.add('hid');
   el.className='';el.innerHTML='';if(CUR&&CUR.stop)CUR.stop();CUR=null;
   $('bar').classList.toggle('hid',!!GR&&!m);$('bBack').classList.toggle('hid',!(m||h==='#host')||!!GR);$('bHost').classList.toggle('hid',!staff||h==='#host');
   if(h==='#host'&&staff){document.title='Пульт эфиров · OduvanovSchool';CUR=ECOEFIR.host(el,O);return}
