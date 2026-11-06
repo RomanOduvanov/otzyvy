@@ -3354,7 +3354,7 @@ async function efName(env, W) { if (W.nm) return W.nm; if (W.me === 'admin') ret
 /* может ли смотреть: команда — всё; ученик — по доступу эфира; гость — только открытые */
 async function efCan(env, e, W) { if (!e || e.del) return false; if (W.staff) return true; const acc = e.tariff || 'all'; if (acc === 'open') return true; if (W.me === 'guest') return false;
   /* 04.11 (Роман): «Выбранные ученики» — список uid в cfg.uids (индивидуальный тариф, отдельные ученики) */
-  if (acc === 'sel') { const L = efJ(e.cfg, {}).uids || []; return L.indexOf(+W.uid) >= 0 }
+  if (acc === 'sel') { const c = efJ(e.cfg, {}); if (c.access && Array.isArray(c.access.streams)) return ev2CanAcc(env, c.access, W); const L = c.uids || []; return L.indexOf(+W.uid) >= 0 }
   /* 1.11 (Роман): ученик видит эфиры своего куратора + общие эфиры Романа. Эфир куратора — только его ученикам, кроме явно выбранного «Весь поток» (04.11) */
   if (CURATORS.some(c => c.id === e.host_cid) && acc === 'cur') { const st = await env.DB.prepare('SELECT curator FROM student WHERE uid=?').bind(W.uid).first(); return !!(st && st.curator && st.curator === e.host_cid) }
   if (acc === 'all') return true;
@@ -3701,6 +3701,12 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     if (m[2].length > 1400000) return json(req, { ok: false, err: 'Картинка слишком большая — до 1 МБ' }, 400);
     const r = await env.DB.prepare('INSERT INTO efir_cover (mime, data, by_uid, at) VALUES (?,?,?,?) RETURNING id').bind(m[1], m[2], W.uid || 0, now).first();
     return json(req, { ok: true, id: r.id, url: new URL(req.url).origin + '/efir/cover?id=' + r.id }) }
+  /* 07.11 Э2 (§3.2): картинка → efir_cover, ответ {url:"/efir/cover?id="}; справочник продуктов; потоки и тарифы для доступа 2.7 */
+  if (path === '/efir/host/img' && req.method === 'POST') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const m = String(o.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/); if (!m) return json(req, { ok: false, err: 'Нужна картинка JPG, PNG или WebP' }, 400);
+    if (m[2].length > 1400000) return json(req, { ok: false, err: 'Картинка слишком большая — до 1 МБ' }, 400);
+    const r = await env.DB.prepare('INSERT INTO efir_cover (mime, data, by_uid, at) VALUES (?,?,?,?) RETURNING id').bind(m[1], m[2], W.uid || 0, now).first(); return json(req, { ok: true, id: r.id, url: '/efir/cover?id=' + r.id }) }
+  if (path === '/efir/host/prod') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env); return json(req, await ev2Prod(env, req, o, W)) }
+  if (path === '/efir/host/streams') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); return json(req, await ev2Streams(env)) }
   /* Kinescope: без ключа работает по ID/ссылке плеера; с секретом KINESCOPE_KEY — список видео (GET https://api.kinescope.io/v1/videos, документация docs.kinescope.com/api) */
   /* 1.11: разбор, почему запись не подтянулась (только админ; ключей не отдаём) */
   if (path === '/efir/kin/norec') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const e = await efGet(env, u.searchParams.get('id')); if (!e) return json(req, { ok: false }); const c0 = efJ(e.cfg, {}); c0.norec = 1; await env.DB.prepare('UPDATE efir SET cfg=? WHERE id=?').bind(JSON.stringify(c0), e.id).run(); return json(req, { ok: true }) }
@@ -3752,7 +3758,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
   /* 04.11: проверка Kinescope Speak (админ): ?id=<эфир> — создать/показать комнату сцены */
   if (path === '/efir/host/speak') { if (!W.adm) return json(req, { ok: false, err: 'Только Роман' }, 403); const ee = u.searchParams.get('id') === 'test' ? { id: 'test', title: 'Проверка сцены' } : await efGet(env, u.searchParams.get('id')); if (!ee) return json(req, { ok: false, err: 'Эфир не найден' }, 404);
     const x = await efSpeak(env, ee, u.searchParams.get('force') === '1'); return json(req, typeof x === 'string' ? { ok: true, link: x } : { ok: false, res: x }) }
-  if (path === '/efir/host/list') { const L = await qAll(W.adm ? env.DB.prepare('SELECT * FROM efir WHERE del=0 ORDER BY start DESC LIMIT 200') : env.DB.prepare('SELECT * FROM efir WHERE del=0 AND host_cid=? ORDER BY start DESC LIMIT 200').bind(W.cid));
+  if (path === '/efir/host/list') { const L = await qAll(W.adm ? env.DB.prepare("SELECT * FROM efir WHERE del=0 AND NOT (status='draft' AND start IS NULL) ORDER BY start DESC LIMIT 200") : env.DB.prepare('SELECT * FROM efir WHERE del=0 AND host_cid=? ORDER BY start DESC LIMIT 200').bind(W.cid));
     const ids = L.map(e => e.id), C = {}; if (ids.length) { const ph = ids.map(() => '?').join(','), [rg, sn, ld] = await env.DB.batch([env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_reg WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids), env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n, SUM(CASE WHEN last>? AND sess>=0 THEN 1 ELSE 0 END) live FROM efir_seen WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(now - 9e4, ...ids), env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_lead WHERE efir_id IN (' + ph + ') GROUP BY efir_id').bind(...ids)]);
       for (const x of rg.results || []) (C[x.efir_id] = C[x.efir_id] || {}).reg = x.n; for (const x of sn.results || []) Object.assign(C[x.efir_id] = C[x.efir_id] || {}, { came: x.n, now: x.live }); for (const x of ld.results || []) (C[x.efir_id] = C[x.efir_id] || {}).leads = x.n }
     const sc = W.adm ? await qAll(env.DB.prepare('SELECT id, src_id, ver, title, at, note FROM efir_scen ORDER BY id DESC LIMIT 60')) : [];
@@ -3811,6 +3817,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return json
     const link = acc === 'open' || e.kind === 'open' ? 'https://t.me/' + BOT(env) + '?start=e' + e.id : SITE + '/teach/control/stream?fs=efir&e=' + e.id;
     return json(req, { ok: true, id: e.id, title: e.title, start: e.start || null, kind: e.kind, acc, host: e.host_cid || 'admin', uids, link }) }
   const cfg = efJ(e.cfg, {}), S = efState(e, now), sess = e.kind === 'auto' ? +(o.sess || u.searchParams.get('sess') || S.sess || 0) : 0, sec = Math.max(0, Math.floor((now - (e.kind === 'auto' ? sess : (e.at_live || e.start || now))) / 1000));
+  if (path === '/efir/host/del' && req.method === 'POST' && o.v2 && e.status !== 'draft') { const n = await env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(e.id).first(); if ((n && n.n) | 0) return json(req, { ok: false, err: 'Есть записавшиеся — удалить нельзя' }, 400) } /* 07.11 Э2: удаление из 1.1 */
   if (path === '/efir/host/del' && req.method === 'POST') { await env.DB.prepare('UPDATE efir SET del=1, upd=? WHERE id=?').bind(now, e.id).run(); try { await efPlanSync(env, Object.assign({}, e, { del: 1 })) } catch (x) {} await logIt(env, 'efir-del', W.uid, e.id); return json(req, { ok: true }) }
   /* пульт ведущего: старт/конец, кнопка заявки, баннер, опрос, «на экран». Каждое событие — с секундой (для сценария) */
   if (path === '/efir/host/state' && req.method === 'POST') { const act = String(o.act || ''), d = o.data || {}, q = [];
@@ -4028,7 +4035,7 @@ const EF2_SCHEMA = [
   'CREATE INDEX IF NOT EXISTS tg_q_st ON tg_q (st, pri, next_at)'];
 /* новые колонки старых таблиц (§2.1, §2.2 «Дополнения»): добавляются, если их ещё нет; значения старых строк — миграциями своих этапов (§8, §10) */
 const EF2_COLS = {
-  efir_event: ['type TEXT', 'status TEXT', 'host TEXT', 'fmt TEXT', 'dur INTEGER', 'short TEXT', 'reg TEXT', 'sale TEXT', 'access TEXT', 'rec TEXT', 'steps TEXT'],
+  efir_event: ['type TEXT', 'status TEXT', 'host TEXT', 'fmt TEXT', 'dur INTEGER', 'short TEXT', 'reg TEXT', 'sale TEXT', 'access TEXT', 'rec TEXT', 'steps TEXT', 'named INTEGER'], /* named — Э2: заголовок мастера «Новый марафон», пока не ушли с шага 1 */
   ev_reg: ['phone TEXT', 'email TEXT', 'src_code TEXT', 'gc_ok INTEGER', 'gc_uid INTEGER', 'test INTEGER DEFAULT 0'],
   efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER'],
   efir_msg: ['title TEXT', 'note TEXT'],
@@ -4270,6 +4277,12 @@ async function evBroadcast(env, ev, o) { const E = await evEfirs(env, ev.id), id
   return { ok: true, sent, fail, total: (tot && tot.n) || 0, next: off + R.length < ((tot && tot.n) || 0) ? off + R.length : null } }
 /* пульт: мероприятия (только админ) */
 async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const now = msNow(); if (!W.adm) return json(req, { ok: false, err: 'Мероприятия настраивает Роман' }, 403);
+  await ev2Migrate(env); /* 07.11 Э2: §10 type / status / sale, offer → ev_prod (лениво) */
+  /* 07.11 Э2: списки 1.1 / 1.2 (?type=web|mar), новый черновик, автосохранение мастера (v:2) — старые вызовы без type / v работают как раньше */
+  if (path === '/efir/host/events' && u.searchParams.get('type')) return json(req, await ev2List(env, u.searchParams.get('type')));
+  if (path === '/efir/host/event/new' && req.method === 'POST') return json(req, await ev2New(env, o.type, W));
+  if (path === '/efir/host/event/save' && req.method === 'POST' && +o.v === 2) { const ev = await evGet(env, o.id || o.ev); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
+    const r = await ev2Save(env, ev, o, W); return json(req, r, r.conflict ? 409 : 200) }
   if (path === '/efir/host/events') { const L = await qAll(env.DB.prepare('SELECT * FROM efir_event WHERE del=0 ORDER BY id DESC LIMIT 60')), out = [];
     for (const ev of L) { const [E, n] = await Promise.all([evEfirs(env, ev.id), env.DB.prepare('SELECT COUNT(*) n, SUM(CASE WHEN chat IS NOT NULL OR uid IS NOT NULL THEN 1 ELSE 0 END) tg FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first()]);
       out.push({ id: ev.id, title: ev.title, about: ev.about || '', cover: ev.cover || null, offer: efJ(ev.offer, null), funnel: evSteps(ev), link: evLink(ev.id), bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) || 0, tg: (n && n.tg) || 0,
@@ -4284,7 +4297,16 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
     /* 07.11 Э1: у нового мероприятия — регистрация с телефоном и почтой (§4, тексты по умолчанию — evRegCfg) и метки «Основная» / «Сайт» (§2.2) */
     await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now)]);
     await logIt(env, 'ev-new', W.uid, r.id + ' ' + title); return json(req, { ok: true, id: r.id }) }
-  const ev = await evGet(env, o.ev || u.searchParams.get('ev')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
+  const ev = await evGet(env, o.ev || u.searchParams.get('ev') || o.id || u.searchParams.get('id')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
+  /* 07.11 Э2: мастер (§3.2) — мероприятие целиком, дни, проверка, запуск, дубль, метки (POST — создать) */
+  if (path === '/efir/host/event/get') return json(req, await ev2Get(env, ev));
+  if (path === '/efir/host/event/days' && req.method === 'POST') { const r = await ev2DaysSave(env, ev, o, W); return json(req, r, r.conflict ? 409 : 200) }
+  if (path === '/efir/host/event/check') return json(req, await ev2Check(env, ev));
+  if (path === '/efir/host/event/launch' && req.method === 'POST') return json(req, await ev2Launch(env, ev, o, W));
+  if (path === '/efir/host/event/dup' && req.method === 'POST') return json(req, await ev2Dup(env, ev, W));
+  if (path === '/efir/host/event/src' && req.method === 'POST') return json(req, await evSrcAdd(env, ev, o));
+  if (path === '/efir/host/event/del' && req.method === 'POST' && o.v2 && ev2Status(ev) !== 'draft') { const n = await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first();
+    if ((n && n.n) | 0) return json(req, { ok: false, err: 'Есть регистрации — удалить нельзя, можно только дублировать' }, 400) }
   if (path === '/efir/host/event/del' && req.method === 'POST') { const E = await evEfirs(env, ev.id); if (E.some(e => e.status === 'live')) return json(req, { ok: false, err: 'Сейчас идёт эфир этого мероприятия' }, 400);
     await env.DB.prepare('UPDATE efir_event SET del=1, upd=? WHERE id=?').bind(now, ev.id).run(); return json(req, { ok: true }) }
   if (path === '/efir/host/event/src') return json(req, Object.assign({ ok: true, bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id }, await evSrcStats(env, ev))); /* 07.11 Э1: метки — записались / пришли / заявки (для 2.3 и 5.1) */
@@ -4300,6 +4322,242 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
     return json(req, j && j.ok ? { ok: true } : { ok: false, err: 'Telegram не принял сообщение: ' + ((j && j.description) || 'ошибка') }) }
   return json(req, { ok: false, err: 'path' }, 404) }
 
+/* ===== 07.11 «Эфиры 2.0», этап Э2 (docs/plan/efiry-tz.md v6 §2.1, §2.4, §3.2, §6.4 1.1–2.8б, §10): списки, «Создать» и мастер мероприятия (шаги 1, 2, 3, 7, 8).
+   Дни мероприятия — эфиры kind='open' с cfg.ev (как раньше) и cfg.ord (позиция дня). У черновика дни в статусе efir.status='draft' (их не видят старые экраны, бот, рассылки
+   и evEfirs); при запуске (draft → test / reg) — 'plan'. Готовность шагов ev.steps {1..8: d|o|t} считает сервер при каждом сохранении (§3.2).
+   Миграция Э2 (§10, лениво, без потери данных): type по числу эфиров, status='reg', sale.mode = offer ? sell : none, offer → ev_prod (sale.offer_id). Старые колонки не трогаем. ===== */
+const EV2_MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const ev2Pl = (n, a, b, c) => { n = Math.abs(n | 0) % 100; const k = n % 10; return n > 10 && n < 20 ? c : k > 1 && k < 5 ? b : k === 1 ? a : c };
+const ev2Host = h => CURATORS.some(c => c.id === h) ? h : 'admin';
+const ev2HostName = h => h === 'admin' ? 'Роман Одуванов' : ((CURATORS.find(c => c.id === h) || {}).full || 'Роман Одуванов');
+const ev2HostShort = h => h === 'admin' ? 'Роман' : ((CURATORS.find(c => c.id === h) || {}).name || 'Роман');
+const ev2Cover = v => { v = String(v || ''); return /^\/efir\/cover\?id=\d{1,9}$/.test(v) || /^https:\/\/[^\s"'<>]{5,400}$/.test(v) ? v : null };
+let EV2_MIG = 0;
+/* §10: старые мероприятия → type / status / sale; offer → справочник ev_prod. Повторный запуск ничего не меняет (только строки с NULL) */
+async function ev2Migrate(env) { if (EV2_MIG && Date.now() - EV2_MIG < 6e5) return; EV2_MIG = Date.now(); const now = msNow();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE efir_event SET type=CASE WHEN (SELECT COUNT(*) FROM efir f WHERE f.del=0 AND f.kind='open' AND CAST(json_extract(f.cfg, '$.ev') AS INTEGER)=efir_event.id)>1 THEN 'mar' ELSE 'web' END WHERE type IS NULL"),
+    env.DB.prepare("UPDATE efir_event SET status='reg' WHERE status IS NULL"),
+    env.DB.prepare("UPDATE efir_event SET named=1 WHERE named IS NULL"),
+    env.DB.prepare("UPDATE efir_event SET sale=json_object('mode', 'none') WHERE sale IS NULL AND (offer IS NULL OR offer='' OR offer='null')")]);
+  const L = await qAll(env.DB.prepare("SELECT id, offer FROM efir_event WHERE sale IS NULL AND offer IS NOT NULL LIMIT 200"));
+  for (const ev of L) { const of = efJ(ev.offer, null); let pid = null;
+    if (of && bStr(of.title, 200)) { const t = bStr(of.title, 200), p = Math.max(0, +of.price | 0), c = bStr(of.code, 60) || null;
+      const ex = await env.DB.prepare('SELECT id FROM ev_prod WHERE del=0 AND title=? AND COALESCE(price,0)=? AND COALESCE(code,\'\')=?').bind(t, p, c || '').first();
+      pid = ex ? ex.id : (await env.DB.prepare('INSERT INTO ev_prod (title, price, code, del, at) VALUES (?,?,?,0,?) RETURNING id').bind(t, p, c, now).first()).id }
+    await env.DB.prepare('UPDATE efir_event SET sale=? WHERE id=? AND sale IS NULL').bind(JSON.stringify(pid ? { mode: 'sell', offer_id: pid } : { mode: 'none' }), ev.id).run() } }
+/* дни мероприятия, включая черновые (status='draft'), по позиции */
+async function ev2Days(env, id) { return qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind='open' AND status<>'cancel' AND CAST(json_extract(cfg, '$.ev') AS INTEGER)=? ORDER BY COALESCE(json_extract(cfg, '$.ord'), 999), COALESCE(start, 0), id").bind(+id)) }
+const ev2Type = (ev, D) => ev.type === 'mar' || ev.type === 'web' || ev.type === 'auto' ? ev.type : ((D || []).length > 1 ? 'mar' : 'web');
+const ev2Status = ev => ['draft', 'test', 'reg', 'done'].includes(ev.status) ? ev.status : 'reg';
+const ev2Sale = ev => { const S = efJ(ev.sale, null); if (S && typeof S === 'object' && ['sell', 'form', 'none'].includes(S.mode)) return S; return efJ(ev.offer, null) ? { mode: 'sell', legacy: 1 } : (S && typeof S === 'object' ? S : null) };
+const ev2Acc = ev => { const A = efJ(ev.access, null) || {}; return { who: A.who === 'stream' ? 'stream' : 'open', streams: (Array.isArray(A.streams) ? A.streams : []).map(x => bStr(x, 60)).filter(Boolean).slice(0, 30), tariffs: (Array.isArray(A.tariffs) ? A.tariffs : []).map(x => bStr(x, 60)).filter(Boolean).slice(0, 30) } };
+const ev2Rec = ev => { const R = efJ(ev.rec, null) || {}; return { days: [1, 3, 7, 0, -1, 14, 30].includes(+R.days) && R.days != null ? +R.days : 1, after: R.after === 'closed' ? 'closed' : 'lead', chat: R.chat === 0 ? 0 : 1, pts: R.pts === 0 ? 0 : 1 } };
+const ev2DayPub = (e, now) => { const c = efJ(e.cfg, {}); return { id: e.id, title: e.title || '', short: c.short || '', start: e.start || null, dur: e.dur || null, status: e.status, hide: c.hide ? 1 : 0, at_live: e.at_live || null, at_end: e.at_end || null, past: !!(e.start && e.start < now && e.status !== 'draft' && e.status !== 'plan') || ['done', 'rec'].includes(e.status) } };
+/* §3.2 «Готовность шагов» */
+async function ev2Calc(env, ev, D) { D = D || await ev2Days(env, ev.id); const R = efJ(ev.reg, null) || {}, S = ev2Sale(ev), F = evSteps(ev), st = ev2Status(ev);
+  const m = await env.DB.prepare('SELECT COUNT(*) n FROM ev_mat WHERE ev_id=? AND del=0').bind(ev.id).first(), vis = D.filter(e => !efJ(e.cfg, {}).hide);
+  const mats = ((m && m.n) | 0) + (D.some(e => efJ(e.cfg, {}).lead) ? 1 : 0), g = R.greet || {}, a = R.ask_email || {};
+  return { 1: bStr(ev.title, 140) && ev2Host(ev.host || 'admin') && (ev.fmt === 'obs' || ev.fmt === 'room') ? 'd' : 't',
+    2: vis.length && vis.every(e => bStr(e.title, 140) && e.start) ? 'd' : 't',
+    3: bStr(g.text, 1500) && (R.email === 0 || bStr(a.text, 1000)) ? 'd' : 't',
+    4: mats ? 'd' : 'o',
+    5: F.length && F.filter(s => !s.off).every(s => String(s.text || '').trim()) ? 'd' : 't',
+    6: S && (S.mode === 'none' || (S.mode === 'sell' && (S.offer_id || S.legacy)) || (S.mode === 'form' && S.sheet && S.sheet.ok_at)) ? 'd' : 't',
+    7: ev.access || ev.rec ? 'd' : 't',
+    8: st === 'reg' || st === 'done' ? 'd' : 't' } }
+async function ev2SaveSteps(env, ev, D) { const s = await ev2Calc(env, ev, D); ev.steps = JSON.stringify(s); await env.DB.prepare('UPDATE efir_event SET steps=? WHERE id=?').bind(ev.steps, ev.id).run(); return s }
+/* «Основное: …», «3 дня: 11, 12, 13 ноября в 19:00» — тексты чек-листа 2.8 (§6.4) */
+function ev2DaysText(D, type) { const vis = D.filter(e => !efJ(e.cfg, {}).hide && e.start); if (!vis.length) return type === 'web' ? 'Дата: не указана' : 'Дни: не указаны';
+  const P = vis.map(e => { const d = msk(new Date(e.start)); return { d: d.getUTCDate(), m: d.getUTCMonth(), hm: efHM(e.start) } }), one = P.every(p => p.hm === P[0].hm);
+  if (type === 'web') return 'Дата: ' + P[0].d + ' ' + MONTHS[P[0].m] + ' в ' + P[0].hm;
+  const G = []; for (const p of P) { const g = G[G.length - 1]; if (g && g.m === p.m) g.d.push(p.d); else G.push({ m: p.m, d: [p.d] }) }
+  return P.length + ' ' + ev2Pl(P.length, 'день', 'дня', 'дней') + ': ' + G.map(g => g.d.join(', ') + ' ' + MONTHS[g.m]).join(', ') + (one ? ' в ' + P[0].hm : ' в разное время') }
+const ev2When = s => s.on === 'reg' ? (s.min ? 'через ' + s.min + ' мин' : 'сразу') : s.on === 'before' ? (s.min % 1440 === 0 ? 'за ' + s.min / 1440 + ' ' + ev2Pl(s.min / 1440, 'день', 'дня', 'дней') : s.min % 60 === 0 ? 'за ' + (s.min / 60 === 1 ? '1 час' : s.min / 60 + ' ' + ev2Pl(s.min / 60, 'час', 'часа', 'часов')) : 'за ' + s.min + ' ' + ev2Pl(s.min, 'минуту', 'минуты', 'минут')) : s.on === 'start' ? 'в момент старта' : 'через ' + s.min + ' мин';
+async function ev2Check(env, ev) { const D = await ev2Days(env, ev.id), type = ev2Type(ev, D), steps = await ev2Calc(env, ev, D), R = efJ(ev.reg, null) || {}, S = ev2Sale(ev), F = evSteps(ev), A = ev2Acc(ev), RC = ev2Rec(ev);
+  const must = [], may = [], rows = [], host = ev2Host(ev.host || 'admin'), fmt = ev.fmt === 'room' ? 'room' : 'obs', vis = D.filter(e => !efJ(e.cfg, {}).hide);
+  if (steps[1] !== 'd') must.push({ step: 1, text: 'Основное: ' + (!bStr(ev.title, 140) ? 'не указано название' : 'не выбран формат эфира') });
+  if (steps[2] !== 'd') { const lab = type === 'web' ? 'Дата и время' : 'Дни марафона'; if (!vis.length) must.push({ step: 2, text: lab + ': нет ни одного дня' });
+    vis.forEach((e, i) => { const w = !bStr(e.title, 140) ? 'не указана тема' : !e.start ? 'не указаны дата и время' : ''; if (!w) return; must.push({ step: 2, text: type === 'web' ? lab + ': ' + w.replace('тема', 'тема вебинара') : lab + ': у дня ' + (i + 1) + ' ' + w }) }) }
+  if (steps[3] !== 'd') must.push({ step: 3, text: 'Регистрация в боте: ' + (!(R.greet && bStr(R.greet.text, 1500)) ? 'не заполнен текст приветствия' : 'не заполнен вопрос про почту') });
+  if (steps[4] !== 'd') may.push({ step: 4, text: 'Материалы эфира не добавлены — в пульте нечего будет показать', fix: 'Добавить' });
+  if (steps[5] !== 'd') { const s = F.find(x => !x.off && !String(x.text || '').trim()); must.push({ step: 5, text: s ? 'Бот: не заполнен текст сообщения «' + (s.title || ev2When(s)) + '»' : 'Бот: нет ни одного сообщения' }) }
+  if (steps[6] !== 'd') must.push({ step: 6, text: !S || !S.mode ? 'Продажи: не выбран режим — «Продаём», «Собираем анкеты» или «Без продаж»' : S.mode === 'sell' ? 'Продажи: выбран «Продаём», но не указан продукт' : 'Продажи: выбраны «Анкеты», но таблица не подключена' });
+  if (S && S.mode === 'sell' && R.email === 0) must.push({ step: 3, text: 'Для заказа в GetCourse нужна почта — включи „Спрашивать почту“ на шаге 3' });
+  let obs = true; if (fmt === 'obs') { const K = await kinGet(env, host); obs = !!(K && K.id); if (!obs) must.push({ step: 0, set: 1, text: 'OBS: ключ трансляции не подключён · ведёт ' + ev2HostShort(host) }) }
+  if (steps[7] !== 'd') may.push({ step: 7, text: 'Доступ и запись не проверены — по умолчанию все по ссылке, запись 24 часа', fix: 'Открыть' });
+  /* строки «✓ …» (2.8) */
+  const ph = R.phone === 0 ? 0 : 1, em = R.email === 0 ? 0 : 1;
+  const mt = await qAll(env.DB.prepare('SELECT kind, COUNT(*) n FROM ev_mat WHERE ev_id=? AND del=0 GROUP BY kind').bind(ev.id)), mn = k => ((mt.find(x => x.kind === k) || {}).n) | 0;
+  const ml = []; if (mn('lead') || D.some(e => efJ(e.cfg, {}).lead)) ml.push(S && S.mode === 'form' ? 'анкета' : 'кнопка заявки');
+  if (mn('banner')) ml.push(mn('banner') + ' ' + ev2Pl(mn('banner'), 'баннер', 'баннера', 'баннеров')); if (mn('poll')) ml.push(mn('poll') + ' ' + ev2Pl(mn('poll'), 'опрос', 'опроса', 'опросов'));
+  const off = F.filter(s => s.off).length; let prod = null; if (S && S.mode === 'sell' && S.offer_id) prod = await env.DB.prepare('SELECT title, price FROM ev_prod WHERE id=?').bind(+S.offer_id).first();
+  if (!prod && S && S.mode === 'sell') { const of = efJ(ev.offer, null); if (of && of.title) prod = { title: of.title, price: of.price } }
+  const rub = n => String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, NB) + NB + '₽', recT = { 1: '24 часа', 3: '3 дня', 7: '7 дней', 0: 'всегда', '-1': 'не показывается', 14: '14 дней', 30: '30 дней' }[RC.days];
+  rows.push({ step: 1, ok: steps[1] === 'd', text: 'Основное: ' + ['название', ev.cover ? 'обложка' : '', 'ведущий'].filter(Boolean).join(', ') });
+  rows.push({ step: 2, ok: steps[2] === 'd', text: ev2DaysText(D, type) });
+  rows.push({ step: 3, ok: steps[3] === 'd', text: 'Регистрация в боте: ' + (ph && em ? 'телефон + почта' : ph ? 'только телефон' : em ? 'только почта' : 'без контактов') + ', приветствие настроено' });
+  rows.push({ step: 4, ok: steps[4] === 'd', text: 'Материалы: ' + (ml.length ? ml.join(', ') : 'нет') });
+  rows.push({ step: 5, ok: steps[5] === 'd', text: 'Бот: ' + F.length + ' ' + ev2Pl(F.length, 'сообщение', 'сообщения', 'сообщений') + (off ? ', ' + off + ' ' + ev2Pl(off, 'выключено', 'выключено', 'выключено') : '') });
+  rows.push({ step: 6, ok: steps[6] === 'd', text: !S || !S.mode ? 'Продажи: режим не выбран' : S.mode === 'sell' ? 'Продажи: «Продаём»' + (prod ? ' · ' + prod.title + ', ' + rub(prod.price) : '') : S.mode === 'form' ? 'Продажи: анкеты · ' + ((S.form && S.form.src) === 'gform' ? 'Google Форма' : 'своя форма') + (S.sheet && S.sheet.ok_at ? ' · таблица подключена' : '') : 'Продажи: без продаж — кнопки заявки не будет' });
+  rows.push({ step: 7, ok: steps[7] === 'd', text: 'Доступ: ' + (A.who === 'stream' ? 'ученики ' + (A.streams.concat(A.tariffs).join(' · ') || 'потока') : 'все по ссылке') + ' · запись ' + recT });
+  rows.push(fmt === 'room' ? { step: 0, ok: true, text: 'Видеовстреча: комната создастся при первом входе ведущего' } : { step: 0, set: 1, ok: obs, text: obs ? 'OBS: ключ трансляции подключён · ведёт ' + ev2HostShort(host) : 'OBS: ключ трансляции не подключён · ведёт ' + ev2HostShort(host) });
+  return { ok: true, must, may, rows, steps, status: ev2Status(ev) } }
+/* одно мероприятие для мастера */
+async function ev2Get(env, ev) { const now = msNow(), D = await ev2Days(env, ev.id), type = ev2Type(ev, D), steps = await ev2SaveSteps(env, ev, D); /* пересчёт: материалы и бот могли поменять в старом пульте */
+  const R = evRegCfg(ev, D) || evRegCfg(Object.assign({}, ev, { reg: JSON.stringify(EV_REG_NEW), type }), D), raw = efJ(ev.reg, null) || {};
+  const n = await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).first(), S = ev2Sale(ev);
+  const seen = D.length ? await qAll(env.DB.prepare('SELECT efir_id, COUNT(DISTINCT k) n FROM efir_seen WHERE sess=0 AND efir_id IN (' + D.map(e => +e.id).join(',') + ') GROUP BY efir_id')) : [];
+  const host = ev2Host(ev.host || (D[0] && D[0].host_cid) || 'admin');
+  return { ok: true, now, ev: { id: ev.id, type, status: ev2Status(ev), title: ev.title || '', short: ev.short || '', about: ev.about || '', cover: ev.cover || null, host, host_name: ev2HostName(host),
+    fmt: ev.fmt === 'room' ? 'room' : 'obs', dur: +ev.dur || (D[0] && D[0].dur) || 90, named: ev.named ? 1 : 0, upd: ev.upd || 0, steps,
+    reg: { phone: R.phone, email: R.email, skip_email: R.skip_email, greet: R.greet, ask_email: R.ask_email, gc_group: R.gc_group, saved: raw.greet && raw.greet.text ? 1 : 0 },
+    sale: S ? { mode: S.mode || null } : null, access: ev2Acc(ev), rec: ev2Rec(ev), saved7: ev.access || ev.rec ? 1 : 0,
+    bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0 },
+    days: D.map(e => Object.assign(ev2DayPub(e, now), { seen: ((seen.find(x => x.efir_id === e.id) || {}).n) | 0 })),
+    hosts: [{ id: 'admin', name: 'Роман Одуванов' }].concat(CURATORS.map(c => ({ id: c.id, name: c.full }))), privacy: await evPrivacy(env) } }
+/* новый черновик (§3.2 event/new): метки «Основная» и «Сайт», у марафона 2 дня, у вебинара 1 эфир; дни — в статусе draft без даты */
+async function ev2New(env, type, W) { const now = msNow(), t = type === 'mar' ? 'mar' : 'web';
+  const r = await env.DB.prepare("INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd, reg, type, status, host, fmt, dur, short, named) VALUES ('', '', NULL, NULL, ?, ?, ?, ?, ?, 'draft', 'admin', 'obs', 90, '', 0) RETURNING id")
+    .bind(JSON.stringify(evFunnelDef()), now, now, JSON.stringify(EV_REG_NEW), t).first();
+  const q = [env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now)];
+  for (let i = 0; i < (t === 'mar' ? 2 : 1); i++) q.push(env.DB.prepare("INSERT INTO efir (title, about, host_cid, host_uid, host_name, start, dur, kind, tariff, status, cfg, chapters, created, upd) VALUES ('', '', 'admin', ?, 'Роман Одуванов', NULL, 90, 'open', 'open', 'draft', ?, '[]', ?, ?)").bind(efAdminUid(env), JSON.stringify({ ev: r.id, ord: i }), now, now));
+  await env.DB.batch(q); const ev = await evGet(env, r.id); await ev2SaveSteps(env, ev); await logIt(env, 'ev-new2', W.uid, r.id + ' ' + t); return { ok: true, id: r.id } }
+/* шаги 1, 3, 7: изменения полей (автосохранение 800 мс). upd — защита от правки в двух вкладках */
+async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' };
+  const set = [], b = [], D = await ev2Days(env, ev.id), st = ev2Status(ev), dq = [];
+  const put = (c, v) => { set.push(c + '=?'); b.push(v); ev[c] = v };
+  if ('title' in o) { const t = bStr(o.title, 140); put('title', t) }
+  if ('short' in o) put('short', bStr(o.short, 24));
+  if ('about' in o) put('about', bStr(o.about, 1500));
+  if ('cover' in o) put('cover', o.cover ? ev2Cover(o.cover) : null);
+  if ('host' in o) put('host', ev2Host(o.host));
+  if ('fmt' in o) put('fmt', o.fmt === 'room' ? 'room' : 'obs');
+  if ('dur' in o) put('dur', Math.min(600, Math.max(10, +o.dur | 0 || 90)));
+  if (o.named) put('named', 1);
+  if (o.type === 'mar' && ev2Type(ev, D) === 'web') put('type', 'mar');
+  if ('reg' in o && o.reg && typeof o.reg === 'object') { const R = o.reg, old = efJ(ev.reg, null) || {}, c = { phone: R.phone === 0 || R.phone === false ? 0 : 1, email: R.email === 0 || R.email === false ? 0 : 1, skip_email: R.skip_email ? 1 : 0 },
+      g = R.greet || {}, a = R.ask_email || {};
+    c.greet = { text: bStr(g.text, 1500) || undefined, btn: bStr(g.btn, 40) || undefined }; c.ask_email = { text: bStr(a.text, 1000) || undefined, err: bStr(a.err, 500) || undefined };
+    if (old.gc_group) c.gc_group = old.gc_group; put('reg', JSON.stringify(c)) }
+  if ('access' in o && o.access) { const A = ev2Acc({ access: JSON.stringify(o.access) }); put('access', JSON.stringify(A)) }
+  if ('rec' in o && o.rec) { const R = ev2Rec({ rec: JSON.stringify(o.rec) }); if (![1, 3, 7, 0, -1].includes(R.days) && R.days !== ev2Rec(ev).days) R.days = 1; put('rec', JSON.stringify(R)) }
+  if (!set.length) return { ok: false, err: 'Нечего сохранять' };
+  await env.DB.prepare('UPDATE efir_event SET ' + set.join(', ') + ', upd=? WHERE id=?').bind(...b, now, ev.id).run(); ev.upd = now;
+  /* в дни: ведущий, длительность, доступ, запись; у вебинара — тема и коротко дня = мероприятия */
+  const type = ev2Type(ev, D), A = ev2Acc(ev), RC = ev2Rec(ev);
+  for (const e of D) { if (['done', 'rec'].includes(e.status) && !('access' in o) && !('rec' in o)) continue; const c = efJ(e.cfg, {}), s2 = [], b2 = [];
+    if ('host' in o && !['live', 'done', 'rec'].includes(e.status)) { const h = ev2Host(ev.host), hc = CURATORS.find(x => x.id === h); s2.push('host_cid=?', 'host_uid=?', 'host_name=?'); b2.push(h, hc ? hc.uid : efAdminUid(env), ev2HostName(h)) }
+    if ('dur' in o && !['live', 'done', 'rec'].includes(e.status)) { s2.push('dur=?'); b2.push(ev.dur) }
+    if (type === 'web' && ('title' in o || 'short' in o)) { if ('title' in o) { s2.push('title=?'); b2.push(ev.title) } if ('short' in o) c.short = ev.short || undefined }
+    if ('access' in o) { s2.push('tariff=?'); b2.push(A.who === 'stream' ? 'sel' : 'open'); if (A.who === 'stream') c.access = { streams: A.streams, tariffs: A.tariffs }; else delete c.access }
+    if ('rec' in o) { if (RC.days === -1) { c.rec_hide = 1; c.rec_days = 0 } else { delete c.rec_hide; c.rec_days = RC.days } }
+    if ('fmt' in o) c.fmt = ev.fmt;
+    if ('cover' in o) { s2.push('cover=?'); b2.push(ev.cover && /^https:/.test(ev.cover) ? ev.cover : null) }
+    s2.push('cfg=?', 'upd=?'); b2.push(JSON.stringify(c), now); dq.push(env.DB.prepare('UPDATE efir SET ' + s2.join(', ') + ' WHERE id=?').bind(...b2, e.id)) }
+  if (dq.length) await env.DB.batch(dq);
+  const steps = await ev2SaveSteps(env, ev); await logIt(env, 'ev-save2', W.uid, ev.id + ' ' + set.map(x => x.split('=')[0]).join(','));
+  return { ok: true, upd: now, steps } }
+/* шаг 2: дни [{id?, title, short, start, del?, hide?}] — 2–7 дней у марафона, 1 у вебинара. Удалить — только будущий день без зрителей; прошедший — скрыть */
+async function ev2DaysSave(env, ev, o, W) { const now = msNow(); if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' };
+  const D = await ev2Days(env, ev.id), type = ev2Type(ev, D), L = Array.isArray(o.days) ? o.days.slice(0, 10) : null; if (!L) return { ok: false, err: 'Нет дней' };
+  const keep = L.filter(d => !d.del), max = type === 'web' ? 1 : 7, min = type === 'web' ? 1 : 2;
+  if (keep.length > max) return { ok: false, err: type === 'web' ? 'У вебинара один эфир — сделай марафон' : 'В марафоне не больше 7 дней' };
+  if (keep.length < min) return { ok: false, err: 'В марафоне минимум 2 дня' };
+  const byId = {}; for (const e of D) byId[e.id] = e; const q = [], moved = [];
+  for (const d of L.filter(d => d.del && byId[+d.id])) { const e = byId[+d.id], seen = await env.DB.prepare('SELECT COUNT(*) n FROM efir_seen WHERE efir_id=?').bind(e.id).first();
+    if (['live', 'done', 'rec'].includes(e.status) || (e.start && e.start < now) || ((seen && seen.n) | 0)) return { ok: false, err: 'Прошедший день не удалить — только скрыть' };
+    q.push(env.DB.prepare('UPDATE efir SET del=1, upd=? WHERE id=?').bind(now, e.id)) }
+  const h = ev2Host(ev.host || 'admin'), hc = CURATORS.find(x => x.id === h), dst = ev2Status(ev) === 'draft' ? 'draft' : 'plan', A = ev2Acc(ev), RC = ev2Rec(ev);
+  keep.forEach((d, i) => { const title = type === 'web' ? bStr(ev.title, 140) : bStr(d.title, 140), start = +d.start > 0 ? +d.start : null, e = byId[+d.id];
+    if (e) { const c = efJ(e.cfg, {}); c.ord = i; c.short = type === 'web' ? (ev.short || undefined) : (bStr(d.short, 24) || undefined); if ('hide' in d) { if (d.hide) c.hide = 1; else delete c.hide }
+      if (['live', 'done', 'rec'].includes(e.status)) { q.push(env.DB.prepare('UPDATE efir SET title=?, cfg=?, upd=? WHERE id=?').bind(title || e.title, JSON.stringify(c), now, e.id)); return }
+      if (start && e.start && start !== e.start && e.start - now < 864e5 && e.start > now) moved.push(e.id);
+      q.push(env.DB.prepare('UPDATE efir SET title=?, start=?, cfg=?, upd=? WHERE id=?').bind(title, start, JSON.stringify(c), now, e.id));
+      if (e.start !== start) q.push(env.DB.prepare("UPDATE efir_reg SET rem='' WHERE efir_id=? AND sess=0").bind(e.id)) }
+    else { const c = { ev: ev.id, ord: i }; if (bStr(d.short, 24)) c.short = bStr(d.short, 24); if (A.who === 'stream') c.access = { streams: A.streams, tariffs: A.tariffs }; c.rec_days = RC.days === -1 ? 0 : RC.days; if (ev.fmt) c.fmt = ev.fmt;
+      q.push(env.DB.prepare("INSERT INTO efir (title, about, host_cid, host_uid, host_name, start, dur, kind, tariff, status, cfg, chapters, created, upd) VALUES (?, '', ?, ?, ?, ?, ?, 'open', ?, ?, ?, '[]', ?, ?)")
+        .bind(title, h, hc ? hc.uid : efAdminUid(env), ev2HostName(h), start, +ev.dur || 90, A.who === 'stream' ? 'sel' : 'open', dst, JSON.stringify(c), now, now)) } });
+  q.push(env.DB.prepare('UPDATE efir_event SET upd=? WHERE id=?').bind(now, ev.id)); await env.DB.batch(q); ev.upd = now;
+  /* новые дни запущенного мероприятия — записавшиеся записываются и на них */
+  if (dst === 'plan') { const E = await evEfirs(env, ev.id), R = await qAll(env.DB.prepare('SELECT k, uid, chat, name, src FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0 LIMIT 3000').bind(ev.id)), add = [];
+    for (const e of E.filter(x => x.status === 'plan')) for (const r of R) add.push(env.DB.prepare("INSERT OR IGNORE INTO efir_reg (efir_id, k, uid, chat, name, sess, src, at, rem) VALUES (?,?,?,?,?,0,?,?,'dhs')").bind(e.id, r.k, r.uid || null, r.chat || null, r.name || null, r.src || 'app', now));
+    for (let i = 0; i < add.length; i += 90) await env.DB.batch(add.slice(i, i + 90)) }
+  const D2 = await ev2Days(env, ev.id), steps = await ev2SaveSteps(env, ev, D2); await logIt(env, 'ev-days2', W.uid, ev.id + ' ' + keep.length);
+  return { ok: true, upd: now, steps, days: D2.map(e => ev2DayPub(e, now)), moved } }
+/* §2.4 переходы статуса: draft → test | reg, test → reg | draft; reg → draft нельзя */
+async function ev2Launch(env, ev, o, W) { const to = String(o.mode || ''), from = ev2Status(ev), now = msNow();
+  const OK = from === 'draft' ? ['test', 'reg'] : from === 'test' ? ['reg', 'draft'] : [];
+  if (!OK.includes(to)) return { ok: false, err: from === 'reg' || from === 'done' ? 'Регистрация уже идёт — в' + NB + 'черновик не' + NB + 'вернуть' : 'Так статус не' + NB + 'меняется' };
+  if (to !== 'draft') { const C = await ev2Check(env, ev); if (C.must.length) return { ok: false, err: 'Запуску мешают ' + C.must.length + ' ' + ev2Pl(C.must.length, 'шаг', 'шага', 'шагов'), must: C.must } }
+  const q = [env.DB.prepare('UPDATE efir_event SET status=?, upd=? WHERE id=?').bind(to, now, ev.id)];
+  if (to === 'draft') q.push(env.DB.prepare("UPDATE efir SET status='draft', upd=? WHERE del=0 AND kind='open' AND status='plan' AND CAST(json_extract(cfg, '$.ev') AS INTEGER)=?").bind(now, ev.id));
+  else q.push(env.DB.prepare("UPDATE efir SET status='plan', upd=? WHERE del=0 AND kind='open' AND status='draft' AND CAST(json_extract(cfg, '$.ev') AS INTEGER)=?").bind(now, ev.id));
+  await env.DB.batch(q); ev.status = to; const steps = await ev2SaveSteps(env, ev); await logIt(env, 'ev-launch', W.uid, ev.id + ' ' + from + '→' + to);
+  return { ok: true, status: to, steps } }
+/* «Дублировать» (1.1, 1.2): копия настроек, дней без дат, материалов и меток — черновиком */
+async function ev2Dup(env, ev, W) { const now = msNow(), D = await ev2Days(env, ev.id), type = ev2Type(ev, D);
+  const r = await env.DB.prepare("INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd, reg, type, status, host, fmt, dur, short, sale, access, rec, named) VALUES (?,?,?,?,?,?,?,?,?, 'draft', ?,?,?,?,?,?,?, 1) RETURNING id")
+    .bind(bStr((ev.title || '') + ' (копия)', 140), ev.about || '', ev.cover || null, ev.offer || null, ev.funnel || null, now, now, ev.reg || JSON.stringify(EV_REG_NEW), type, ev.host || 'admin', ev.fmt || 'obs', ev.dur || 90, ev.short || '', ev.sale || null, ev.access || null, ev.rec || null).first();
+  const q = [env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) SELECT ?, code, title, ? FROM ev_src WHERE ev_id=?").bind(r.id, now, ev.id),
+    env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now),
+    env.DB.prepare('INSERT INTO ev_mat (ev_id, kind, data, days, ord, del, at) SELECT ?, kind, data, days, ord, 0, ? FROM ev_mat WHERE ev_id=? AND del=0').bind(r.id, now, ev.id)];
+  D.filter(e => !efJ(e.cfg, {}).hide).forEach((e, i) => { const c0 = efJ(e.cfg, {}), c = { ev: r.id, ord: i }; for (const k of ['short', 'access', 'rec_days', 'rec_hide', 'fmt', 'lead']) if (c0[k] != null) c[k] = c0[k];
+    q.push(env.DB.prepare("INSERT INTO efir (title, about, host_cid, host_uid, host_name, start, dur, kind, tariff, status, cfg, chapters, created, upd) VALUES (?, ?, ?, ?, ?, NULL, ?, 'open', ?, 'draft', ?, '[]', ?, ?)")
+      .bind(e.title || '', e.about || '', e.host_cid || 'admin', e.host_uid || efAdminUid(env), e.host_name || 'Роман Одуванов', e.dur || 90, e.tariff || 'open', JSON.stringify(c), now, now)) });
+  await env.DB.batch(q); const nv = await evGet(env, r.id); await ev2SaveSteps(env, nv); await logIt(env, 'ev-dup', W.uid, ev.id + '→' + r.id); return { ok: true, id: r.id } }
+/* списки 1.1 / 1.2: мероприятия своего типа (+ в 1.1 эфиры Романа для учеников без мероприятия), счётчики одним набором запросов */
+async function ev2List(env, type) { const now = msNow(), t = type === 'mar' ? 'mar' : 'web';
+  const EVS = await qAll(env.DB.prepare("SELECT * FROM efir_event WHERE del=0 AND COALESCE(type,'')<>'auto' ORDER BY id DESC LIMIT 200")), ids = EVS.map(e => +e.id);
+  const DA = ids.length ? await qAll(env.DB.prepare("SELECT id, title, start, dur, status, cfg, host_cid, host_name, at_live, at_end, CAST(json_extract(cfg, '$.ev') AS INTEGER) ev FROM efir WHERE del=0 AND kind='open' AND status<>'cancel' AND CAST(json_extract(cfg, '$.ev') AS INTEGER) IN (" + ids.join(',') + ') ORDER BY COALESCE(json_extract(cfg, \'$.ord\'), 999), COALESCE(start, 0), id')) : [];
+  const byEv = {}; for (const d of DA) (byEv[d.ev] = byEv[d.ev] || []).push(d);
+  const mine = EVS.filter(ev => ev2Type(ev, byEv[ev.id]) === t), EF = t === 'web' ? await qAll(env.DB.prepare("SELECT id, title, start, dur, status, cfg, tariff, host_cid, host_name, at_live, at_end FROM efir WHERE del=0 AND kind='live' AND COALESCE(host_cid,'admin')='admin' AND status<>'cancel' AND json_extract(cfg, '$.ev') IS NULL ORDER BY start DESC LIMIT 200")) : [];
+  const evIds = mine.map(e => +e.id), dayIds = [].concat(...mine.map(e => (byEv[e.id] || []).map(d => +d.id))), efIds = EF.map(e => +e.id), allEf = dayIds.concat(efIds);
+  const Q = []; if (evIds.length) Q.push(env.DB.prepare('SELECT ev_id, COUNT(*) n FROM ev_reg WHERE COALESCE(test,0)=0 AND ev_id IN (' + evIds.join(',') + ') GROUP BY ev_id'),
+    env.DB.prepare('SELECT ev_id, COUNT(*) n FROM ev_form WHERE COALESCE(test,0)=0 AND ev_id IN (' + evIds.join(',') + ') GROUP BY ev_id'));
+  if (allEf.length) Q.push(env.DB.prepare('SELECT efir_id, k, MAX(last) last FROM efir_seen WHERE sess=0 AND efir_id IN (' + allEf.join(',') + ') GROUP BY efir_id, k'),
+    env.DB.prepare('SELECT efir_id, k, COUNT(*) n FROM efir_lead WHERE efir_id IN (' + allEf.join(',') + ') GROUP BY efir_id, k'),
+    env.DB.prepare('SELECT efir_id, COUNT(*) n FROM efir_reg WHERE efir_id IN (' + allEf.join(',') + ') GROUP BY efir_id'));
+  const RS = Q.length ? await env.DB.batch(Q) : [], res = i => (RS[i] && RS[i].results) || [];
+  const RG = {}, FM = {}, SN = {}, LD = {}, ER = {}, ON = {}; let i0 = 0;
+  if (evIds.length) { for (const x of res(0)) RG[x.ev_id] = x.n; for (const x of res(1)) FM[x.ev_id] = x.n; i0 = 2 }
+  if (allEf.length) { for (const x of res(i0)) { (SN[x.efir_id] = SN[x.efir_id] || new Set()).add(x.k); if (x.last > now - 9e4) ON[x.efir_id] = (ON[x.efir_id] || 0) + 1 } for (const x of res(i0 + 1)) (LD[x.efir_id] = LD[x.efir_id] || []).push(x); for (const x of res(i0 + 2)) ER[x.efir_id] = x.n }
+  const hasRec = await env.DB.prepare("SELECT COUNT(*) n FROM efir WHERE del=0 AND kind IN ('open','live') AND status IN ('done','rec') AND rec IS NOT NULL AND rec<>'' AND rec<>'null'").first();
+  const sig = c => c.signal ? (c.signal.at_on && (!c.signal.at_off || c.signal.at_on > c.signal.at_off) ? 'on' : 'off') : null;
+  /* §2.4: reg → done сам — все дни прошли (done/rec) или скрыты, через 1 ч после конца последнего */
+  const fin = mine.filter(ev => ev2Status(ev) === 'reg' && (byEv[ev.id] || []).length && (byEv[ev.id] || []).every(d => ['done', 'rec'].includes(d.status) || efJ(d.cfg, {}).hide) && Math.max(...(byEv[ev.id] || []).map(d => d.at_end || d.start || 0)) + 36e5 < now);
+  if (fin.length) { await env.DB.batch(fin.map(ev => env.DB.prepare("UPDATE efir_event SET status='done', upd=? WHERE id=? AND status='reg'").bind(now, ev.id))); for (const ev of fin) { ev.status = 'done'; ev.steps = null } }
+  const items = [];
+  for (const ev of mine) { const D = byEv[ev.id] || [], vis = D.filter(d => !efJ(d.cfg, {}).hide), S = ev2Sale(ev), A = ev2Acc(ev), st = ev2Status(ev), steps = efJ(ev.steps, null) || await ev2SaveSteps(env, ev);
+    const came = new Set(); let leads = 0; for (const d of D) { for (const k of SN[d.id] || []) came.add(k); leads += (LD[d.id] || []).reduce((s, x) => s + x.n, 0) }
+    const host = ev2Host(ev.host || (D[0] && D[0].host_cid) || 'admin'), live = D.find(d => d.status === 'live');
+    items.push({ k: 'ev', id: ev.id, type: t, status: st, title: ev.title || '', short: ev.short || '', host_name: ev2HostShort(host), fmt: ev.fmt === 'room' ? 'room' : (D[0] && efJ(D[0].cfg, {}).room ? 'room' : 'obs'),
+      access: { who: A.who, streams: A.streams }, regs: RG[ev.id] | 0, came: came.size, leads, forms: FM[ev.id] | 0, pays: null, mode: S ? S.mode || null : null, steps,
+      ready: Object.keys(steps).filter(k => steps[k] === 'd').length, bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id,
+      days: vis.map(d => ({ id: d.id, title: d.title || '', short: efJ(d.cfg, {}).short || '', start: d.start || null, status: d.status })),
+      live: live ? { efir_id: live.id, at_live: live.at_live || live.start, online: ON[live.id] | 0, leads: (LD[live.id] || []).reduce((s, x) => s + x.n, 0), sig: sig(efJ(live.cfg, {})) } : null }) }
+  for (const e of EF) { const c = efJ(e.cfg, {}), acc = c.access || null;
+    items.push({ k: 'efir', id: e.id, efir_id: e.id, status: e.status === 'draft' ? 'draft' : ['done', 'rec'].includes(e.status) ? 'done' : 'reg', day_status: e.status, title: e.title || '', short: c.short || '', host_name: ev2HostShort(e.host_cid || 'admin'), fmt: c.room ? 'room' : 'obs',
+      access: { who: 'stream', streams: acc && acc.streams ? acc.streams : [], all: e.tariff === 'all' ? 1 : 0 }, regs: null, came: (SN[e.id] || new Set()).size, leads: (LD[e.id] || []).reduce((s, x) => s + x.n, 0), mode: null, steps: null, ready: null, start: e.start || null,
+      link: 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&e=' + e.id, regn: ER[e.id] | 0,
+      days: [{ id: e.id, title: e.title || '', short: c.short || '', start: e.start || null, status: e.status }],
+      live: e.status === 'live' ? { efir_id: e.id, at_live: e.at_live || e.start, online: ON[e.id] | 0, leads: (LD[e.id] || []).reduce((s, x) => s + x.n, 0), sig: sig(c) } : null }) }
+  return { ok: true, now, type: t, items, rec_ok: ((hasRec && hasRec.n) | 0) > 0 ? 1 : 0 } }
+/* потоки и тарифы для «Ученики потока» (2.7): уникальные значения из рейтинга (data.json) */
+async function ev2Streams(env) { let D = null; try { D = await loadData(env) } catch (e) {} const S = new Set(), T = new Set();
+  for (const r of (D && D.rows) || []) { if (r.stream) S.add(String(r.stream)); if (r.tar) T.add(String(r.tar)) } if (D && D.stream) S.add(String(D.stream));
+  return { ok: true, streams: [...S].sort(), tariffs: [...T].sort() } }
+/* §6.4 2.7: «Ученики потока» — ученик подходит, если его поток в streams и (тарифы пусты или его тариф в tariffs); поток и тариф — из рейтинга (data.json) */
+async function ev2CanAcc(env, A, W) { if (!W || !W.uid) return false; let D = null; try { D = await loadData(env) } catch (e) { return false }
+  const r = ((D && D.rows) || []).find(x => x.uid != null && +x.uid === +W.uid); if (!r) return false; const st = String(r.stream || D.stream || ''), S = A.streams || [], T = A.tariffs || [];
+  return (!S.length || S.includes(st)) && (!T.length || T.includes(String(r.tar || ''))) }
+/* справочник продуктов ev_prod (§3.2): GET — список, POST {id?, title, price, code} — сохранить, {id, del:1} — удалить */
+async function ev2Prod(env, req, o, W) { const now = msNow();
+  if (req.method === 'POST') { if (o.del && +o.id) { await env.DB.prepare('UPDATE ev_prod SET del=1, at=? WHERE id=?').bind(now, +o.id).run(); return { ok: true } }
+    const t = bStr(o.title, 200); if (!t) return { ok: false, err: 'Напиши название продукта' }; const p = Math.max(0, Math.min(1e8, +String(o.price || 0).replace(/\D/g, '') | 0)), c = bStr(o.code, 60) || null;
+    if (+o.id) { await env.DB.prepare('UPDATE ev_prod SET title=?, price=?, code=?, at=? WHERE id=?').bind(t, p, c, now, +o.id).run(); return { ok: true, id: +o.id } }
+    const r = await env.DB.prepare('INSERT INTO ev_prod (title, price, code, del, at) VALUES (?,?,?,0,?) RETURNING id').bind(t, p, c, now).first(); await logIt(env, 'ev-prod', W.uid, r.id + ' ' + t); return { ok: true, id: r.id } }
+  return { ok: true, prods: await qAll(env.DB.prepare('SELECT id, title, price, code FROM ev_prod WHERE del=0 ORDER BY at DESC LIMIT 200')) } }
 /* 06.11 (Роман): вместо уведомления о каждой заявке — одна сводка админам после «Завершить эфир» */
 async function efReport(env, e) { const id = e.id, dur = Math.max(1, Math.round(((e.at_end || msNow()) - (e.at_live || e.start || msNow())) / 6e4));
   const [rg, sn, ms, qs, ld, wk, vc] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(id), env.DB.prepare('SELECT COUNT(DISTINCT k) n, AVG(min) a, SUM(CASE WHEN min>=?2 THEN 1 ELSE 0 END) half FROM efir_seen WHERE efir_id=?1 AND sess=0').bind(id, Math.max(1, Math.round(dur / 2))),
