@@ -12,8 +12,8 @@ body{min-height:100vh;background:radial-gradient(70% 40% at 55% 100%,rgba(150,87
 .btn{display:inline-flex;align-items:center;justify-content:center;height:50px;width:100%;border-radius:14px;border:0;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font:600 15px "Inter Tight",sans-serif;cursor:pointer}.btn:disabled{opacity:.5}
 .btn2{height:46px;width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#1c1c1c;color:#fff;font:500 15px "Inter Tight",sans-serif;cursor:pointer}.muted{color:rgba(255,255,255,.45);font-size:13px}.hid{display:none!important}
 html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
-/* 06.11 (Роман): внутри кабинета — без своего фона: под фреймом фон кабинета с фиолетовой подсветкой, чёрного прямоугольника нет */
-:root{color-scheme:dark}html.emb,html.emb body{background:transparent!important}html.emb .wrap{padding:20px 24px 48px}
+/* 06.11 (Роман): внутри кабинета — тот же фон, что у всего кабинета (тёмный + фиолетовая подсветка снизу), без отдельного чёрного прямоугольника */
+:root{color-scheme:dark}html.emb{background:#000106!important}html.emb body{background:transparent!important}html.emb body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(60% 18% at 55% 100%,rgba(252,203,255,.28),transparent 100%),radial-gradient(85% 42% at 55% 100%,rgba(150,87,232,.55),rgba(96,0,255,.3) 40%,rgba(28,8,56,.25) 70%,transparent 100%),#000106}html.emb .wrap{padding:20px 24px 48px}
 /* 31.10 QA Н6: скелет списка до загрузки efir.js — те же правила, что вставляет efir.js (css()) */
 .efx{--i2:rgba(255,255,255,.6);color:#fff;display:flex;flex-direction:column;gap:14px;min-width:0}.efx h2{margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1}.ef-row{display:flex;align-items:center;gap:10px;min-width:0}.ef-sp{justify-content:space-between}.ef-mut{color:var(--i2);font-size:13px}.ef-sk{display:block;border-radius:20px;background:linear-gradient(90deg,#141414,#1d1d1d,#141414);background-size:200% 100%;animation:efs 1.3s infinite}@keyframes efs{to{background-position:-200% 0}}
 @media (max-width:767px){.wrap{padding:12px 12px 60px}html.emb .wrap{padding:8px 12px 40px}}
@@ -24,7 +24,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <button class="btn" id="bLogin">Войти через Telegram</button><span class="muted" id="lgSt"></span></div></div>
 <div id="ef"></div>
 </div>
-<script defer src="efir.js?v=32"></script>
+<script defer src="efir.js?v=33"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -33,9 +33,9 @@ var EMB=/[?&]embed=1/.test(location.search);if(EMB)document.documentElement.clas
 var API='https://oduvanov-api.romanoduvanov52.workers.dev',TK=null,ROLE='';try{TK=localStorage.getItem('efTok');ROLE=localStorage.getItem('efRole')||''}catch(e){}
 function $(i){return document.getElementById(i)}
 function qs(k){var m=location.search.match(new RegExp('[?&]'+k+'=([^&#]+)'));return m?decodeURIComponent(m[1]):''}
-var GID=+qs('id')||0,GR=qs('r');if(!/^(g-?\d{3,20}|w[0-9a-f]{16})\.[0-9a-f]{20}$/.test(GR))GR='';
+var GID=+qs('id')||0,GEV=+qs('ev')||0,GR=qs('r');if(!/^(g-?\d{3,20}|w[0-9a-f]{16})\.[0-9a-f]{20}$/.test(GR))GR='';
 /* 06.11: гость из браузера (по имени) — метка запоминается на устройстве, прямая ссылка ?id= открывает комнату сразу */
-if(!GR&&GID&&!EMB){try{var gw=localStorage.getItem('efW');if(gw&&/^w[0-9a-f]{16}\.[0-9a-f]{20}$/.test(gw))GR=gw}catch(e){}}
+if(!GR&&(GID||GEV)&&!EMB){try{var gw=localStorage.getItem('efW');if(gw&&/^w[0-9a-f]{16}\.[0-9a-f]{20}$/.test(gw))GR=gw}catch(e){}}
 /* 31.10 QA Н6: 5–8 с чёрного экрана — efir.js (134 КБ) и шрифт грузились до первой отрисовки, потом ещё ждали вход от кабинета (до 5 с) и /login/fs по очереди.
    Теперь: шапка и скелет рисуются этим скриптом сразу (efir.js — defer, шрифт не блокирует), запрос входа к кабинету уходит сразу, параллельно с загрузкой efir.js;
    если на устройстве уже есть сессия того же пользователя — список открывается с ней, не дожидаясь кабинета. */
@@ -47,7 +47,7 @@ if(EMB&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage
 function apiF(p,o){o=o||{};var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
-var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r){try{localStorage.setItem('efW',r)}catch(e){}location.replace(location.pathname+'?id='+GID+'&r='+encodeURIComponent(r)+'#e'+GID)},fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
+var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r,eid){try{localStorage.setItem('efW',r)}catch(e){}var id=eid||GID;location.replace(location.pathname+'?'+(GEV?'ev='+GEV+'&':'')+(id?'id='+id+'&':'')+'r='+encodeURIComponent(r)+(id?'#e'+id:''))},fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
   top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4}};
 function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
@@ -74,10 +74,10 @@ addEventListener('hashchange',route);
 /* 30.10 QA №12: «Пульт эфиров» — одна кнопка справа вверху. 31.10 Н6: вход у кабинета запрашиваем сразу (P), efir.js догружается параллельно (defer) */
 var P=GR?null:viaSite(),RT=0;
 function start(){if(!window.ECOEFIR){$('ef').innerHTML='<div class="ef-mut" style="padding:20px 0">Эфиры не загрузились. Обнови страницу.</div>';return}
-  if(GR){if(!location.hash)location.replace('#e'+GID);route();return}
+  if(GR){if(GEV&&!location.hash){$('ef').className='';ECOEFIR.evLanding($('ef'),GEV,O);return}if(!location.hash)location.replace('#e'+GID);route();return}
   /* есть сессия этого пользователя на устройстве — открываем сразу, кабинет подтвердит позже (другой пользователь — перезайдём и перерисуем) */
   if(TK&&EFU){RT=1;if(GID&&!location.hash)location.replace('#e'+GID);route()}
-  P.then(function(ok){if(RT){if(ok===true)route();return}if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()})}
+  P.then(function(ok){if(RT){if(ok===true)route();return}if(ok||TK){if(GID&&!location.hash)location.replace('#e'+GID);route();return}if(GEV){$('ef').className='';ECOEFIR.evLanding($('ef'),GEV,O);return}if(GID){$('ef').className='';ECOEFIR.landing($('ef'),GID,O);return}login()})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 </script></body></html>
