@@ -194,9 +194,12 @@
   /* ================= комната эфира / автовебинара, запись ================= */
   R.room = function (el, id, O) { css(); el.classList.add('efx'); var S = { id: id, j: null, r: null, tab: 'chat', after: 0, asec: -1, msgs: [], qs: [], tm: 0, ping: 0, q: false, fresh: 1, leadAt: null, plKey: '' };
     el.innerHTML = '<span class="ef-sk" style="height:220px"></span><span class="ef-sk" style="height:60px"></span>';
-    function stop() { clearInterval(S.tm); clearInterval(S.ping); S.tm = S.ping = 0; document.documentElement.classList.remove('chopen') }
+    function stop() { clearInterval(S.tm); clearInterval(S.ping); S.tm = S.ping = 0; document.documentElement.classList.remove('chopen'); if (S.r2) { S.r2.stop(); S.r2 = null } }
     function alive() { if (!el.isConnected) { stop(); return false } return true }
-    api(O, '/efir/one?id=' + id).then(function (j) { if (!alive()) return; if (!j.ok) { el.innerHTML = '<div class="ef-c ef-emp"><b>' + (j.nf ? 'Эфиры скоро заработают' : 'Эфир не' + NB + 'открылся') + '</b><span class="ef-mut">' + esc(j.err || 'Попробуй ещё раз.') + '</span><button class="ef-btn2" data-x="back">← Все эфиры</button></div>'; el.onclick = function (e) { if (e.target.closest('[data-x=back]')) go(O, 'list', 0, el) }; return }
+    api(O, '/efir/one?id=' + id).then(function (j) { if (!alive()) return;
+      /* 07.11 Э5: новая комната (4.2–4.9) — только при флаге efir_ui2 у этого человека (me.ui2) и в режиме сверки; без флага — всё как раньше */
+      if (j && ((j.ok && j.me && j.me.ui2) || (!j.ok && j.ui2 && j.deny) || (j.ok && R.fx && R.fx.on()))) { if (!j.ok) j = { ok: true, efir: j.efir || { id: id, title: '', start: 0, state: 'soon' }, me: {}, x5: j.x5 || {}, deny: j.deny }; S.r2 = O.room2 ? O.room2(id, j) : R.room2(el, id, O, j); return }
+      if (!j.ok) { el.innerHTML = '<div class="ef-c ef-emp"><b>' + (j.nf ? 'Эфиры скоро заработают' : 'Эфир не' + NB + 'открылся') + '</b><span class="ef-mut">' + esc(j.err || 'Попробуй ещё раз.') + '</span><button class="ef-btn2" data-x="back">← Все эфиры</button></div>'; el.onclick = function (e) { if (e.target.closest('[data-x=back]')) go(O, 'list', 0, el) }; return }
       S.j = j; var e = j.efir; if (O.title) O.title(e.title, e.state === 'live' ? 'идёт сейчас' : e.state === 'done' ? 'запись' : when(e.start));
       if (e.state === 'live') { if (e.kind === 'auto' && Date.now() - e.start > 10 * 6e4 && !j.me.sess && !late()) return lateScreen(); return live() }
       if (e.state === 'done') return e.kind === 'auto' ? autoDone() : record();
@@ -482,6 +485,213 @@
     "html.fx body{background:#000106!important}html.fx.efn-on.efn-on body::before{display:none}"
   ];
   function css2() { if (document.getElementById('efnCss')) return; var s = document.createElement('style'); s.id = 'efnCss'; s.textContent = CSS2.join('\n'); document.head.appendChild(s) }
+
+
+  /* ================= 07.11 «Эфиры 2.0», этап Э5: новая комната зрителя 4.2–4.9 (доски Room, V2–V8, VX) — только при флаге efir_ui2 (me.ui2 из /efir/one) и в режиме сверки =================
+     Без флага R.room работает как раньше. Одна функция R.room2, состояния без перезагрузки: ожидание (чат у мероприятий за 60 мин), эфир, заявка (форма), заявка отправлена, конец эфира, запись,
+     запись закрыта, нет доступа, вопрос на экране, сцена, опрос, чат выключен, запрет писать, нет связи; телефон < 768 — раскладка 4.7 / шторка 4.8. Внутрь плеера и комнаты Kinescope ничего не выводим. */
+  var CSS6 = [
+    ".efn.pg.x6pg{padding:24px 40px;box-sizing:border-box;gap:16px;align-items:flex-start;min-height:100vh}.efn .x6l{flex:3 1 520px;gap:14px}",
+    ".efn .x6side{flex:2 1 340px;min-height:900px;gap:0;background:#111;border-radius:22px;border:1px solid rgba(255,255,255,.06)}.efn .x6t10{padding:10px}.efn .seg.x6seg{display:flex}.efn .x6seg button{flex:1}",
+    ".efn .x6feed{flex:1 1 auto;gap:12px;padding:6px 16px;font-size:14px}.efn .x6inr{padding:12px;gap:8px;border-top:1px solid rgba(255,255,255,.06)}.efn .x6inr>.in{flex:1}.efn .b1.x6sq{width:44px;height:44px;padding:0}",
+    ".efn .x6cl{padding:12px;border-top:1px solid rgba(255,255,255,.06)}.efn .c0.x6pin{background:rgba(215,127,255,.12)}.efn .x6mn{color:#e2c9ff}.efn .pill.x6you{font-size:11px}",
+    ".efn .ph.x6col{flex-direction:column;gap:10px}.efn .x6cd{font-size:40px;color:#fff;font-feature-settings:'tnum'}.efn .x6w22{font-size:22px;color:#fff}.efn .x6w{color:#fff}",
+    ".efn .x6lv{position:absolute;left:14px;top:14px}.efn .x6vw{position:absolute;right:14px;top:14px}.efn .x6tt{gap:2px}.efn .x6b20{font-size:20px}.efn .x6b18{font-size:18px}",
+    ".efn .c.x6g10{gap:10px}.efn .x6as{align-self:flex-start}.efn .x6err{font-size:13px}.efn .row.x6g6{gap:6px}.efn .b2.x6my{box-shadow:inset 0 0 0 1px #d77fff}",
+    ".efn .c.x6ban{flex-direction:row;align-items:center;gap:14px;flex-wrap:wrap}.efn .x6bt{flex:1 1 240px;gap:2px}.efn .x6img{width:100%;max-height:220px;object-fit:cover;border-radius:14px}",
+    ".efn .x6scr{position:absolute;left:16px;right:16px;bottom:16px;background:rgba(12,12,14,.88);text-align:left;align-items:flex-start}.efn .ph>iframe,.efn .ph>video{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:inherit}",
+    ".efn .ph>.ph{position:absolute;inset:0;aspect-ratio:auto}.efn .ph.x6rec{justify-content:flex-end;align-items:stretch;padding:12px;text-align:left}.efn .x6pr{gap:6px;width:100%}.efn .x6bar{height:4px;border-radius:4px;background:rgba(255,255,255,.2)}.efn .x6bar>div{height:4px;border-radius:4px;background:#d77fff}.efn .x6t13{color:#fff;font-size:13px}",
+    ".efn .c0.x6line{flex-direction:row;align-items:center;gap:10px}.efn .x6line>.dim{flex:1}.efn .x6lg{display:inline-flex;align-items:center;gap:8px;letter-spacing:-.02em;font-weight:700}.efn .x6lg i{font-style:normal;font-weight:500;color:#c9a2ff}.efn .x6lg svg{flex:none}",
+    ".efn .x6bl{display:flex;flex-direction:column;gap:14px;min-width:0}.efn .x6bl:empty{display:none}.efn .x6q{gap:10px}.efn .x6qa{opacity:.55}.efn button.pill{font-family:inherit;border:0;cursor:pointer;margin:0}.efn .pill.x6on{background:rgba(215,127,255,.18);color:#ecd5ff}",
+    ".efn.x6ov{position:fixed;inset:0;background:rgba(0,1,6,.72);z-index:60;display:flex;justify-content:flex-end}.efn .x6days{gap:10px}",
+    /* VX: остальные состояния (страница сверки) */
+    ".efn.pg.x6vx{flex-direction:column;flex-wrap:nowrap;padding:32px 40px;box-sizing:border-box;gap:18px}.efn .x6vh{gap:4px}.efn .x6vb{gap:8px}.efn .x6pn{gap:16px;align-items:flex-start}",
+    ".efn .x6pc{width:300px;gap:8px;padding:14px;border-radius:22px;background:#0c0c10;border:1px solid rgba(255,255,255,.08)}.efn .ph.x6r14{border-radius:14px}.efn .ph.x6c6{flex-direction:column;gap:6px}.efn .x6w26{color:#fff;font-size:26px}.efn .c.cv.x6p12{padding:12px;gap:6px}",
+    /* телефон 4.7 / 4.8 */
+    ".efn.pg.x6m{flex-direction:column;flex-wrap:nowrap;overflow:hidden;height:100vh;height:100dvh;position:relative}.efn .ph.x6r0{border-radius:0;flex:none}.efn .live.x6lv7{position:absolute;left:10px;top:10px;height:24px;font-size:12px}.efn .x6vw7{position:absolute;right:10px;top:10px}",
+    ".efn .x6mt{padding:12px 14px;gap:10px}.efn .x6b16{font-size:16px}.efn .c.cv.x6lc{padding:14px;gap:8px}.efn .x6mf{flex:1 1 auto;gap:10px;padding:0 14px;font-size:14px;overflow-y:auto;min-height:0}",
+    ".efn .x6mi{padding:10px 12px 22px;gap:8px;border-top:1px solid rgba(255,255,255,.06);flex-wrap:nowrap}.efn .x6mi>.in{flex:1;min-width:0}.efn .b2.x6hd{padding:0 12px}",
+    ".efn .ph.x6o5{opacity:.5}.efn .x6sh{position:absolute;left:0;right:0;bottom:0;top:150px;border-radius:24px 24px 0 0;background:#141218;border-top:1px solid rgba(215,127,255,.4);padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;overflow-y:auto}",
+    ".efn .x6hn{width:40px;height:4px;border-radius:4px;background:rgba(255,255,255,.25);align-self:center;flex:none}.efn .b1.x6mt0{margin-top:auto}.efn .x6ctr{text-align:center}.efn .x6inv{visibility:hidden}",
+    "@media (max-width:767px){.efn.pg.x6pg{padding:12px}}"
+  ];
+  function css6() { if (document.getElementById('efnCss6')) return; var s = document.createElement('style'); s.id = 'efnCss6'; s.textContent = CSS6.join('\n'); document.head.appendChild(s) }
+  var LOGO = '<svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true">' + [[0, 0], [22, 0], [44, 0], [0, 22], [44, 22], [0, 44], [22, 44], [44, 44]].map(function (p, i) { return '<rect x="' + p[0] + '" y="' + p[1] + '" width="20" height="20" rx="3" fill="' + (i === 2 ? '#c9a2ff' : '#fff') + '"/>' }).join('') + '</svg>';
+  R.room2 = function (el, id, O, j0) { css2(); css6(); var FXON = R.fx && R.fx.on(), FX = FXON ? R.fx.data() : null, U0 = (FX && FX.ui) || {};
+    var S = { id: id, j: j0, r: null, tab: 'chat', after: 0, msgs: [], qs: [], tm: 0, tk: 0, err: 0, errAt: 0, form: 0, sent: null, lerr: '', vals: null, stg: 0, sheet: 0, dead: 0, rmsgs: null, recOn: 1 };
+    var X = j0.x5 || {}, E = j0.efir, me = j0.me || {}, emb = document.documentElement.classList.contains('emb'), app = !!(O.app || (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData && !/efir\.html/.test(location.pathname)));
+    function now() { return Date.now() }
+    function hm(ms) { return mk(ms).t } function cd(s) { s = Math.max(0, Math.round(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? h + ':' + ('0' + m).slice(-2) + ':' + ('0' + x).slice(-2) : ('0' + m).slice(-2) + ':' + ('0' + x).slice(-2) }
+    function cd2(s) { s = Math.max(0, Math.round(s)); var m = Math.floor(s / 60), x = s % 60; return m + ':' + ('0' + x).slice(-2) }
+    function phone() { return (el.clientWidth || innerWidth) < 768 }
+    function stop() { S.dead = 1; clearInterval(S.tm); clearInterval(S.tk); S.tm = S.tk = 0; document.documentElement.classList.remove('efn-on') }
+    function alive() { if (!el.isConnected || S.dead) { stop(); return false } return true }
+    function toastR(t) { toast(O, t) }
+    function st() { var r = S.r; if (X.kick || (r && r.kick)) return 'kick'; if (S.deny) return 'deny'; if (r && r.state === 'live') return 'live'; if (E.state === 'live' && !r) return 'live'; if (E.state === 'done' || (r && r.state === 'done')) return E.rec ? 'rec' : 'end'; return 'wait' }
+    function mode() { return X.mode || 'sell' }
+    function dayTxt() { return X.day && X.day.of > 1 ? '<span class="dim">День ' + X.day.n + ' из ' + X.day.of + ' · <a href="#e' + id + '/days" data-x="days">' + (X.day.type === 'web' ? 'все дни' : 'весь марафон') + '</a></span>' : '' }
+    function topRow() { var d = dayTxt(); if (emb || app) return d ? '<div class="row sp"><b aria-hidden="true">\u200b</b>' + d + '</div>' : ''; return '<div class="row sp"><b class="x6lg" data-fx-mask>' + LOGO + '<span>Oduvanov<i>School</i></span></b>' + d + '</div>' }
+    function titleHtml() { return '<div class="col x6tt"><b class="x6b20">' + esc(X.title || E.title) + '</b><span class="mut">' + esc('ведёт ' + ((E.host && E.host.name) || X.host || '')) + '</span></div>' }
+    function short() { var t = X.title || E.title; return X.day && X.day.of > 1 ? t.replace(/^(День \d+\. )(.*)$/, function (a, p, rest) { return p + ((X.short || '') || rest) }) : t }
+    /* ---------- плеер и заставки ---------- */
+    function video(v, x) { if (FXON) return 'Видео эфира'; if (!v) return ''; if (v.provider === 'kinescope') return '<iframe src="' + esc(v.embed) + '?autoplay=1' + (x && x.t > 5 ? '&t=' + Math.floor(x.t) : '') + '" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen title="Видео эфира"></iframe>';
+      if (v.file) return '<video src="' + esc(v.url) + '" playsinline controls preload="metadata"></video>'; return '<a class="b1" href="' + esc(v.url) + '" target="_blank" rel="noopener">Открыть видео</a>' }
+    function waitPh(p) { var s = Math.round((E.start - now()) / 1000), t = s >= 864e2 ? 'через ' + Math.floor(s / 864e2) + ' ' + plr(Math.floor(s / 864e2), 'день', 'дня', 'дней') : cd(s);
+      if (p) return '<div class="ph x6col' + (p === 2 ? ' x6r14 x6c6' : ' x6r0') + '"><span class="pill pv">' + (p === 2 ? 'начнётся в ' : 'эфир начнётся в ') + hm(E.start) + '</span><b class="' + (p === 2 ? 'x6w26' : 'x6cd') + '" data-tm="cd">' + t + '</b></div>';
+      return '<div class="ph x6col"><span class="pill pv">эфир начнётся в ' + hm(E.start) + '</span><b class="x6cd" data-tm="cd">' + t + '</b>' + (X.pre_chat && X.chat !== 0 ? '<span>Чат уже открыт — можно поздороваться</span>' : '<span>Страница откроет эфир сама</span>') + '<a class="b3 sm" href="' + esc(calUrl(E, E.start)) + '" target="_blank" rel="noopener" data-x="cal">Добавить в календарь</a></div>' }
+    function livePh(ph) { var r = S.r || {}; if (S.err >= 2) return recon(ph);
+      if (r.sig === 'off') return '<div class="ph x6col' + (ph ? ' x6r0' : '') + '" data-fx-mask><b class="x6w22">Связь прервалась, сейчас вернёмся</b><span>Видео продолжится само</span></div>';
+      var scr = r.screen && r.screen.text ? '<div class="c0 x6scr"><span class="dim">Вопрос · ' + esc(r.screen.name || '') + '</span><b class="x6w" data-notypo>' + esc(r.screen.text) + '</b></div>' : '';
+      if (ph) return '<div class="ph x6r0" data-pl>' + video(E.video) + '<span class="live x6lv7">● LIVE</span><span class="pill x6vw7" data-r="vw">' + (r.viewers || 0) + '</span>' + scr + '</div>';
+      return '<div class="ph" data-pl>' + video(E.video) + '<span class="live x6lv">● LIVE</span><span class="pill x6vw" data-r="vw">' + (r.viewers || 0) + ' смотрят</span>' + scr + '</div>' }
+    function recon() { var long = S.errAt && now() - S.errAt > 1e4; return '<div class="ph x6col" data-fx-mask><b class="x6w">Переподключаемся…</b><span>Видео продолжится само</span>' + (long ? '<button type="button" class="b1 sm" data-x="reload">Обновить</button>' : '') + '</div>' }
+    function endPh(p) { var u = X.rec_until || E.rec_until; if (p) return '<div class="ph x6r14 x6c6"><span class="pill pgr">эфир закончился</span><span>запись через несколько минут</span></div>';
+      return '<div class="ph x6col"><span class="pill pgr">эфир закончился</span><b class="x6w22">Запись появится через несколько минут</b><span>Страница обновится сама.' + (u ? ' Запись доступна до ' + mk(u).d + ' ' + MG[mk(u).mo] + ', ' + mk(u).t : '') + '</span></div>' }
+    function recPh() { var d = (E.rec && E.rec.dur) || E.rec_dur || 0, p = S.recT0 ? Math.round((now() - S.recT0) / 1000) : 0;
+      return '<div class="ph x6rec" data-pl>' + video(E.rec) + '<div class="col x6pr"><div class="x6bar"><div style="width:' + (d ? Math.min(100, Math.round(p / d * 100)) : 0) + '%"></div></div><div class="row sp"><span class="x6t13" data-tm="rp">' + cd2(p) + (d ? ' / ' + cd(d) : '') + '</span><button type="button" class="pill' + (S.recOn ? ' x6on' : '') + '" data-x="recchat">чат записи</button></div></div></div>' }
+    /* ---------- блоки под видео ---------- */
+    function leadVals() { var v = S.vals; if (v) return v; var p = S.sent || X.lead_sent || X.prefill || {}; try { var l = JSON.parse(localStorage.getItem('efLead') || 'null'); if (l && !p.name) p = l } catch (x) {} return (S.vals = { name: p.name || '', phone: p.phone || '', email: p.email || '', tg: p.tg || '' }) }
+    function leadForm(ph) { var r = S.r || {}, L = r.lead || {}, v = leadVals(), tg = L.tg !== 0, rm = L.remain != null ? L.remain : null, lerr = S.lerr || (FXON && U0.lerr) || '';
+      var f = function (k, lb, t, ac, plh) { return '<label class="lb">' + lb + '<input class="in" data-lf="' + k + '" type="' + t + '" autocomplete="' + ac + '"' + (v[k] ? ' value="' + esc(v[k]) + '"' : '') + (plh ? ' placeholder="' + plh + '"' : '') + '></label>' };
+      var flds = f('name', 'Имя', 'text', 'given-name') + f('phone', 'Телефон', 'tel', 'tel') + f('email', 'Почта', 'email', 'email', ph ? 'mail@example.ru' : '') + (tg ? f('tg', 'Telegram (необязательно)', 'text', 'off', '@username') : '');
+      if (ph) return '<div class="x6sh" role="dialog" aria-label="' + esc(L.title || 'Заявка') + '"><div class="x6hn"></div><div class="row sp"><b class="x6b18">' + esc(L.title || '') + '</b><button type="button" class="b3 sm" aria-label="Свернуть" data-x="sheetx">✕</button></div>' + (L.sub ? '<span class="mut">' + esc(L.sub) + '</span>' : '') + flds +
+        (lerr ? '<span class="bad x6err">' + esc(lerr) + '</span>' : '') + '<button type="button" class="b1 w100 x6mt0" data-x="lsend">' + esc(S.sent ? 'Сохранить' : (L.btn || 'Забронировать место')) + '</button><span class="dim x6ctr x6inv" aria-hidden="true">Свернул — форма сохранится, кнопка под видео останется</span></div>';
+      return '<div class="c cv x6g10" data-r="lead"><div class="row sp"><b class="x6b18">' + esc(L.title || '') + '</b>' + (rm != null ? '<span class="pill" data-tm="lr" data-u="' + (now() + rm * 1000) + '">ещё ' + cd2(rm) + '</span>' : '') + '</div>' + (L.sub ? '<span class="mut">' + esc(L.sub) + '</span>' : '') +
+        '<div class="g2">' + flds + '</div>' + (lerr ? '<span class="bad x6err">' + esc(lerr) + '</span>' : '') + '<button type="button" class="b1" data-x="lsend">' + esc(S.sent ? 'Сохранить' : (L.btn || 'Забронировать место')) + '</button></div>' }
+    function sentCard(p) { var L = (S.r && S.r.lead) || X.lead_mat || {}, s = S.sent || X.lead_sent || {}, sub = String(L.sub || 'Менеджер свяжется с тобой').replace(/^./, function (c) { return c.toLowerCase() });
+      if (p) return '<div class="c cv x6p12"><span class="pill pgr x6as">✓ Заявка отправлена</span><button type="button" class="b3 sm x6as" data-x="lfix">Исправить данные</button></div>';
+      return '<div class="c cv x6g10"><span class="pill pgr x6as">✓ Заявка отправлена</span><b>' + esc((s.name ? s.name + ', ' : '') + sub) + '</b><div class="row"><button type="button" class="b3 sm" data-x="lfix">Исправить данные</button></div></div>' }
+    function pollCard() { var P = (S.r || {}).poll; if (!P || !P.q) return ''; var tot = 0, R2 = {}, mine = P.mine || (P.my != null ? [P.my] : []); (P.res || []).forEach(function (x) { tot += x.n; R2[x.opt] = x.n });
+      return '<div class="c x6g10"><b>' + esc(P.q) + '</b><div class="row x6g6">' + (P.opts || []).map(function (o, i) { var my = mine.indexOf(i) >= 0, pc = P.res && tot ? ' · ' + Math.round((R2[i] || 0) / tot * 100) + '%' : '';
+        return '<button type="button" class="b2 sm' + (my ? ' x6my' : '') + '" data-po="' + i + '">' + esc(o) + (my ? ' · твой ответ' : '') + (my ? '' : pc) + '</button>' }).join('') + '</div>' + (P.multi ? '<span class="dim">Можно выбрать несколько вариантов</span>' : mine.length && !P.res ? '<span class="dim">Голос можно изменить — нажми другой вариант</span>' : '') + '</div>' }
+    function bannerCard() { var B = (S.r || {}).banner; if (!B || !B.title) return ''; return '<div class="c x6ban">' + (B.img ? '<img class="x6img" src="' + esc(B.img) + '" alt="">' : '') + '<div class="col x6bt"><b>' + esc(B.title) + '</b>' + (B.sub ? '<span class="dim">' + esc(B.sub) + '</span>' : '') + '</div>' + (B.url ? '<a class="b1" href="' + esc(B.url) + '" target="_blank" rel="noopener" data-x="burl">' + esc(B.btn || 'Открыть') + '</a>' : '') + '</div>' }
+    function stageCard() { var h = (S.r || {}).hand; if (!h || h.st !== 'stage' || S.stg) return ''; return '<div class="c cv x6g10"><b>Ведущий зовёт тебя на сцену</b><span class="mut">Откроется комната с камерой и микрофоном. Зрители увидят и услышат тебя.</span><div class="row"><a class="b1" href="' + esc(h.url || '#') + '" target="_blank" rel="noopener" data-x="stage">Выйти на сцену</a><button type="button" class="b3" data-x="stgx">Не сейчас</button></div></div>' }
+    function nextCard(p) { var n = X.next; if (!n) return ''; var L = X.lead_mat, today = mk(now()), nd = mk(n.start), tom = mk(now() + 864e5), w = nd.d === tom.d && nd.mo === tom.mo ? 'Завтра в ' + nd.t : nd.d === today.d && nd.mo === today.mo ? 'Сегодня в ' + nd.t : nd.d + ' ' + MG[nd.mo] + ' в ' + nd.t;
+      var rem = X.reg_bot || S.remind ? '<button type="button" class="b1' + (p ? ' sm x6as' : '') + '" disabled>✓ Напомню в Telegram</button>' : '<a class="b1' + (p ? ' sm x6as' : '') + '" href="#" data-x="remind">Напомнить в Telegram</a>';
+      if (p) return '<b>' + esc(w + ' — день ' + n.n) + '</b>' + rem;
+      return '<div class="c cv x6g10"><b>' + esc(w + ' — ' + (n.title2 || n.title)) + '</b><div class="row">' + rem + (L && mode() !== 'none' && !S.sent && !X.lead_sent ? '<a class="b3" href="#" data-x="lead2">' + esc(L.title) + '</a>' : '') + '</div></div>' }
+    function blocks() { var s = st(), r = S.r || {}, h = '';
+      if (s === 'live') { h += stageCard(); if (r.lead && mode() !== 'none') { h += S.sent && !S.form ? sentCard() : leadForm() } else if (S.sent && !S.form) h += sentCard(); h += pollCard() + bannerCard() }
+      if (s === 'end' || s === 'rec') { if (S.form && X.lead_mat) h += leadForm(); else if (S.sent && s === 'end') h += sentCard(); h += nextCard() }
+      return h }
+    /* ---------- чат и вопросы ---------- */
+    function msgHtml(m) { var host = m.role === 'host' || m.role === 'mod'; if (host && m.vis === 'all' && !m.to_me) {}
+      return '<div><b class="x6mn">' + esc(m.name) + '</b> ' + (m.mine ? '<span class="pill x6you">ты</span> ' : '') + (host ? '<span class="pill pv x6you">' + (m.role === 'host' ? 'ведущий' : 'модератор') + '</span> ' : '') + '<span class="dim">' + hm(m.at) + (m.to_me ? ' · лично тебе' : '') + '</span><div data-notypo>' + esc(m.text) + '</div></div>' }
+    function pinHtml() { var p = (S.r && S.r.pin) || X.pin; return p && p.text ? '<div class="c0 x6pin"><span class="dim">закреплено · ' + esc(p.name || '') + '</span><span data-notypo>' + esc(p.text) + '</span></div>' : '' }
+    function feed() { if (S.tab === 'qs') return qsHtml(); var L = st() === 'rec' ? (S.recOn ? recMsgs() : []) : S.msgs; return pinHtml() + L.slice(-150).map(msgHtml).join('') }
+    function recMsgs() { var t = S.recT0 ? (now() - S.recT0) / 1000 + (X.rec_offset || 0) * 0 : 0; return (S.rmsgs || []).filter(function (m) { return m.sec != null && m.sec <= t }) }
+    function qsHtml() { var Q = (S.qs || []).slice().sort(function (a, b) { return (a.ans - b.ans) || ((b.votes | 0) - (a.votes | 0)) }); if (!Q.length) return '<div class="dim">Вопросов пока нет — задай свой, ведущий ответит в эфире</div>';
+      return Q.map(function (q) { return '<div class="c0' + (q.ans ? ' x6qa' : '') + '"><div class="row sp"><b class="x5n14">' + esc(q.name) + '</b><button type="button" class="pill' + (q.voted ? ' x6on' : '') + '" data-v="' + q.id + '"' + (q.mine ? ' disabled' : '') + ' aria-label="Голос за вопрос">▲ ' + (q.votes | 0) + '</button></div><span class="x5n14" data-notypo>' + esc(q.text) + '</span>' + (q.ans ? '<span class="dim">отвечен</span>' : '') + '</div>' }).join('') }
+    function inputRow(p) { var s = st(), r = S.r || {}; if (s === 'end' || s === 'rec' || s === 'kick' || s === 'deny') return p ? '' : '<div class="dim x6cl">Чат закрыт</div>';
+      if (me.ro) return '<div class="c0 x6line" style="margin:12px"><span class="dim">Только просмотр: писать за ученика нельзя</span></div>';
+      if ((r.muted || X.muted) && S.tab === 'chat') return '<div class="' + (p ? 'x6mi' : 'x6inr') + ' row"><div class="c0 x6line x5f1" style="flex:1"><span class="dim">Модератор ограничил сообщения в этом эфире. Смотреть можно.</span></div></div>';
+      if (S.tab === 'chat' && (r.chat === 0 || (s === 'wait' && X.chat === 0))) return '<div class="' + (p ? 'x6mi' : 'x6inr') + ' row"><div class="c0 x6line" style="flex:1"><span class="dim">' + ((r.opt && r.opt.qs === 0) ? 'Ведущий выключил чат и вопросы — просто смотри эфир' : 'Ведущий выключил чат — вопросы можно задать во вкладке «Вопросы»') + '</span></div></div>';
+      if (s === 'wait' && !X.pre_chat) return '';
+      var hand = s === 'live' && r.stage_on ? '<button type="button" class="b2' + (p ? ' x6hd' : '') + '" aria-label="Поднять руку" data-x="hand">' + (r.hand && r.hand.st === 'wait' ? 'Рука ✓' : 'Рука') + '</button>' : '';
+      return '<div class="row ' + (p ? 'x6mi' : 'x6inr') + '"><input class="in" aria-label="Сообщение" placeholder="' + (S.tab === 'qs' ? 'Задать вопрос ведущему' : 'Написать в чат') + '" data-in="msg" maxlength="1000">' + hand + '<button type="button" class="b1 x6sq" aria-label="Отправить" data-x="send">↑</button></div>' }
+    function tabs() { var r = S.r || {}, q = !(r.opt && r.opt.qs === 0); return '<div class="seg x6seg" role="tablist" aria-label="Чат и вопросы"><button type="button" role="tab" aria-selected="' + (S.tab === 'chat') + '"' + (S.tab === 'chat' ? ' class="on"' : '') + ' data-t="chat">Чат</button>' + (q ? '<button type="button" role="tab" aria-selected="' + (S.tab === 'qs') + '"' + (S.tab === 'qs' ? ' class="on"' : '') + ' data-t="qs">Вопросы</button>' : '') + '</div>' }
+    /* ---------- экраны ---------- */
+    function deskHtml() { var s = st(), ph = s === 'wait' ? waitPh() : s === 'live' ? livePh() : s === 'rec' ? recPh() : endPh();
+      return '<div class="efn pg x6pg" data-fx-screen="Room"><section class="col x6l"><div data-r="top">' + topRow() + '</div><div data-r="ph">' + ph + '</div>' + titleHtml() + '<div class="x6bl" data-r="bl">' + blocks() + '</div></section>' +
+        '<section class="col x6side" aria-label="Чат"><div class="x6t10" data-r="tabs">' + tabs() + '</div><div class="col x6feed" data-r="feed" data-sc>' + feed() + '</div><div data-r="in">' + inputRow() + '</div></section></div>' }
+    function phoneHtml() { var s = st(), r = S.r || {}, L = r.lead, sh = S.sheet && (L || S.form);
+      var ph = sh ? '<div class="ph x6r0 x6o5" data-pl>' + (FXON ? 'Видео (звук продолжает идти)' : video(E.video)) + '</div>' : s === 'live' ? livePh(1) : s === 'wait' ? waitPh(1) : s === 'rec' ? recPh() : '<div class="ph x6r0 x6col"><span class="pill pgr">эфир закончился</span><span>запись через несколько минут</span></div>';
+      var mid = '<div class="col x6mt" data-r="bl">' + midInner() + '</div>';
+      return '<div class="efn pg x6m" data-fx-screen="Room">' + '<div data-r="ph">' + ph + '</div>' + (sh ? leadForm(1) : mid + '<div class="col x6mf" data-r="feed" data-sc>' + feed() + '</div><div data-r="in">' + inputRow(1) + '</div>') + '</div>' } /* шторка формы (4.8) закрывает всё под видео — под ней ничего не рисуем */
+    function midInner() { var s = st(), r = S.r || {}, L = r.lead;
+      var card = s === 'live' && L && mode() !== 'none' && !(S.sent && !S.form) ? '<div class="c cv x6lc"><div class="row sp"><b>' + esc(L.title) + '</b>' + (L.remain != null ? '<span class="pill" data-tm="lr2" data-u="' + (now() + L.remain * 1000) + '">' + cd2(L.remain) + '</span>' : '') + '</div><button type="button" class="b1 w100" data-x="sheet">' + esc(L.btn || 'Забронировать место') + '</button></div>' : s === 'live' && S.sent ? sentCard(1) : '';
+      return '<b class="x6b16">' + esc(short()) + '</b>' + card + (s === 'live' ? stageCard() + pollCard() + bannerCard() : s === 'end' || s === 'rec' ? nextCard() : '') + '<div data-r="tabs">' + tabs() + '</div>' }
+    function denyHtml() { var D = S.deny || {}, t = D.kind === 'tariff' ? 'Этот эфир — для тарифа «' + (D.tariff || 'Премиум Амазон') + '»' : D.kind === 'guest' ? 'Эфир только для учеников школы' : D.kind === 'rec' ? 'Запись была доступна ' + (D.text || '') : D.kind === 'kick' ? 'Ведущий убрал тебя из эфира' : 'Этот эфир — для потока ' + (D.stream || '');
+      var sub = D.kind === 'tariff' ? 'Есть у твоего куратора — спроси, как перейти' : D.kind === 'stream' ? 'Спроси куратора, как попасть на этот эфир' : D.kind === 'rec' && D.next ? 'Следующий эфир — ' + D.next : '';
+      return '<div class="efn pg x6pg" data-fx-screen="Room"><section class="col x6l">' + topRow() + '<div class="ph x6col"><b class="x6w">' + esc(t) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + (D.cur && D.kind !== 'guest' ? '<a class="b2 sm" href="' + esc(D.cur) + '" target="_blank" rel="noopener">Написать куратору</a>' : '') + '</div></section></div>' }
+    function draw(force) { if (!alive()) return; var s = st(), lay = (phone() ? 'p' : 'd') + s + (S.sheet ? 's' : ''), fd = el.querySelector('[data-r=feed]'), nearB = fd ? fd.scrollHeight - fd.scrollTop - fd.clientHeight < 80 : true, top0 = fd ? fd.scrollTop : 0;
+      if (force || lay !== S.lay) { var ae = document.activeElement, ai = ae && ae.getAttribute && (ae.getAttribute('data-in') || ae.getAttribute('data-lf')), av = ae && ae.value;
+        if (S.form || S.sheet) readVals(); S.lay = lay; el.innerHTML = s === 'deny' || s === 'kick' ? denyHtml() : phone() ? phoneHtml() : deskHtml(); typoDom(el);
+        if (ai) { var x = el.querySelector('[data-in="' + ai + '"],[data-lf="' + ai + '"]'); if (x) { x.value = av; x.focus() } } }
+      else { if (S.form || S.sheet) readVals(); var pr = function (sel, h) { var x = el.querySelector(sel); if (!x || x.__h === h) return; x.__h = h; x.innerHTML = h; typoDom(x) };
+        var lf = el.querySelector('[data-r=lead]'), keepLead = lf && lf.contains(document.activeElement);
+        var r = S.r || {}, pk = s + '|' + r.sig + '|' + (r.screen ? r.screen.text : '') + '|' + (S.err >= 2 ? 1 : 0), phx = el.querySelector('[data-r=ph]');
+        if (phx && phx.__k !== pk && s !== 'rec' && s !== 'wait') { phx.__k = pk; phx.innerHTML = s === 'live' ? livePh(phone() ? 1 : 0) : phone() ? '' : endPh(); typoDom(phx) } else if (phx && !phx.__k) phx.__k = pk;
+        var vw = el.querySelector('[data-r=vw]'); if (vw) vw.textContent = (r.viewers || 0) + (phone() ? '' : ' смотрят');
+        if (!keepLead && !S.sheet) pr('[data-r=bl]', phone() ? midInner() : blocks())
+        pr('[data-r=tabs]', tabs()); pr('[data-r=feed]', feed()); var inr = el.querySelector('[data-r=in]'), ih = inputRow(phone() ? 1 : 0); if (inr && inr.__k !== ih.replace(/value="[^"]*"/g, '')) { var iv = (inr.querySelector('[data-in=msg]') || {}).value; inr.__k = ih.replace(/value="[^"]*"/g, ''); inr.innerHTML = ih; typoDom(inr); var ni = inr.querySelector('[data-in=msg]'); if (ni && iv) ni.value = iv } }
+      fd = el.querySelector('[data-r=feed]'); if (fd) { if (S.tab === 'chat' && nearB) fd.scrollTop = fd.scrollHeight; else fd.scrollTop = top0 } }
+    function readVals() { var L = el.querySelectorAll('[data-lf]'); if (!L.length) return; var v = leadVals(); [].forEach.call(L, function (x) { v[x.getAttribute('data-lf')] = x.value }); S.vals = v; try { localStorage.setItem('efLeadForm:' + id, JSON.stringify(v)) } catch (x) {} }
+    /* ---------- опрос сервера ---------- */
+    function poll() { var s = st(); if (s === 'deny' || s === 'kick') return; var q = '/efir/room?id=' + id + '&after=' + S.after + (s === 'rec' && !S.rmsgs ? '&rec=1' : '');
+      api(O, q).then(function (r) { if (!alive()) return; if (!r || !r.ok) { if (r && r.kick) { X.kick = 1; draw(true); return } S.err++; if (S.err >= 2 && !S.errAt) S.errAt = now(); if (S.err >= 2) draw(); return }
+        var was = st(), ok0 = S.err >= 2; S.err = 0; S.errAt = 0;
+        if (r.state === 'done' && was !== 'end' && was !== 'rec') { reload(); return } if (r.state === 'live' && was === 'wait') { reload(); return }
+        if (r.rmsgs) S.rmsgs = r.rmsgs;
+        (r.msgs || []).forEach(function (m) { if (!S.msgs.some(function (x) { return x.id === m.id })) S.msgs.push(m); S.after = Math.max(S.after, m.id) }); if (S.msgs.length > 300) S.msgs = S.msgs.slice(-300);
+        if (r.qs) S.qs = r.qs; S.r = r; if (r.pts_new) toastR('+' + r.pts_new + ' баллов — ты в эфире 15 минут');
+        if (r.lead && !S.leadSeen) { S.leadSeen = r.lead.mat_id || 1 } draw(ok0) }) }
+    function reload() { api(O, '/efir/one?id=' + id).then(function (j) { if (!alive()) return; if (!j || !j.ok) return; S.j = j; E = j.efir; me = j.me || {}; X = j.x5 || {}; S.r = null; S.lay = ''; if (st() === 'rec') S.recT0 = now(); draw(true); poll() }) }
+    function tick() { if (!alive()) return; [].forEach.call(el.querySelectorAll('[data-tm]'), function (x) { var k = x.getAttribute('data-tm');
+        if (k === 'cd') { var s = Math.round((E.start - now()) / 1000); if (s <= 0) { x.textContent = 'начинаем'; if (!S.cdp) { S.cdp = 1; poll() } return } x.textContent = s >= 864e2 ? 'через ' + Math.floor(s / 864e2) + ' ' + plr(Math.floor(s / 864e2), 'день', 'дня', 'дней') : cd(s) }
+        else if (k === 'lr' || k === 'lr2') { var l = Math.round((+x.getAttribute('data-u') - now()) / 1000); x.textContent = (k === 'lr' ? 'ещё ' : '') + cd2(Math.max(0, l)) }
+        else if (k === 'rp') { var p = Math.round((now() - S.recT0) / 1000), d = (E.rec && E.rec.dur) || E.rec_dur || 0; x.textContent = cd2(p) + (d ? ' / ' + cd(d) : ''); if (S.recOn && S.tab === 'chat' && p % 5 === 0) { var f = el.querySelector('[data-r=feed]'); if (f) { var h = feed(); if (f.__h !== h) { f.__h = h; f.innerHTML = h; f.scrollTop = f.scrollHeight } } } } });
+      if (S.err >= 2 && S.errAt && now() - S.errAt > 1e4 && !el.querySelector('[data-x=reload]')) { var p0 = el.querySelector('[data-r=ph]'); if (p0) p0.innerHTML = recon() } }
+    /* ---------- действия ---------- */
+    function sendMsg() { var x = el.querySelector('[data-in=msg]'); if (!x) return; var t = x.value.trim(); if (!t) return; var kind = S.tab === 'qs' ? 'q' : 'msg'; x.value = '';
+      api(O, '/efir/msg', { id: id, text: t, kind: kind }).then(function (r) { if (!r || !r.ok) { x.value = t; toastR((r && r.err) || 'Не отправилось — попробуй ещё раз'); if (r && r.muted) { X.muted = 1; draw() } return } if (kind === 'q') { r.msg.voted = 0; S.qs.push(r.msg) } else if (!S.msgs.some(function (m) { return m.id === r.msg.id })) S.msgs.push(r.msg); if (r.pts) toastR('+' + r.pts + ' балла за вопрос'); draw() }) }
+    function leadSend(b) { readVals(); var v = S.vals || {}, er = function (t) { S.lerr = t; draw(true) };
+      if (String(v.name || '').trim().length < 2) return er('Напиши имя'); if (String(v.phone || '').replace(/\D/g, '').length < 10) return er('Проверь телефон: нужно 10–11 цифр');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v.email || '').trim())) return er(/@/.test(v.email || '') ? 'Проверь почту: после «@» нужен домен, например mail.ru' : 'Проверь почту: в ней нужен знак «@»');
+      S.lerr = ''; b.disabled = true; var fix = !!(S.sent || X.lead_sent); try { localStorage.setItem('efLead', JSON.stringify(v)) } catch (x) {}
+      api(O, '/efir/lead', { id: id, form: 1, name: v.name, phone: v.phone, email: v.email, tg: v.tg, fix: fix ? 1 : 0 }).then(function (r) { b.disabled = false; if (!r || !r.ok) return er((r && r.err) || 'Не отправилось — попробуй ещё раз');
+        S.sent = { name: v.name, phone: v.phone, email: v.email, tg: v.tg }; X.lead_sent = S.sent; S.form = 0; S.sheet = 0; toastR(fix ? 'Данные исправлены' : 'Заявка отправлена'); draw(true) }) }
+    el.onclick = function (ev) { var b = ev.target.closest('[data-x],[data-t],[data-v],[data-po]'); if (!b) return; hap(O);
+      if (b.hasAttribute('data-t')) { S.tab = b.getAttribute('data-t'); draw(true); return }
+      if (b.hasAttribute('data-v')) { var q = S.qs.filter(function (x) { return +x.id === +b.getAttribute('data-v') })[0]; if (!q || q.mine) return; q.voted = q.voted ? 0 : 1; q.votes = (q.votes | 0) + (q.voted ? 1 : -1); draw(); api(O, '/efir/vote', { id: id, mid: q.id, on: q.voted }); return }
+      if (b.hasAttribute('data-po')) { var P = S.r && S.r.poll; if (!P) return; var i = +b.getAttribute('data-po'); if (P.multi) { var L = (P.mine || []).slice(), k = L.indexOf(i); if (k >= 0) L.splice(k, 1); else L.push(i); P.mine = L; P.my = L[0] } else { P.mine = [i]; P.my = i }
+        draw(); api(O, '/efir/poll', P.multi ? { id: id, poll: P.id, opts: P.mine } : { id: id, poll: P.id, opt: i }).then(function () { poll() }); return }
+      var k2 = b.getAttribute('data-x');
+      if (k2 === 'cal' || k2 === 'stage') return; if (k2 === 'burl') { var B = S.r && S.r.banner; if (B && B.mat_id) api(O, '/efir/click', { id: id, mat: B.mat_id }); return }
+      ev.preventDefault();
+      if (k2 === 'send') sendMsg(); else if (k2 === 'reload') location.reload(); else if (k2 === 'stgx') { S.stg = 1; draw() }
+      else if (k2 === 'hand') { var on = !(S.r && S.r.hand && S.r.hand.st === 'wait'); api(O, '/efir/hand', { id: id, on: on ? 1 : 0 }).then(function (r) { if (!r || !r.ok) toastR((r && r.err) || 'Не получилось'); else toastR(on ? 'Рука поднята — ведущий увидит тебя в очереди' : 'Рука опущена'); poll() }) }
+      else if (k2 === 'lsend') leadSend(b); else if (k2 === 'lfix') { S.form = 1; S.vals = null; if (phone()) S.sheet = 1; draw(true) }
+      else if (k2 === 'sheet') { S.sheet = 1; var L2 = S.r && S.r.lead; if (L2 && L2.mat_id && !S.clk) { S.clk = 1; api(O, '/efir/click', { id: id, mat: L2.mat_id }) } draw(true) } else if (k2 === 'sheetx') { readVals(); S.sheet = 0; S.form = 0; draw(true) }
+      else if (k2 === 'lead2') { S.form = 1; if (phone()) S.sheet = 1; draw(true) }
+      else if (k2 === 'remind') { if (me.role === 'guest' && X.ev) { (O.open || function (u) { window.open(u, '_blank', 'noopener') })('https://t.me/oduvanov_school_bot?start=v' + X.ev.id); return } var nx = X.next; if (!nx) return; b.disabled = true; api(O, '/efir/reg', { id: nx.id, src: 'room' }).then(function (r) { if (!r || !r.ok) { b.disabled = false; toastR((r && r.err) || 'Не получилось'); return } S.remind = 1; toastR('Напомним в Telegram'); draw(true) }) }
+      else if (k2 === 'recchat') { S.recOn = !S.recOn; draw(true) }
+      else if (k2 === 'days') { daysWin() } };
+    el.onkeydown = function (ev) { if (ev.key === 'Enter' && ev.target.getAttribute && ev.target.getAttribute('data-in') === 'msg' && !ev.shiftKey) { ev.preventDefault(); sendMsg() } if (ev.key === 'Escape' && S.sheet) { S.sheet = 0; draw(true) } };
+    el.oninput = function (ev) { if (ev.target.hasAttribute && ev.target.hasAttribute('data-lf')) readVals() };
+    function daysWin() { var D = X.days || []; var ov = document.createElement('div'); ov.className = 'efn x6ov'; ov.innerHTML = '<div class="drw" role="dialog" aria-label="Все дни"><h2 class="h2">' + esc((X.ev && X.ev.title) || 'Все дни') + '</h2><div class="col x6days">' + D.map(function (d) { var a = mk(d.start || 0);
+        return '<a class="c0" href="#e' + d.id + '"' + (d.id === id ? ' aria-current="page"' : '') + ' style="text-decoration:none;color:#fff"><b>' + esc('День ' + d.n + '. ' + d.title) + '</b><span class="dim">' + (d.start ? a.d + ' ' + MG[a.mo] + ', ' + a.t + ' МСК' : '') + ' · ' + (d.st === 'past' ? 'прошёл · запись' : d.st === 'live' ? 'идёт' : 'предстоит') + '</span></a>' }).join('') + '</div><button type="button" class="b3" data-x="dx">Закрыть</button></div>';
+      typoDom(ov); document.body.appendChild(ov); var close = function () { ov.remove(); document.removeEventListener('keydown', kd); if (/\/days$/.test(location.hash)) try { history.replaceState(history.state, '', location.pathname + location.search + '#e' + id) } catch (x) {} }, kd = function (e) { if (e.key === 'Escape') close() };
+      document.addEventListener('keydown', kd); ov.onclick = function (e) { if (e.target === ov || e.target.closest('[data-x=dx]') || e.target.closest('a.c0')) close() } }
+    /* ---------- старт ---------- */
+    if (!O.app && !FXON) document.documentElement.classList.add('efn-on');
+    try { var fv = JSON.parse(localStorage.getItem('efLeadForm:' + id) || 'null'); if (fv) S.vals = fv } catch (x) {}
+    if (X.lead_sent) S.sent = X.lead_sent;
+    if (j0.deny) { S.deny = j0.deny; E = E || { title: '', start: 0 } }
+    if (FXON && FX) { if (FX.api['GET /efir/room']) { var r0 = FX.api['GET /efir/room']; S.r = r0; S.msgs = r0.msgs || []; S.qs = r0.qs || [] } if (U0.form) S.form = 1; if (U0.sheet) S.sheet = 1; if (U0.tab) S.tab = U0.tab; if (U0.vx) return vx(); if (st() === 'rec') S.recT0 = now() - (U0.rec_pos || 0) * 1000; draw(true); if (/\/days$/.test(FX.hash || '')) daysWin(); R.fx.done(el.querySelector('[data-fx-screen]')); return { stop: stop } }
+    if (st() === 'rec') S.recT0 = now(); draw(true); poll();
+    S.tm = setInterval(function () { if (!alive()) return; var s = st(); if (s === 'deny' || s === 'kick') return; var hid = document.visibilityState !== 'visible', per = s === 'live' || (s === 'wait' && X.pre_chat && E.start - now() < 36e5) ? (hid ? 25e3 : 4e3) : 15e3; if (now() - (S.pt || 0) >= per - 200) { S.pt = now(); poll() } }, 1000);
+    S.tk = setInterval(tick, 1000); if (/\/days$/.test(location.hash)) daysWin();
+    var rt = 0; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (alive() && S.lay && S.lay[0] !== (phone() ? 'p' : 'd')) draw(true) }, 150) });
+    /* VX — остальные состояния одной страницей (только режим сверки): блоки из тех же функций комнаты */
+    function vx() { var blk = function (lb, h, note) { return '<div class="col x6vb"><span class="lbl" data-fx-mask>' + lb + '</span>' + h + '<span class="dim" data-fx-mask>' + note + '</span></div>' };
+      S.r = Object.assign({}, S.r || {}, { hand: { st: 'stage', url: '#' }, poll: { id: 'e1', q: 'Сколько у тебя заказов в месяц?', opts: ['Пока ни одного', '1–5', '5–20', 'Больше 20'], my: null, mine: [] } }); S.stg = 0; S.recT0 = now() - 1930e3; E = Object.assign({}, E, { rec: { provider: 'kinescope', id: 'x', embed: '', dur: 5642 }, start: now() + 1122e3 });
+      var stage = stageCard(), pl = pollCard();
+      var h = '<div class="efn pg x6vx" data-fx-screen="VX"><div class="col x6vh" data-fx-mask><h1 class="h1">Зритель: остальные состояния</h1><span class="mut">Каждый блок — то, что стоит на месте видео или под ним. Остальная комната как на 4.3.</span></div><div class="g3">' +
+        blk('Запись идёт', recPh(), 'чат идёт в тех же минутах; писать нельзя') +
+        blk('Запись закрыта', '<div class="ph x6col"><b class="x6w">Запись была доступна 24 часа</b><span>Следующий эфир — завтра в 19:00</span><a class="b1 sm" href="#" data-x="remind">Напомнить в Telegram</a></div>', 'при «Продаём» — плюс кнопка «Забронировать место»') +
+        blk('Нет доступа', '<div class="ph x6col"><b class="x6w">Этот эфир — для тарифа «Премиум Амазон»</b><span>Есть у твоего куратора — спроси, как перейти</span><a class="b2 sm" href="#">Написать куратору</a></div>', 'чужая ссылка или не тот поток') +
+        blk('Вопрос на экране', '<div class="ph"><div class="c0 x6scr"><span class="dim">Вопрос · Ильдар</span><b class="x6w">Сколько времени уходит на одну карточку?</b></div></div>', 'ведущий нажал «На экран» — видят все, пока не уберёт') +
+        blk('Ты на сцене', stage, 'после «Рука» → «Позвать на сцену» в пульте') + blk('Опрос до голосования', pl, 'после голоса — проценты, если ведущий включил') +
+        blk('Чат выключен', '<div class="c0 x6line"><span class="dim">Ведущий выключил чат — вопросы можно задать во вкладке «Вопросы»</span></div>', 'поле ввода заменяется этой строкой') +
+        blk('Тебе запретили писать', '<div class="c0 x6line"><span class="dim">Модератор ограничил сообщения в этом эфире. Смотреть можно.</span></div>', 'видит только этот человек') +
+        blk('Нет связи у зрителя', '<div class="ph x6col"><b class="x6w">Переподключаемся…</b><span>Видео продолжится само</span></div>', 'через 10 сек без ответа — кнопка «Обновить»') + '</div>' +
+        '<div class="col x6vb"><span class="lbl" data-fx-mask>Телефон: ожидание · заявка отправлена · конец эфира</span><div class="row x6pn">' +
+        '<div class="col x6pc">' + waitPh(2) + '<b>' + esc(short()) + '</b><span class="dim">чат уже открыт</span></div>' +
+        '<div class="col x6pc"><div class="ph x6r14">Видео</div>' + sentCard(1) + '</div>' +
+        '<div class="col x6pc">' + endPh(1) + nextCard(1) + '</div></div></div></div>';
+      el.innerHTML = h; typoDom(el); R.fx.done(el.querySelector('[data-fx-screen]')); return { stop: stop } }
+    return { stop: stop } };
 
   /* §6.0 — режим сверки ?fx=<Доска>: ответы API — из фикстуры docs/mockups/efiry/fixtures/<Доска>.json (на Pages — gc/fx/<Доска>.json), время заморожено (fx.now),
      setInterval и длинные таймеры не запускаются, POST на сервер не уходят никогда. Включает страница-хозяин (efir.html, pult.html, app.html) только на localhost/127.0.0.1
