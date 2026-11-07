@@ -27,7 +27,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <div id="ef"></div>
 </div>
 <div id="efn"></div>
-<script defer src="efir.js?v=42"></script>
+<script defer src="efir.js?v=43"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -60,6 +60,8 @@ function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{
 var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r,eid){try{localStorage.setItem('efW',r)}catch(e){}var id=eid||GID;location.replace(location.pathname+'?'+(GEV?'ev='+GEV+'&':'')+(id?'id='+id+'&':'')+'r='+encodeURIComponent(r)+(id?'#e'+id:''))},fileUrl:function(eid,mid){return API+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+TK},go:function(k,id){nav(k==='room'?'#e'+id:'#')},
   top:function(){var b=$('bar');return b.classList.contains('hid')?0:b.getBoundingClientRect().bottom+4},
   /* 07.11 Эфиры Э5: новая комната зрителя (флаг efir_ui2) — вне .wrap, на всю ширину, без полосы .bar (ТЗ §7.4); снимается при смене адреса (route) */
+  /* 07.11 Эфиры Э8: новый вид «Эфиры» ученика 6.3 (флаг efir_ui2) — так же вне .wrap, на всю ширину, без полосы .bar (ТЗ §7.4) */
+  list2:function(j){var n=$('efn');n.innerHTML='';$('ef').innerHTML='';$('ef').className='';$('bar').classList.add('hid');document.body.classList.add('efn-on');document.documentElement.classList.add('efn-on');return ECOEFIR.list2(n,O,j)},
   room2:function(id,j){var n=$('efn');n.innerHTML='';$('bar').classList.add('hid');document.body.classList.add('efn-on');document.documentElement.classList.add('efn-on');return ECOEFIR.room2(n,id,O,j)}};
 function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
