@@ -786,7 +786,7 @@ function dbWrap(env, ctx) { const db = env.DB; if (!db || db._w) return env;
   if (ctx && Date.now() - DBT > 300e3 && Object.keys(DBS).length) { DBT = Date.now(); const j = JSON.stringify(DBS); for (const k in DBS) delete DBS[k];
     ctx.waitUntil((async () => { try { if (!DBK) { await db.prepare('CREATE TABLE IF NOT EXISTS d1s (at INTEGER, j TEXT)').run(); DBK = true } await db.prepare('INSERT INTO d1s (at, j) VALUES (?, ?)').bind(Date.now(), j).run() } catch (e) {} })()) }
   return new Proxy(env, { get: (t, k) => k === 'DB' ? W : t[k] }) }
-export default {
+const APP = {
   async fetch(req, env, ctx) {
     env = dbWrap(env, ctx);
     /* 06.11: запланированные рассылки (в т. ч. напоминания об эфирах) — не ждать крона: любой запрос к серверу раз в минуту проверяет очередь */
@@ -1056,6 +1056,10 @@ export default {
   },
   async scheduled(ev, env, ctx) { env = dbWrap(env, ctx); ctx.waitUntil(cronRun(env, ev && ev.cron)) }
 };
+/* 08.11 Э0.П (§3.7.5): после ответа на любой запрос — drain очереди tg_q в фоне, если она не пуста (только Paid) */
+export default {
+  async fetch(req, env, ctx) { const r = await APP.fetch(req, env, ctx); if (req.method !== 'OPTIONS') { try { await tgqAfter(dbWrap(env), ctx) } catch (e) {} } return r },
+  scheduled: (ev, env, ctx) => APP.scheduled(ev, env, ctx) };
 
 /* ---------- cron (CODE-05): у каждого запуска свой лимит ~50 внешних запросов ----------
    В Cloudflare → oduvanov-api → Settings → Triggers → Cron: «5 * * * *» — снимок рейтинга и отчёты родителям, «25 * * * *» — платежи GetCourse,
@@ -1063,11 +1067,16 @@ export default {
    Задачи идут последовательно, ошибка одной пишется в лог (cron-<задача>-err) и не мешает остальным.
    Старый аккаунт школы из cron убран: данные уже загружены, повторная загрузка — вручную /fin/old/sync?k=ADMIN_KEY. */
 const CRON_JOBS = { '5 * * * *': ['bcplan', 'efir', 'report', 'care', 'names', 'modmail', 'rev', 'efkin', 'cpay', 'evgc', 'evform', 'evfst'], '25 * * * *': ['bcplan', 'prep', 'efir', 'pay', 'names', 'cpay', 'crask', 'efkin', 'evgc', 'evform', 'evfst'], '45 * * * *': ['bcplan', 'efir', 'cur', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay', 'report', 'cpay', 'efkin', 'evgc', 'evform', 'evfst'],
-  '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
+  '20 6 * * *': ['prep'], '30 6 * * *': ['digest', 'prep'],
+  /* 08.11 Э0.П (§3.7.7): каждую минуту — только на Workers Paid (на Free Cloudflare шестое расписание не примет). efsig — сигнал OBS и «Ты в эфире?» (efnudge внутри kinAutoLive); bcplan / evq / efir — постановка в tg_q; tgq — отправка (последней, до 50 с) */
+  '* * * * *': ['efsig', 'bcplan', 'evq', 'efir', 'gcretry', 'formq', 'gcusers', 'formst', 'tgq'] }; /* 03.11 этап 3: 9:20 МСК — черновики ИИ (prep, доделывает в 9:25 и 9:30), 9:30 — утренняя сводка (digest; если отдельного расписания нет — в 9:45), срочные — раз в час (urgent) */ /* 30.10: efir — напоминания об эфирах в каждом запуске (за сутки, за час, при старте) */
 async function cronRun(env, cron) {
-  const B = budget(45), jobs = CRON_JOBS[cron] || ['efir', 'report', 'cur', 'prep', 'digest', 'urgent', 'bank', 'care', 'insights', 'pay'], out = {};
+  const MIN = cron === '* * * * *', B = budget(MIN ? 900 : 45), jobs = CRON_JOBS[cron] || [], out = {}; /* 08.11 Э0.П: неизвестная строка — ничего (раньше — дайджесты, отчёты и банк), лог cron-unknown */
+  if (!CRON_JOBS[cron]) { try { await logIt(env, 'cron-unknown', 0, String(cron)) } catch (x) {} return out }
   try { await ensure(env) } catch (e) { try { await logIt(env, 'cron-err', 0, 'ensure ' + (e && e.message || e)) } catch (x) {} }
-  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'efkin' ? kinRecJob(env, B) : j === 'evgc' ? evGcTick(env, B) : j === 'evform' ? evFormTick(env, B) : j === 'evfst' ? evFormStatus(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
+  if (MIN) { try { await kvPut(env, 'cron_min', String(Date.now())); if ((await kvGet(env, 'cf_plan')) == null) await kvPut(env, 'cf_plan', 'paid'); TGQ.pAt = -1e15 } catch (e) {} } /* метка «минутное расписание идёт» — без неё tg_q не включается */
+  try { await logIt(env, 'cron-run', 0, cron + ' ' + jobs.join(',')) } catch (x) {}
+  for (const j of jobs) { try { out[j] = await (j === 'report' ? runHourly(env, false, B) : j === 'pay' ? syncPayAuto(env, B) : j === 'cpay' ? cpayJob(env, B) : j === 'crask' ? crAskJob(env, B) : j === 'bcplan' ? bcPlanTick(env, B) : j === 'names' ? syncNames(env, B) : j === 'modmail' ? modMailJob(env, B) : j === 'rev' ? revJob(env, B) : j === 'care' ? careTick(env, B) : j === 'insights' ? insightsJob(env, B) : j === 'bank' ? bankJob(env, B) : j === 'efir' ? efirJob(env, B) : j === 'evq' ? evTick(env) : j === 'efsig' ? kinAutoLive(env, msNow()) : j === 'gcretry' ? efLeadRetryTick(env, B, 20) : j === 'formq' ? evFormTick(env, B, 10) : j === 'gcusers' ? evGcTick(env, B, 50) : j === 'formst' ? (new Date(msNow()).getUTCMinutes() % 10 ? { skip: 'min' } : evFormStatus(env, B, 10)) : j === 'tgq' ? ((await tgqPaid(env)) ? tgqDrain(env, 'cron', B) : { skip: 'free' }) : j === 'efkin' ? kinRecJob(env, B) : j === 'evgc' ? evGcTick(env, B) : j === 'evform' ? evFormTick(env, B) : j === 'evfst' ? evFormStatus(env, B) : j === 'prep' ? prepJob(env, B) : j === 'digest' ? digestJob(env, B) : j === 'urgent' ? urgentJob(env, B) : curJob(env, B)) }
     catch (e) { out[j] = { err: String(e && e.message || e) }; try { await logIt(env, 'cron-' + j + '-err', 0, out[j].err) } catch (x) {} } }
   if (B.n >= B.max - 3) try { await logIt(env, 'cron-budget', 0, (cron || '?') + ' · ' + B.n + ' запросов') } catch (x) {}
   return out }
@@ -1490,7 +1499,7 @@ async function bcSend(env, s, o) { const cc = appScope(s, o.c), ch = ['tg', 'mai
     await kvPut(env, 'bclog:' + cc, log.slice(0, 30));
     await logIt(env, 'broadcast', 0, cc + ' ' + ch + ' tg ' + sent + '/' + toT.length + ' mail ' + msent + '/' + toM.length); return { ok: true, sent, fail, msent, mfail } }
 let BCT = 0;
-async function bcPlanTick(env, B) { let P = null; try { P = await env.DB.prepare("SELECT * FROM bc_plan WHERE st IN ('plan','run') AND at <= ? ORDER BY at LIMIT 1").bind(Date.now()).first() } catch (e) { return { skip: 'no table' } } if (!P) return { none: 1 };
+async function bcPlanTick(env, B, pid) { if (await tgqPaid(env)) return bcPlanQ(env, B, pid); let P = null; try { P = await env.DB.prepare("SELECT * FROM bc_plan WHERE st IN ('plan','run') AND at <= ? ORDER BY at LIMIT 1").bind(Date.now()).first() } catch (e) { return { skip: 'no table' } } if (!P) return { none: 1 };
   const d = JSON.parse(P.data || '{}');
   if (d.efir && !Array.isArray(d.uids)) { const e = await efGet(env, d.efir); if (!e || e.del || ['done', 'rec'].includes(e.status) || (d.kind !== 'efir-s' && e.status === 'live')) { await env.DB.prepare("UPDATE bc_plan SET st='cancel' WHERE id=?").bind(P.id).run(); return { cancel: P.id } }
     d.uids = await efAudUids(env, e); await env.DB.prepare('UPDATE bc_plan SET data=? WHERE id=?').bind(JSON.stringify(d), P.id).run() }
@@ -1501,6 +1510,23 @@ async function bcPlanTick(env, B) { let P = null; try { P = await env.DB.prepare
   await env.DB.prepare("UPDATE bc_plan SET sent=sent+?, fail=fail+?, msent=msent+?, st=CASE WHEN done>=? THEN 'done' ELSE st END WHERE id=?").bind(r.sent | 0, (r.fail | 0) + (r.mfail | 0), r.msent | 0, U.length, P.id).run();
   if (P.done + part.length >= U.length) await logIt(env, 'bcplan-done', 0, P.cc + ' ' + P.id);
   return { id: P.id, part: part.length, r } }
+/* 08.11 Э0.П: bc_plan на Paid — Telegram ставится в tg_q целиком (plan:<id>), почта — по-старому пачками по 30; счётчики sent / fail дописывает drain */
+async function bcPlanQ(env, B, pid) { const out = { q: 0, plans: 0 }, now = Date.now(); let L = [];
+  try { L = await qAll(pid ? env.DB.prepare("SELECT * FROM bc_plan WHERE id=? AND st IN ('plan','run') AND at<=?").bind(+pid, now) : env.DB.prepare("SELECT * FROM bc_plan WHERE st IN ('plan','run') AND at <= ? ORDER BY at LIMIT 10").bind(now)) } catch (e) { return { skip: 'no table' } }
+  for (const P of L) { const d = JSON.parse(P.data || '{}'); out.plans++;
+    if (d.efir && !Array.isArray(d.uids)) { const e = await efGet(env, d.efir); if (!e || e.del || ['done', 'rec'].includes(e.status) || (d.kind !== 'efir-s' && e.status === 'live')) { await env.DB.prepare("UPDATE bc_plan SET st='cancel' WHERE id=?").bind(P.id).run(); continue }
+      d.uids = await efAudUids(env, e) }
+    const U = (d.uids || []).map(Number), s = { role: P.role, cid: P.cid }, ch = ['tg', 'mail', 'both'].includes(d.ch) ? d.ch : 'tg';
+    if (!U.length) { await env.DB.prepare("UPDATE bc_plan SET st='done' WHERE id=?").bind(P.id).run(); continue }
+    if (!d.tgq && ch !== 'mail') { const want = new Set(U.slice(P.done | 0)), st = (await appStudents(env, appScope(s, P.cc))).students || [], pri = d.kind === 'efir-s' ? 0 : /^efir-/.test(d.kind || '') ? 1 : 2;
+      const n = await tgqAdd(env, st.filter(x => x.tgid && want.has(+x.uid)).map(x => ({ job: 'plan:' + P.id, pri, chat: x.tgid, k: 'u' + x.uid }))); out.q += n; d.tgq = 1;
+      const cc = appScope(s, P.cc), log = (await kvGet(env, 'bclog:' + cc)) || []; log.unshift({ bid: 'plan' + P.id, at: new Date().toISOString(), who: s.role === 'admin' ? 'Роман' : ((CURATORS.find(x => x.id === s.cid) || {}).name || 'Куратор'), ch, text: String(d.text || '').slice(0, 1500), btn: null, link: null, all: false, sent: n, fail: 0, msent: 0, q: 1 }); await kvPut(env, 'bclog:' + cc, log.slice(0, 30)) }
+    if (ch === 'tg') { await env.DB.prepare("UPDATE bc_plan SET st='done', done=?, data=? WHERE id=?").bind(U.length, JSON.stringify(d), P.id).run(); await logIt(env, 'bcplan-q', 0, P.cc + ' ' + P.id + ' ' + out.q); continue }
+    const part = U.slice(P.done, P.done + 30); if (!part.length) { await env.DB.prepare("UPDATE bc_plan SET st='done', data=? WHERE id=?").bind(JSON.stringify(d), P.id).run(); continue }
+    await env.DB.prepare("UPDATE bc_plan SET st='run', done=?, data=? WHERE id=? AND done=?").bind(P.done + part.length, JSON.stringify(d), P.id, P.done).run();
+    const r = await bcSend(env, s, { c: P.cc, uids: part, ch: 'mail', subj: d.subj, text: d.text, btns: d.btns, bid: 'plan' + P.id, noTg: d.noTg });
+    await env.DB.prepare("UPDATE bc_plan SET msent=msent+?, fail=fail+?, st=CASE WHEN done>=? THEN 'done' ELSE st END WHERE id=?").bind(r.msent | 0, r.mfail | 0, U.length, P.id).run() }
+  return out }
 function appScope(s, c) { if (s.role === 'admin') return CURATORS.find(x => x.id === c) ? c : (c === 'all' ? 'all' : CURATORS[0].id); return s.cid }
 const APPC = {}; /* кэш списка в памяти изолята на 30 с: переключение и повторные запросы мгновенные */
 /* 04.11 (D1 на 93% дневного лимита чтения): тяжёлые сводки (ученики куратора, «Сегодня», скорость ответов) считаются раз в ~90 с на всю школу,
@@ -3977,6 +4003,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return W.mo
     return json(req, { ok: true, uids: (await kvGet(env, 'efir_ui2')) || [] }) }
   /* 07.11 Э5: идущие эфиры (экран модератора #host/mod), настройки эфиров 5.5 */
   if (path === '/efir/host/live') return json(req, await efLiveList(env, now));
+  if (path === '/efir/host/tgq') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); const r = await tgqApi(env, req, o, W); return json(req, r, r.st || (r.ok ? 200 : 400), { 'Cache-Control': 'no-store' }) } /* 08.11 Э0.П */
   if (path === '/efir/host/settings') { await ef2Ensure(env); if (req.method === 'POST') { const r = await efSetPost(env, W, o, now); return json(req, r, r.st || (r.ok ? 200 : 400), { 'Cache-Control': 'no-store' }) } return json(req, await efSetGet(env, W, now), 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/efir/host/cover' && req.method === 'POST') { const m = String(o.data || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/); if (!m) return json(req, { ok: false, err: 'Нужна картинка JPG, PNG или WebP' }, 400);
     if (m[2].length > 1400000) return json(req, { ok: false, err: 'Картинка слишком большая — до 1 МБ' }, 400);
@@ -4122,7 +4149,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return W.mo
        (cfg.room_in, первый вход = signal.first_on — от него сдвиг записи), старт — «Начать эфир» в пульте. Старый пульт: «Начать эфир» у комнаты шлёт start=1 — запускает, как раньше */
     if (L && !L.err && u.searchParams.get('peek') !== '1' && !W.modr && e.kind !== 'auto' && ['plan', 'draft'].includes(e.status)) {
       if (!cfR.room_in) { await env.DB.prepare("UPDATE efir SET cfg=json_set(json_set(COALESCE(cfg,'{}'), '$.room_in', ?), '$.signal', json(?)) WHERE id=?").bind(now, JSON.stringify(Object.assign({}, cfR.signal || {}, { at_on: now, first_on: (cfR.signal || {}).first_on || now })), e.id).run(); efDrop(e.id); await logIt(env, 'efir-room-in', W.uid, e.id) }
-      if ((curRoom || want) && now >= (e.start || 0) - 30 * 6e4) { await env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=?, cfg=CASE WHEN at_live IS NULL THEN json_set(COALESCE(cfg,'{}'), '$.rec_offset', 0) ELSE cfg END WHERE id=?").bind(now, now, e.id).run(); efDrop(e.id); await logIt(env, 'efir-room-live', W.uid, e.id + (want ? ' start' : '')); await efPlanStartNow(env, e.id) } }
+      if ((curRoom || want) && now >= (e.start || 0) - 30 * 6e4) { await env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=?, cfg=CASE WHEN at_live IS NULL THEN json_set(COALESCE(cfg,'{}'), '$.rec_offset', 0) ELSE cfg END WHERE id=?").bind(now, now, e.id).run(); efDrop(e.id); await logIt(env, 'efir-room-live', W.uid, e.id + (want ? ' start' : '')); await efPlanStartNow(env, e.id); TGQ.start.push(e.id) } }
     if (!L || L.err) return json(req, { ok: false, err: L ? 'Комната Kinescope не создалась — сохрани эфир ещё раз или напиши Роману' : 'Это эфир-трансляция, не комната' }); return json(req, { ok: true, link: L.host || L.link, admin: L.admin }) }
   if (path === '/efir/host/aud') { const cf = efJ(e.cfg, {}), acc = e.tariff || 'all'; let uids = null;
     if (acc === 'sel') uids = cf.uids || []; else if (acc === 'open') uids = (await qAll(env.DB.prepare('SELECT DISTINCT uid FROM efir_reg WHERE efir_id=? AND uid>0').bind(e.id))).map(x => +x.uid);
@@ -4151,7 +4178,7 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return W.mo
     if (act === 'lead_more' || act === 'poll_show') { const r5 = await ef5Tweak(env, e, W, act, sec, now); return json(req, r5, r5.ok ? 200 : 400) }
     if (/^(lead|banner|poll)_off$/.test(act) || act === 'end') { await ef2Ensure(env); q.push(env.DB.prepare('UPDATE ev_mat_log SET at_off=?, sec_off=? WHERE efir_id=? AND at_off IS NULL' + (act === 'end' ? '' : ' AND kind=?')).bind(...[now, sec, e.id].concat(act === 'end' ? [] : [act.replace('_off', '')]))) }
     /* старт: сдвиг записи — от первого сигнала OBS (или первого входа ведущего в комнату) до «Начать эфир» (§3.4), только при первом старте */
-    if (act === 'start') { if (e.kind === 'auto') return json(req, { ok: false, err: 'Автовебинар идёт по расписанию' }, 400); await efPlanStartNow(env, e.id); const sg = cfg.signal || {}, off = sg.first_on && sg.first_on < now ? Math.round((now - sg.first_on) / 1000) : 0;
+    if (act === 'start') { if (e.kind === 'auto') return json(req, { ok: false, err: 'Автовебинар идёт по расписанию' }, 400); await efPlanStartNow(env, e.id); TGQ.start.push(e.id); const sg = cfg.signal || {}, off = sg.first_on && sg.first_on < now ? Math.round((now - sg.first_on) / 1000) : 0;
       q.push(env.DB.prepare("UPDATE efir SET status='live', at_live=COALESCE(at_live, ?), upd=?, cfg=CASE WHEN at_live IS NULL THEN json_set(COALESCE(cfg,'{}'), '$.rec_offset', ?) ELSE cfg END WHERE id=?").bind(now, now, off, e.id)) }
     else if (act === 'end') q.push(env.DB.prepare("UPDATE efir SET status='done', at_end=?, upd=? WHERE id=?").bind(now, now, e.id), env.DB.prepare("UPDATE efir_hand SET st='done' WHERE efir_id=? AND st IN ('wait','stage')").bind(e.id));
     else if (/^(lead|banner|poll|screen)(_off)?$/.test(act)) { if (/^lead/.test(act) && efNoSales(e)) return json(req, { ok: false, err: 'В эфирах кураторов заявок нет' }, 400);
@@ -4349,20 +4376,117 @@ async function efStart(env, chat, id, from) { await efirEnsure(env); if (from) a
   await logIt(env, 'efir-reg-bot', W.uid || 0, e.id + ' ' + chat); const at = sess || e.start, live = e.kind === 'auto' ? now >= sess : S.st === 'live';
   return tgSend(env, chat, '✅ <b>' + nbt(live ? 'Эфир уже идёт!' : 'Ты записан на эфир') + '</b>\n«' + th(e.title) + '»' + (live ? '' : '\n' + efWhen(at)) + '\n\n' + nbt(live ? 'Подключайся по кнопке.' : 'Напомню за сутки, за час и в момент начала.'), [[{ text: live ? '▶ Открыть эфир' : 'Открыть страницу эфира', url: await efLink(env, e, W.k) }]]) }
 /* cron: напоминания. d — за сутки (за 23–25 ч), h — за час (≤ 70 мин), s — старт (≤ 5 мин до начала и до 30 мин после). Пометки в efir_reg.rem, ≤ бюджета запуска */
-async function efirJob(env, B) { await efirEnsure(env); const now = msNow(), out = { sent: 0 };
+async function efirJob(env, B) { await efirEnsure(env); const now = msNow(), out = { sent: 0 }, PQ = await tgqPaid(env), ADD = []; /* 08.11 Э0.П: на Paid — постановка в tg_q без лимита 25 */
   const E = await qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND status IN ('plan','live') AND (kind='auto' OR (start>? AND start<?))").bind(now - 30 * 6e4, now + 25 * 36e5)); if (!E.length) return out;
   const ids = E.map(e => e.id), regs = await qAll(env.DB.prepare("SELECT r.*, s.tg_chat, (SELECT v FROM kv WHERE k='notif:'||r.uid) nf FROM efir_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.efir_id IN (" + ids.map(() => '?').join(',') + ") AND LENGTH(COALESCE(r.rem,''))<3 AND (r.sess=0 OR r.sess>?)").bind(...ids, now - 30 * 6e4)), marks = [];
-  for (const r of regs) { if (!B.ok(1) || out.sent >= 25) break; const e = E.find(x => x.id === r.efir_id), at = e.kind === 'auto' ? r.sess : e.start; if (!at) continue; if (e.kind === 'auto' && efJ(e.cfg, {}).on === 0) continue; /* 07.11 Э7: на паузе напоминания не уходят */ if (efJ(e.cfg, {}).ev) continue; /* 06.11: эфиры мероприятий напоминает воронка мероприятия */
+  for (const r of regs) { if (!PQ && (!B.ok(1) || out.sent >= 25)) break; const e = E.find(x => x.id === r.efir_id), at = e.kind === 'auto' ? r.sess : e.start; if (!at) continue; if (e.kind === 'auto' && efJ(e.cfg, {}).on === 0) continue; /* 07.11 Э7: на паузе напоминания не уходят */ if (efJ(e.cfg, {}).ev) continue; /* 06.11: эфиры мероприятий напоминает воронка мероприятия */
     if (e.kind !== 'auto' && e.kind !== 'open' && Object.keys(efJ(e.cfg, {}).bcp || {}).length && r.uid) continue; /* 06.11: ученикам напоминают рассылки эфира (efPlanSync) */ const left = at - now, rem = r.rem || '';
     const ph = left <= 5 * 6e4 && left > -30 * 6e4 ? 's' : left > 0 && left <= 70 * 6e4 ? 'h' : left >= 23 * 36e5 && left <= 25 * 36e5 ? 'd' : ''; if (!ph || rem.includes(ph)) continue;
     const nrem = rem + (ph === 's' ? 'dhs' : ph === 'h' ? 'dh' : 'd'); marks.push(env.DB.prepare('UPDATE efir_reg SET rem=? WHERE efir_id=? AND k=?').bind([...new Set(nrem)].join(''), r.efir_id, r.k));
     let nf = NOTIF_DEF; try { nf = Object.assign({}, NOTIF_DEF, JSON.parse(r.nf || '{}')) } catch (x) {} if (r.uid && !nf.efir) continue;
-    const chat = r.k[0] === 't' ? r.k.slice(1) : (r.tg_chat || r.chat); if (!chat) continue; const h = efHost(e);
+    const chat = r.k[0] === 't' ? r.k.slice(1) : (r.tg_chat || r.chat); if (!chat) continue; if (PQ) { ADD.push({ job: 'rem:' + e.id + ':' + ph + (e.kind === 'auto' ? ':' + r.sess : ''), pri: ph === 's' ? 0 : 1, chat, k: r.k, efir_id: e.id }); continue } const h = efHost(e);
     const t = ph === 's' ? '🔴 <b>' + nbt('Эфир начинается') + '</b>\n«' + th(e.title) + '» · ' + th(h.name) + '\n' + nbt('Заходи — ' + (e.kind === 'auto' ? 'смотри с самого начала.' : 'чат и вопросы уже открыты.'))
       : ph === 'h' ? '⏰ <b>' + nbt('Через час эфир') + '</b>\n«' + th(e.title) + '» · ' + efHM(at) + NB + 'МСК' + (e.kind !== 'auto' && efJ(e.cfg, {}).work !== 0 && r.uid ? '\n' + nbt('Можно прислать работу на разбор прямо на странице эфира.') : '')
       : '📅 <b>' + nbt('Завтра эфир') + '</b>\n«' + th(e.title) + '» · ' + efWhen(at) + '\n' + th(h.name);
     B.use(1); const j = await tgSend(env, chat, t, [[{ text: ph === 's' ? '▶ Открыть эфир' : 'Страница эфира', url: await efLink(env, e, r.k) }]]); if (j && j.ok) out.sent++ }
-  if (marks.length) await env.DB.batch(marks); return out }
+  if (marks.length) await env.DB.batch(marks); if (ADD.length) out.q = await tgqAdd(env, ADD); return out }
+/* ===== 08.11 Э0.П (ТЗ §3.7, §8): быстрая очередь сообщений бота tg_q — только на Workers Paid =====
+   Включение: kv cf_plan='paid' И расписание «* * * * *» реально идёт (метка cron_min свежее 3 мин). Расписание ставит deploy.yml (шаг «schedules», не валит выкладку);
+   на Free шестое расписание Cloudflare не примет — метки нет, всё идёт старым путём (bcPlanTick / evTick / efirJob по 25–30 за тик). Аварийный выключатель — cf_plan='free' (POST /efir/host/tgq {plan:'free'}).
+   Постановка: bcPlanTick (plan:<id>), evTick (step:<ev>:<шаг>:<эфир>), ev4BcTick (bc:<id>), efirJob (rem:<эфир>:<d|h|s>); дубли отсекает UNIQUE(job, k) и ev_sent.
+   Отправка (tgqDrain): одна одновременно (kv tgq_lock, TTL 70 с), пачка ≤ 25 параллельно, не чаще раза в секунду (≤ 25/с), на пачку 1 выборка + 1 пакет записей;
+   429 → пауза всей очереди на retry_after (next_at строк и сам замок до конца паузы), 403 → skip, 400 → fail, сеть / 5xx → повтор через 30 с, до 3 раз.
+   Стоп: 750 подзапросов, 25 с (запрос, waitUntil) или 50 с (cron); остаток — следующий drain. */
+const TGQ = { p: 0, pAt: -1e15, hot: 0, chkAt: 0, kickAt: 0, start: [] };
+const TGQ_SAFE = /^[A-Za-z0-9_:.-]{1,80}$/;
+async function tgqState(env) { const L = await qAll(env.DB.prepare("SELECT k, v FROM kv WHERE k IN ('cf_plan','cron_min','tgq_lock')")), m = {}; for (const x of L) m[x.k] = String(x.v == null ? '' : x.v).replace(/"/g, '');
+  const hb = +m.cron_min || 0; return { plan: m.cf_plan || '', cron_min: hb, lock: m.tgq_lock || '', on: m.cf_plan === 'paid' && hb > 0 && Date.now() - hb < 180e3 } }
+async function tgqPaid(env) { const now = Date.now(); if (now - TGQ.pAt < 15e3) return TGQ.p; TGQ.pAt = now; try { TGQ.p = (await tgqState(env)).on ? 1 : 0 } catch (e) { TGQ.p = 0 } return TGQ.p }
+async function tgqPlan(env) { return (await tgqPaid(env)) ? 'paid' : 'free' }
+/* строки очереди: {job, pri, chat, k, ev_id, efir_id, step}; INSERT OR IGNORE пачками (одна поездка в D1) */
+async function tgqAdd(env, rows) { if (!rows.length) return 0; await ef2Ensure(env); const now = msNow(); let n = 0;
+  for (let i = 0; i < rows.length; i += 50) { const R = await env.DB.batch(rows.slice(i, i + 50).map(r => env.DB.prepare("INSERT OR IGNORE INTO tg_q (job, pri, chat, k, ev_id, efir_id, step, st, tries, next_at, at) VALUES (?,?,?,?,?,?,?,'q',0,?,?)").bind(r.job, r.pri | 0, r.chat == null ? null : String(r.chat), String(r.k), r.ev_id || null, r.efir_id || 0, r.step || null, now, now)));
+    for (const x of R) n += (x && x.meta && x.meta.changes) | 0 } if (n) TGQ.hot = 1; return n }
+/* вызов Telegram без лога на каждую ошибку (при 1 840 получателях лог не должен расти на сотни строк) */
+async function tgqCall(env, method, body) { if (!env.TG_TOKEN) return { ok: false, error_code: 400, description: 'no TG_TOKEN' };
+  try { const r = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/' + method, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => null); return j || { ok: false, error_code: r.status || 502 } } catch (e) { return { ok: false, error_code: 0, net: 1 } } }
+/* текст строки очереди (рендер в момент отправки, §3.7.2); C — кеш на один drain */
+async function tgqRender(env, x, C) { const P = String(x.job).split(':'), now = msNow(), get = async (key, fn) => (key in C ? C[key] : (C[key] = await fn()));
+  if (P[0] === 'test') return { m: { text: 'Проверка очереди: ' + x.k }, dry: P[2] === 'dry' };
+  if (P[0] === 'step') { const ev = await get('ev' + x.ev_id, () => evGet(env, x.ev_id)); if (!ev) return null; const E = await get('E' + ev.id, () => evEfirs(env, ev.id)), s = evOn(ev).find(z => String(z.id) === String(x.step)); if (!s) return null;
+    const e = +x.efir_id ? E.find(z => z.id === +x.efir_id) || null : evNext(E, now); return { m: await evRender(env, ev, E, e, s, { name: x.rname, k: x.k }), img: s.img } }
+  if (P[0] === 'bc') { const b = await get('bc' + P[1], () => env.DB.prepare('SELECT * FROM ev_bc WHERE id=?').bind(+P[1]).first()); if (!b || b.st === 'cancel') return null; const ev = await get('ev' + b.ev_id, () => evGet(env, b.ev_id)); if (!ev) return null;
+    const E = await get('E' + ev.id, () => evEfirs(env, ev.id)), who = efJ(b.who, {}), e0 = who.efir_id ? E.find(z => z.id === +who.efir_id) : null;
+    return { m: await evRender(env, ev, E, e0 || evNext(E, now), { text: b.text, btns: efJ(b.btns, []) || [] }, { name: x.rname, k: x.k }), img: b.img } }
+  if (P[0] === 'plan') { const p = await get('pl' + P[1], () => env.DB.prepare('SELECT * FROM bc_plan WHERE id=?').bind(+P[1]).first()); if (!p || p.st === 'cancel') return null; const d = efJ(p.data, {});
+    const st = await get('st' + p.cc, async () => { const M = {}; for (const z of (await appStudents(env, appScope({ role: p.role, cid: p.cid }, p.cc))).students || []) M[z.uid] = z; return M }), z = st[+String(x.k).slice(1)] || {};
+    const BL = (Array.isArray(d.btns) ? d.btns : []).filter(b => b && /^https:\/\//.test(String(b.u || ''))).slice(0, 5).map(b => [{ text: String(b.t || 'Открыть').slice(0, 40), url: String(b.u).slice(0, 500) }]);
+    return { m: { text: th(String(d.text || '').trim().slice(0, 3000).replace(/\{имя\}/g, firstName(z.name) || 'привет')), kb: BL.length ? BL : undefined } } }
+  if (P[0] === 'rem') { const e = await get('ef' + x.efir_id, () => efGet(env, x.efir_id)); if (!e || e.del) return null; const ph = P[2], at = e.kind === 'auto' ? +x.gsess || 0 : e.start, h = efHost(e);
+    const t = ph === 's' ? '🔴 <b>' + nbt('Эфир начинается') + '</b>\n«' + th(e.title) + '» · ' + th(h.name) + '\n' + nbt('Заходи — ' + (e.kind === 'auto' ? 'смотри с самого начала.' : 'чат и вопросы уже открыты.'))
+      : ph === 'h' ? '⏰ <b>' + nbt('Через час эфир') + '</b>\n«' + th(e.title) + '» · ' + efHM(at) + NB + 'МСК' + (e.kind !== 'auto' && efJ(e.cfg, {}).work !== 0 && x.guid ? '\n' + nbt('Можно прислать работу на разбор прямо на странице эфира.') : '')
+      : '📅 <b>' + nbt('Завтра эфир') + '</b>\n«' + th(e.title) + '» · ' + efWhen(at) + '\n' + th(h.name);
+    return { m: { text: t, kb: [[{ text: ph === 's' ? '▶ Открыть эфир' : 'Страница эфира', url: await efLink(env, e, x.k) }]] } } }
+  return null }
+async function tgqSend1(env, x, C) { if (!x.chat) return { st: 'skip', err: 'nochat', n: 0 }; if (+x.dup) return { st: 'skip', err: 'dup', n: 0 };
+  let R = null; try { R = await tgqRender(env, x, C) } catch (e) { return { st: 'fail', err: 'render', n: 0 } } if (!R) return { st: 'skip', err: 'gone', n: 0 };
+  const m = R.m; let j, n = 1;
+  if (R.dry) j = await tgqCall(env, 'sendChatAction', { chat_id: x.chat, action: 'typing' });
+  else if (R.img) { const cap = m.text.length <= 1000; j = await tgqCall(env, 'sendPhoto', Object.assign({ chat_id: x.chat, photo: R.img }, cap ? Object.assign({ caption: m.text, parse_mode: 'HTML' }, m.kb ? { reply_markup: { inline_keyboard: m.kb } } : {}) : {}));
+    if (j && j.ok && !cap) { n++; j = await tgqCall(env, 'sendMessage', Object.assign({ chat_id: x.chat, text: m.text, parse_mode: 'HTML', disable_web_page_preview: true }, m.kb ? { reply_markup: { inline_keyboard: m.kb } } : {})) } }
+  else j = await tgqCall(env, 'sendMessage', Object.assign({ chat_id: x.chat, text: m.text, parse_mode: 'HTML', disable_web_page_preview: true }, m.kb ? { reply_markup: { inline_keyboard: m.kb } } : {}));
+  if (j && j.ok) return { st: 'sent', n };
+  const c = (j && +j.error_code) || 0;
+  if (c === 429) return { st: 'q', ra: Math.max(1, Math.min(300, +((j.parameters || {}).retry_after) || 5)), err: '429', n };
+  if (c === 403) return { st: 'skip', err: 'blocked', n };
+  if (c === 400) return { st: 'fail', err: 'tg400', n };
+  return { st: 'retry', err: c ? 'tg' + c : 'net', n } }
+const tgqSleep = ms => new Promise(r => setTimeout(r, ms));
+async function tgqDrain(env, mode, B) { await ef2Ensure(env); const T0 = Date.now(), LIM = mode === 'cron' ? 50e3 : 25e3, MAX = 750, tok = T0 + '.' + Math.floor(Math.random() * 1e6), out = { sent: 0, skip: 0, fail: 0, retry: 0, r429: 0, batches: 0 };
+  const lk = await env.DB.prepare("INSERT INTO kv (k, v) VALUES ('tgq_lock', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v WHERE CAST(kv.v AS INTEGER) < ?").bind(tok, T0 - 70e3).run();
+  if (!lk.meta || !lk.meta.changes) return { busy: 1 };
+  let used = 0, pauseTo = 0; const C = {}, ST = {};
+  try {
+    while (used < MAX && Date.now() - T0 < LIM && (!B || B.ok(1))) {
+      const tb = Date.now(), lim = Math.min(25, MAX - used, B ? B.max - B.n : 25);
+      const L = await qAll(env.DB.prepare('SELECT q.*, r.name rname, g.sess gsess, g.uid guid, (q.step IS NOT NULL AND EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=q.ev_id AND x.step=q.step AND x.efir_id=COALESCE(q.efir_id,0) AND x.k=q.k)) dup FROM tg_q q LEFT JOIN ev_reg r ON r.ev_id=q.ev_id AND r.k=q.k AND q.ev_id IS NOT NULL LEFT JOIN efir_reg g ON g.efir_id=q.efir_id AND g.k=q.k AND q.job LIKE \'rem:%\' WHERE q.st=\'q\' AND COALESCE(q.next_at,0)<=? ORDER BY q.pri, q.id LIMIT ?').bind(msNow(), lim));
+      if (!L.length) { TGQ.hot = 0; break }
+      out.batches++; const res = await Promise.all(L.map(x => tgqSend1(env, x, C)));
+      const now = msNow(), U = [], S = [], ra = Math.max(0, ...res.map(r => r.ra || 0));
+      res.forEach((r, i) => { const x = L[i]; used += r.n; if (B) B.use(r.n); let st = r.st, nx = null, tr = x.tries | 0;
+        if (st === 'q') { out.r429++; nx = now + ra * 1000 } else if (st === 'retry') { tr++; out.retry++; if (tr >= 3) st = 'fail'; else { st = 'q'; nx = now + 30e3 } }
+        if (st === 'sent') out.sent++; else if (st === 'skip') out.skip++; else if (st === 'fail') out.fail++;
+        if (st !== 'q' && x.step && r.err !== 'dup') S.push([x.ev_id, x.step, +x.efir_id || 0, x.k, st === 'sent' ? 1 : 0, now]);
+        if (st !== 'q' && /^(bc|plan):/.test(x.job)) { const a = ST[x.job] || (ST[x.job] = { ok: 0, fail: 0 }); if (st === 'sent') a.ok++; else if (r.err !== 'dup' && r.err !== 'gone') a.fail++ }
+        U.push({ id: +x.id, st, tr, nx, err: r.err && /^[a-z0-9]{1,12}$/.test(r.err) ? r.err : null }) });
+      const cs = (f) => U.map(u => ' WHEN ' + u.id + ' THEN ' + f(u)).join(''), Q = [env.DB.prepare("UPDATE tg_q SET st=CASE id" + cs(u => "'" + u.st + "'") + " END, tries=CASE id" + cs(u => u.tr) + " END, next_at=CASE id" + cs(u => u.nx == null ? 'next_at' : u.nx) + " END, err=CASE id" + cs(u => u.err ? "'" + u.err + "'" : 'err') + " END, sent_at=CASE WHEN id IN (" + U.filter(u => u.st === 'sent').map(u => u.id).concat([0]).join(',') + ") THEN " + now + " ELSE sent_at END WHERE id IN (" + U.map(u => u.id).join(',') + ')')];
+      for (let i = 0; i < S.length; i += 16) { const part = S.slice(i, i + 16); Q.push(env.DB.prepare('INSERT OR IGNORE INTO ev_sent (ev_id, step, efir_id, k, ok, at) VALUES ' + part.map(() => '(?,?,?,?,?,?)').join(',')).bind(...[].concat(...part))) }
+      await env.DB.batch(Q);
+      if (ra) { pauseTo = now + ra * 1000; if (Date.now() + ra * 1000 - T0 >= LIM) break; await tgqSleep(ra * 1000); pauseTo = 0; continue }
+      const el = Date.now() - tb; if (el < 1000) await tgqSleep(1000 - el) }
+  } finally {
+    const Q = []; for (const j in ST) { const [k, id] = j.split(':'), a = ST[j]; Q.push(k === 'bc' ? env.DB.prepare('UPDATE ev_bc SET ok=COALESCE(ok,0)+?, fail=COALESCE(fail,0)+? WHERE id=?').bind(a.ok, a.fail, +id) : env.DB.prepare('UPDATE bc_plan SET sent=sent+?, fail=fail+? WHERE id=?').bind(a.ok, a.fail, +id)) }
+    if (!TGQ.hot) Q.push(env.DB.prepare("UPDATE ev_bc SET st='sent', at_sent=? WHERE st='run' AND EXISTS (SELECT 1 FROM tg_q q WHERE q.job='bc:'||ev_bc.id) AND NOT EXISTS (SELECT 1 FROM tg_q q WHERE q.job='bc:'||ev_bc.id AND q.st='q')").bind(msNow()));
+    Q.push(pauseTo ? env.DB.prepare("UPDATE kv SET v=? WHERE k='tgq_lock' AND v=?").bind(String(pauseTo - 70e3), tok) : env.DB.prepare("DELETE FROM kv WHERE k='tgq_lock' AND v=?").bind(tok));
+    try { await env.DB.batch(Q) } catch (e) { try { await env.DB.prepare("DELETE FROM kv WHERE k='tgq_lock' AND v=?").bind(tok).run() } catch (x) {} } }
+  out.ms = Date.now() - T0; if (out.sent + out.fail + out.skip) await logIt(env, 'tgq', 0, mode + ' ' + JSON.stringify(out)).catch(() => null); return out }
+/* после ответа на запрос: очередь не пуста — drain в фоне (не чаще раза в 2 с на изолят; признак «не пуста» из другого изолята — раз в 5 с одним SELECT) */
+async function tgqAfter(env, ctx) { const now = Date.now(), S0 = TGQ.start.splice(0);
+  if (S0.length) { if (!(await tgqPaid(env))) return; TGQ.kickAt = now; ctx.waitUntil((async () => { for (const id of S0) { const e = await efGet(env, id), sid = e && (efJ(e.cfg, {}).bcp || {}).s; if (sid) await bcPlanTick(env, null, sid) } await evTick(env); return tgqDrain(env, 'req') })().catch(x => logIt(env, 'tgq-err', 0, String(x && x.message || x).slice(0, 200)))); return } /* «Начать эфир»: «Мы в эфире» — сразу после ответа (статус live уже записан) */
+  if (now - TGQ.kickAt < 2e3) return; if (!(await tgqPaid(env))) return;
+  if (!TGQ.hot && now - TGQ.chkAt > 5e3) { TGQ.chkAt = now; try { TGQ.hot = (await env.DB.prepare("SELECT 1 x FROM tg_q WHERE st='q' AND COALESCE(next_at,0)<=? LIMIT 1").bind(msNow()).first()) ? 1 : 0 } catch (e) { TGQ.hot = 0 } }
+  if (!TGQ.hot) return; TGQ.kickAt = now; ctx.waitUntil(tgqDrain(env, 'req').catch(x => logIt(env, 'tgq-err', 0, String(x && x.message || x).slice(0, 200)))) }
+/* /efir/host/tgq (админ): состояние очереди и проверка без сообщений ученикам. GET — план, метка cron, очередь по статусам, последняя проверка;
+   POST {plan:'paid'|'free'} — выключатель; POST {test:N[, chat][, real:1]} — N строк себе (по умолчанию «печатает…» вместо сообщения), drain сразу */
+async function tgqApi(env, req, o, W) { await ef2Ensure(env);
+  if (req.method === 'POST' && (o.plan === 'paid' || o.plan === 'free')) { await kvPut(env, 'cf_plan', o.plan); TGQ.pAt = -1e15; await logIt(env, 'tgq-plan', W.uid || 0, o.plan); return { ok: true, plan: o.plan } }
+  if (req.method === 'POST' && +o.test) { const n = Math.max(1, Math.min(2000, +o.test | 0)), chat = String(o.chat || ((await admins(env))[0] || '')).replace(/[^-\d]/g, ''); if (!chat) return { ok: false, err: 'Нет чата: укажи chat' };
+    if (!(await tgqPaid(env))) return { ok: false, err: 'Очередь не включена: нет Paid или расписания «* * * * *»', st: 409 };
+    const job = 'test:' + msNow() + ':' + (o.real ? 'real' : 'dry'), rows = []; for (let i = 1; i <= n; i++) rows.push({ job, pri: 2, chat, k: i + '/' + n });
+    await tgqAdd(env, rows); await logIt(env, 'tgq-test', W.uid || 0, job + ' ' + n); return { ok: true, job, n } }
+  const s = await tgqState(env), q = await qAll(env.DB.prepare('SELECT st, COUNT(*) n FROM tg_q GROUP BY st')), t = await env.DB.prepare("SELECT job, COUNT(*) n, SUM(st='sent') sent, SUM(st='q') q, SUM(st IN ('fail','skip')) bad, MIN(sent_at) a, MAX(sent_at) b FROM tg_q WHERE job=(SELECT job FROM tg_q WHERE job LIKE 'test:%' ORDER BY id DESC LIMIT 1) GROUP BY job").first();
+  return { ok: true, now: msNow(), plan: s.plan || null, cron_min: s.cron_min || null, on: s.on, lock: s.lock || null, q: Object.fromEntries(q.map(x => [x.st, x.n])), test: t ? Object.assign({}, t, { sec: t.a && t.b ? Math.round((t.b - t.a) / 1000) : null }) : null } }
 
 /* ===== 06.11 (Роман): «Мероприятие» открытых эфиров — один эфир или марафон из нескольких дней. Одна регистрация на всё (бот /start v<id> или сайт по имени),
    воронка бота (шаги: сразу после регистрации, перед каждым эфиром, в момент старта, после эфира — всем / кто был / кто не пришёл, через N дней после),
@@ -4409,7 +4533,7 @@ const EF2_COLS = {
   efir_pollv: ['opts TEXT'],
   bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'],
   ev_form: ['ip TEXT'],
-  ev_bc: ['fail INTEGER DEFAULT 0', 'by_uid INTEGER', 'upd INTEGER'] }; /* 07.11 Э4: разовые 2.9 — неудачные отправки, кто создал */ /* 07.11 Э3: хеш IP анкеты гостя (защита от накрутки §3.4), стирается через 2 дня */ /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
+  ev_bc: ['fail INTEGER DEFAULT 0', 'by_uid INTEGER', 'upd INTEGER'], tg_q: ['step TEXT'] }; /* 08.11 Э0.П: шаг воронки / разовой — проверка ev_sent перед отправкой */ /* 07.11 Э4: разовые 2.9 — неудачные отправки, кто создал */ /* 07.11 Э3: хеш IP анкеты гостя (защита от накрутки §3.4), стирается через 2 дня */ /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
 let EF2_OK = false;
 async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
   await env.DB.batch(EF2_SCHEMA.map(s => env.DB.prepare(s)));
@@ -4463,7 +4587,7 @@ async function evRender(env, ev, E, e, s, R) { const now = msNow(), nm = firstNa
 async function evSend(env, chat, m, img) { if (img) { const cap = m.text.length <= 1000; const j = await tg(env, 'sendPhoto', { chat_id: chat, photo: img, ...(cap ? { caption: m.text, parse_mode: 'HTML', ...(m.kb ? { reply_markup: { inline_keyboard: m.kb } } : {}) } : {}) }); if (cap || !(j && j.ok)) return cap ? j : tgSend(env, chat, m.text, m.kb) }
   return tgSend(env, chat, m.text, m.kb) }
 /* раз в минуту: какие шаги «созрели». Окна узкие — не перебираем всех зарегистрированных без нужды (D1) */
-async function evTick(env, only) { await evEnsure(env); const now = msNow(), out = { sent: 0, fail: 0 }, LIM = only ? 10 : 30;
+async function evTick(env, only) { await evEnsure(env); const now = msNow(), out = { sent: 0, fail: 0 }, LIM = only ? 10 : 30, PQ = !only && await tgqPaid(env); /* 08.11 Э0.П: на Paid созревшие шаги — постановкой в tg_q (одним INSERT … SELECT на шаг), без лимита 30 */
   const EVS = only ? [only.ev] : await qAll(env.DB.prepare('SELECT * FROM efir_event WHERE del=0 AND created>?').bind(now - 180 * 864e5));
   for (const ev of EVS) { if (out.sent + out.fail >= LIM) break; const steps = evOn(ev); if (!steps.length) continue; const E = await evEfirs(env, ev.id);
     const jobs = []; for (const s of steps) { const m = (s.min | 0) * 6e4;
@@ -4479,13 +4603,15 @@ async function evTick(env, only) { await evEnsure(env); const now = msNow(), out
         : J.s.on === 'days' && J.s.who === 'nolead' ? ' AND NOT EXISTS (SELECT 1 FROM efir_lead l WHERE l.k=r.k AND l.efir_id IN (' + idl + '))'
         : J.s.on === 'days' && J.s.who === 'noform' ? ' AND NOT EXISTS (SELECT 1 FROM ev_form f WHERE f.ev_id=r.ev_id AND f.k=r.k)'
         : J.s.on === 'days' && J.s.who === 'formopen' ? " AND EXISTS (SELECT 1 FROM efir_ev z2 WHERE z2.kind='fopen' AND z2.data=r.k AND z2.efir_id IN (" + idl + ')) AND NOT EXISTS (SELECT 1 FROM ev_form f WHERE f.ev_id=r.ev_id AND f.k=r.k)' : '') : '';
+      if (PQ) { await ef2Ensure(env); const qr = await env.DB.prepare("INSERT OR IGNORE INTO tg_q (job, pri, chat, k, ev_id, efir_id, step, st, tries, next_at, at) SELECT ?, ?, COALESCE(r.chat, s.tg_chat, CASE WHEN substr(r.k,1,1)='t' THEN substr(r.k,2) END), r.k, r.ev_id, ?, ?, 'q', 0, ?, ? FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=?" + (J.sql ? ' AND ' + J.sql : '') + who + ' AND NOT EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=r.ev_id AND x.step=? AND x.efir_id=? AND x.k=r.k)')
+          .bind('step:' + ev.id + ':' + J.s.id + ':' + eid, J.s.on === 'start' ? 0 : J.s.on === 'before' ? 1 : 2, eid, String(J.s.id), now, now, ev.id, ...(J.b || []), J.s.id, eid).run(); const c = (qr.meta && qr.meta.changes) | 0; if (c) { out.q = (out.q || 0) + c; TGQ.hot = 1 } continue }
       const R = await qAll(env.DB.prepare('SELECT r.*, s.tg_chat FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=?' + (only ? ' AND r.k=?' : '') + (J.sql ? ' AND ' + J.sql : '') + who + ' AND NOT EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=r.ev_id AND x.step=? AND x.efir_id=? AND x.k=r.k) LIMIT ?')
         .bind(ev.id, ...(only ? [only.k] : []), ...(J.b || []), J.s.id, eid, LIM - out.sent - out.fail));
       for (const r of R) { const chat = r.chat || r.tg_chat || (r.k[0] === 't' ? r.k.slice(1) : null);
         const ins = await env.DB.prepare('INSERT OR IGNORE INTO ev_sent (ev_id, step, efir_id, k, ok, at) VALUES (?,?,?,?,?,?)').bind(ev.id, J.s.id, eid, r.k, chat ? 1 : 0, now).run(); if (!ins.meta || !ins.meta.changes || !chat) continue;
         const e = J.e || evNext(E, now), m = await evRender(env, ev, E, e, J.s, r), j = await evSend(env, chat, m, J.s.img).catch(() => null); if (j && j.ok) out.sent++; else out.fail++ } } }
   if (!only && out.sent + out.fail < LIM) await ev4BcTick(env, out, LIM); /* 07.11 Э4: разовые 2.9 — старой очередью до Paid (§0.1.8, §3.7.6) */
-  if (out.sent || out.fail) await logIt(env, 'ev-tick', 0, JSON.stringify(out)); return out }
+  if (out.sent || out.fail || out.q) await logIt(env, 'ev-tick', 0, JSON.stringify(out)); return out }
 /* ===== 07.11 «Эфиры 2.0», этап Э1 (docs/plan/efiry-tz.md v6 §4): регистрация через бота с телефоном, почтой и метками.
    /start v<id>[_<код>] (EV_START_RE), /start e<id> эфира мероприятия → evStart. Мероприятие без настроек `reg` (все старые) — как раньше: одно сообщение, без телефона и почты.
    С `reg` (новые мероприятия, EV_REG_NEW): приветствие + согласие (§4.4) → «Поделиться номером» (request_contact, только свой контакт) → почта (проверка опечаток, «Пропустить» при skip_email)
@@ -4815,7 +4941,7 @@ async function ev2Get(env, ev) { const now = msNow(), D = await ev2Days(env, ev.
     fmt: ev.fmt === 'room' ? 'room' : 'obs', dur: +ev.dur || (D[0] && D[0].dur) || 90, named: ev.named ? 1 : 0, upd: ev.upd || 0, steps,
     reg: { phone: R.phone, email: R.email, skip_email: R.skip_email, greet: R.greet, ask_email: R.ask_email, gc_group: R.gc_group, saved: raw.greet && raw.greet.text ? 1 : 0 },
     sale: ev3Pub(S3), prod: await ev3Prod(env, S3, ev), live: D.some(e => e.status === 'live') ? 1 : 0, lead_title: await ev3LeadTitle(env, ev, D), report_to: await ev3ReportTo(env), access: ev2Acc(ev), rec: ev2Rec(ev), saved7: ev.access || ev.rec ? 1 : 0,
-    bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0, funnel: evSteps(ev), cf_plan: (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 'paid' : 'free' },
+    bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0, funnel: evSteps(ev), cf_plan: await tgqPlan(env).catch(() => 'free') },
     days: D.map(e => Object.assign(ev2DayPub(e, now), { seen: ((seen.find(x => x.efir_id === e.id) || {}).n) | 0 })),
     hosts: [{ id: 'admin', name: 'Роман Одуванов' }].concat(CURATORS.map(c => ({ id: c.id, name: c.full }))), privacy: await evPrivacy(env) } }
 /* новый черновик (§3.2 event/new): метки «Основная» и «Сайт», у марафона 2 дня, у вебинара 1 эфир; дни — в статусе draft без даты */
@@ -5027,7 +5153,7 @@ const ev4BcPub = b => ({ id: b.id, who: efJ(b.who, {}), text: b.text || '', img:
 async function ev4BcGet(env, ev) { await ef2Ensure(env); const E = await evEfirs(env, ev.id), seg = s => env.DB.prepare('SELECT COUNT(*) n' + ev4Seg(E, s)).bind(ev.id);
   const Q = [seg({ seg: 'all' }), seg({ seg: 'never' }), seg({ seg: 'leads' }), seg({ seg: 'forms' })].concat(E.map(e => seg({ seg: 'came_day', efir_id: e.id }))), R = await env.DB.batch(Q), n = i => ((((R[i] || {}).results || [])[0] || {}).n) | 0;
   const L = await qAll(env.DB.prepare("SELECT * FROM ev_bc WHERE ev_id=? AND st<>'del' ORDER BY COALESCE(at_sent, at_plan) DESC, id DESC LIMIT 50").bind(ev.id));
-  return { ok: true, now: msNow(), plan: (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 'paid' : 'free', mode: (ev2Sale(ev) || {}).mode || null,
+  return { ok: true, now: msNow(), plan: await tgqPlan(env).catch(() => 'free'), mode: (ev2Sale(ev) || {}).mode || null,
     counts: { all: n(0), never: n(1), leads: n(2), forms: n(3), days: E.map((e, i) => ({ id: e.id, came: n(4 + i), miss: Math.max(0, n(0) - n(4 + i)) })) }, list: L.map(ev4BcPub) } }
 /* POST /efir/host/event/bc {v:2, act: self|send|plan|edit|cancel, id?, who:{seg, efir_id}, text, img, btns, at} */
 async function ev4BcPost(env, ev, o, W, origin) { await ef2Ensure(env); const now = msNow(), act = String(o.act || ''), E = await evEfirs(env, ev.id);
@@ -5048,6 +5174,11 @@ async function ev4BcPost(env, ev, o, W, origin) { await ef2Ensure(env); const no
 /* отправка разовых старой очередью (Free, §3.7.6): созревшие ev_bc → по 30 за тик вместе с шагами воронки; n — получателей на старте, ok / fail — итог; «дошло N%» = ok / n */
 async function ev4BcTick(env, out, LIM) { await ef2Ensure(env); const now = msNow(); let BC = [];
   try { BC = await qAll(env.DB.prepare("SELECT * FROM ev_bc WHERE st IN ('plan','run') AND COALESCE(at_plan,0)<=? ORDER BY at_plan, id LIMIT 3").bind(now)) } catch (e) { return }
+  if (await tgqPaid(env)) { for (const b of BC) { const ev = await evGet(env, b.ev_id); if (!ev) { await env.DB.prepare("UPDATE ev_bc SET st='cancel' WHERE id=?").bind(b.id).run(); continue } /* 08.11 Э0.П: на Paid — весь сегмент в tg_q (bc:<id>), итог «sent» ставит drain */
+      const who = efJ(b.who, {}), E = await evEfirs(env, ev.id), W = ev4Seg(E, who);
+      if (b.st === 'plan') { const c = await env.DB.prepare('SELECT COUNT(*) n' + W).bind(ev.id).first(); await env.DB.prepare("UPDATE ev_bc SET st='run', n=? WHERE id=? AND st='plan'").bind((c && c.n) | 0, b.id).run() }
+      const qr = await env.DB.prepare("INSERT OR IGNORE INTO tg_q (job, pri, chat, k, ev_id, efir_id, step, st, tries, next_at, at) SELECT ?, 2, COALESCE(r.chat, s.tg_chat, CASE WHEN substr(r.k,1,1)='t' THEN substr(r.k,2) END), r.k, r.ev_id, 0, ?, 'q', 0, ?, ?" + W + ' AND NOT EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=r.ev_id AND x.step=? AND x.efir_id=0 AND x.k=r.k)').bind('bc:' + b.id, 'bc' + b.id, now, now, ev.id, 'bc' + b.id).run();
+      const c = (qr.meta && qr.meta.changes) | 0; if (c) { out.q = (out.q || 0) + c; TGQ.hot = 1 } } return }
   for (const b of BC) { if (out.sent + out.fail >= LIM) break; const ev = await evGet(env, b.ev_id); if (!ev) { await env.DB.prepare("UPDATE ev_bc SET st='cancel' WHERE id=?").bind(b.id).run(); continue }
     const who = efJ(b.who, {}), E = await evEfirs(env, ev.id), W = ev4Seg(E, who);
     if (b.st === 'plan') { const c = await env.DB.prepare('SELECT COUNT(*) n' + W).bind(ev.id).first(); await env.DB.prepare("UPDATE ev_bc SET st='run', n=? WHERE id=? AND st='plan'").bind((c && c.n) | 0, b.id).run() }
@@ -5270,7 +5401,7 @@ async function efFormHook(env, req, o) { await ef2Ensure(env); const ev = await 
   await logIt(env, 'ev-hook', 0, ev.id + (who ? ' k' : ' ?') + (test ? ' test' : '') + (live ? '' : ' outside')); return json(req, { ok: true }) }
 
 /* ---------- фон: очередь ev_form_q → op:"rows" пачками; статусы менеджеров op:"status" (§3.1, §5.2) ---------- */
-async function evFormTick(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ok: 0, fail: 0 }; if (lim == null) lim = (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 10 : 3;
+async function evFormTick(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ok: 0, fail: 0 }; if (lim == null) lim = (await tgqPaid(env).catch(() => 0)) ? 10 : 3;
   const Q = await qAll(env.DB.prepare('SELECT * FROM ev_form_q WHERE COALESCE(next_at, 0)<=? ORDER BY next_at, id LIMIT 300').bind(now)); if (!Q.length) return out;
   const G = {}; for (const q of Q) { const k = q.ev_id + '|' + q.sheet; (G[k] = G[k] || []).push(q) }
   for (const k of Object.keys(G).slice(0, lim)) { if (!B.ok(1)) break; const L = G[k].slice(0, 100), ev = await evGet(env, L[0].ev_id), ids = L.map(q => q.id).join(',');
@@ -5286,7 +5417,7 @@ async function evFormTick(env, B, lim) { B = B || budget(3); await ef2Ensure(env
         env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.fails', COALESCE(json_extract(sale, '$.sheet.fails'), 0) + 1, '$.sheet.last_err', ?) WHERE id=?").bind(err, ev.id)]);
       await logIt(env, 'ev-sheet-q-err', 0, ev.id + ' ' + (r.bad || 'ok:false') + ' ' + L.length) } }
   return out }
-async function evFormStatus(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ev: 0, st: 0 }; if (lim == null) lim = (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 10 : 3;
+async function evFormStatus(env, B, lim) { B = B || budget(3); await ef2Ensure(env); const now = msNow(), out = { ev: 0, st: 0 }; if (lim == null) lim = (await tgqPaid(env).catch(() => 0)) ? 10 : 3;
   await env.DB.prepare('UPDATE ev_form SET ip=NULL WHERE ip IS NOT NULL AND at<?').bind(now - 2 * 864e5).run().catch(() => null); /* IP (хеш) — только на время эфира */
   const E = await qAll(env.DB.prepare("SELECT id, sale, status FROM efir_event WHERE del=0 AND json_extract(sale, '$.mode')='form' AND COALESCE(json_extract(sale, '$.sheet.ok_at'), 0)>0 AND COALESCE(status, 'reg')<>'draft' ORDER BY COALESCE(json_extract(sale, '$.sheet.st_at'), 0) LIMIT ?").bind(lim));
   for (const ev of E) { const S = ev3Sale(ev); await env.DB.prepare("UPDATE efir_event SET sale=json_set(sale, '$.sheet.st_at', ?) WHERE id=?").bind(now, ev.id).run();
@@ -5595,7 +5726,7 @@ async function ef7Who(env, e) { const L = await qAll(env.DB.prepare("SELECT s.k,
 async function ef7Save(env, req, u, o, W, now) { const old = +o.id ? await efGet(env, +o.id) : null; if (+o.id && !old) return { ok: false, err: 'Эфир не найден', st: 404 }; if (old && !efOwn(W, old)) return { ok: false, err: 'Это эфир другого ведущего', st: 403 };
   const c0 = old ? efJ(old.cfg, {}) : {}, host = W.adm ? (o.host != null ? String(o.host) : (old ? old.host_cid : '')) : W.cid; if (!W.adm && old && old.host_cid !== W.cid) return { ok: false, err: 'Это эфир другого ведущего', st: 403 };
   const curE = host !== 'admin'; if (curE && !ef7Cur(host)) return { ok: false, err: 'Выбери куратора', st: 400 };
-  const acc = ['cur', 'all', 'sel'].includes(o.access) ? o.access : old ? old.tariff : (curE ? 'cur' : 'all');
+  const acc = ['cur', 'all', 'sel'].includes(o.access) || (o.access === 'amz' && W.adm && !curE) ? o.access : old ? old.tariff : (curE ? 'cur' : 'all'); /* 08.11 q2: «Премиум Амазон» — у эфира Романа для учеников (как в старом пульте) */
   /* 08.11 r5 (редактор 5.3б): + описание, длительность, формат (комната / OBS), сцена, доступ к записи (−1 — не показывать), запись, главы, обложка — меняется только переданное */
   const room0 = old ? (c0.room ? 1 : 0) : (curE ? 1 : 0), room = o.room != null ? (+o.room ? 1 : 0) : room0;
   const P = { id: old ? old.id : 0, title: o.title != null ? o.title : old && old.title, about: o.about != null ? bStr(o.about, 1000) : old ? old.about || '' : '', host, kind: old ? old.kind : 'live', access: acc, status: old ? old.status : 'plan', dur: o.dur != null ? +o.dur || 60 : old ? old.dur : 60, cover: o.cover !== undefined ? (o.cover || null) : old ? old.cover : null,

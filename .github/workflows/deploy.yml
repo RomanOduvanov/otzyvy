@@ -24,6 +24,24 @@ jobs:
           echo "$R" | jq '{success, errors, etag: .result.etag}'
           echo "$R" | jq -e '.success' > /dev/null
           sleep 5; curl -fsS https://oduvanov-api.romanoduvanov52.workers.dev/ && echo
+      # 08.11 Эфиры Э0.П (ТЗ §3.7.7): шестое расписание «* * * * *» (быстрая очередь tg_q). Старые пять не трогаем — только добавляем недостающее.
+      # На Free Cloudflare откажет (лимит 5) — шаг помечен continue-on-error: выкладка остаётся зелёной, сервер без метки cron_min работает старым путём.
+      - name: Cron «* * * * *» (только Workers Paid)
+        continue-on-error: true
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          ACC: 3544f71e7e7fd1a3544f2f335165a199
+          NAME: oduvanov-api
+        run: |
+          set -e
+          U="https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$NAME/schedules"
+          S=$(curl -fsS "$U" -H "Authorization: Bearer $CF_API_TOKEN")
+          echo "$S" | jq -c '[.result.schedules[].cron]'
+          if echo "$S" | jq -e '.result.schedules | map(.cron) | index("* * * * *")' > /dev/null; then echo "уже есть"; exit 0; fi
+          B=$(echo "$S" | jq -c '[.result.schedules[] | {cron}] + [{cron: "* * * * *"}]')
+          R=$(curl -sS -X PUT "$U" -H "Authorization: Bearer $CF_API_TOKEN" -H "content-type: application/json" -d "$B")
+          echo "$R" | jq -c '{success, errors, crons: [.result.schedules[]?.cron]}'
+          echo "$R" | jq -e '.success' > /dev/null || { echo "::warning::Cloudflare не принял «* * * * *» (Free?) — очередь tg_q выключена, рассылки идут старым путём"; exit 1; }
       - name: Upload AI proxy (oduvanov-ai, pinned to US)
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
