@@ -173,6 +173,9 @@ html.kk #kNav{display:flex}
 #kNav .nsub button{height:36px;border-radius:10px;padding:0 10px;font-size:14px;color:var(--ink3);text-align:left;display:flex;justify-content:space-between;align-items:center}
 #kNav .nsub button:hover,#kNav .nsub button.on{background:var(--s1);color:var(--ink2)}#kNav .nsub button.on{color:var(--fg)}
 #kNav .nsub .n{font-style:normal;font-size:11px;height:18px;min-width:20px;padding:0 6px;border-radius:99px;background:var(--redBg);color:var(--red);display:grid;place-items:center}
+#kNav .ngrp{display:flex;flex-direction:column;gap:2px;margin:4px 0}#kNav .ngl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:10px 10px 4px}
+/* 07.11 Эфиры Э7 (§7.4): пульт эфира на весь экран; в разделе «Эфиры» (новый) шапка кабинета не дублирует заголовок экрана */
+html.ef7full #kNav,html.ef7full #kBar,html.ef2on .kMain>.hd{display:none!important}html.kk.ef7full #app.wrap{grid-template-columns:minmax(0,1fr)}html.kk.ef7full .kMain{padding:0;max-width:none}
 #kNav .nfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:14px 8px 0;border-top:1px solid var(--hair);font-size:12px;color:var(--ink3)}
 #kNav .nfoot .me{display:flex;align-items:center;gap:10px;color:var(--fg);font-size:14px}
 .av{width:44px;height:44px;border-radius:14px;flex:none;display:grid;place-items:center;font-weight:600;font-size:16px;color:#1a0730}
@@ -357,8 +360,8 @@ a.b1,a.b2{text-decoration:none}
 <div class="toast" id="toast"></div>
 <div id="tdToast" role="status"><span></span><button class="b2 sm" id="tdUndo">Вернуть</button></div>
 <script src="bank.js?v=20"></script>
-<script src="efir.js?v=41"></script>
-<script src="efir-host.js?v=41"></script>
+<script src="efir.js?v=42"></script>
+<script src="efir-host.js?v=42"></script>
 <script src="feed.js?v=10"></script>
 <script>
 (function(){
@@ -768,7 +771,7 @@ function curPick(c){var sg=$('curSeg');CUR=c;SEL={};sg.querySelectorAll('button'
 /* 30.10 «Эфиры» (макет 9.7–9.16): создать эфир, пульт ведущего, модерация, автовебинары, статистика, заявки. Модуль efir.js, сервер /efir/* (роль проверяет сервер: куратор — свои эфиры, без продаж) */
 /* 07.11 Эфиры Э0 (ТЗ §1, §6.0, §8): при флаге efir_ui2 (/efir/host/me) вместо старого пульта — новый раздел (ECOEFIR.host2, efir-host.js), его экран — в адресе #efir/<экран>;
    без флага — старый пульт, как был. ?fx=<Доска> на localhost — режим сверки: ответы раздела из фикстуры, время заморожено */
-var EFH=null,EF2=0,EFME=0,EFSUB0=(location.hash.match(/^#efir\/(.+)$/)||[])[1]||'',FXP=null,FXN=window.ECOEFIR&&ECOEFIR.fx?ECOEFIR.fx.param():'';
+var EFNAV=null,EFH=null,EF2=0,EFME=0,EFSUB0=(location.hash.match(/^#efir\/(.+)$/)||[])[1]||'',FXP=null,FXN=window.ECOEFIR&&ECOEFIR.fx?ECOEFIR.fx.param():'';
 function efMount(){if(EFH&&$('efBox').firstChild)return;var EA=API.replace(/\/app\/api\/$/,'');if(FXN&&!FXP&&ECOEFIR.fx.allowed(!!(ME&&ME.role==='admin')))FXP=ECOEFIR.fx.load(FXN);
   var O={bc:function(id){bcEf(id)},api:function(p,o){o=o||{};if(FXP)return FXP.then(function(){return ECOEFIR.fx.api(p,o)});return fetch(EA+p,{method:o.method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:o.body}).then(function(r){if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})},
     toast:toast,open:function(u){window.open(u,'_blank','noopener')},fileUrl:function(eid,mid){return EA+'/efir/host/file?id='+eid+'&mid='+mid+'&t='+T}};
@@ -777,8 +780,8 @@ function efMount(){if(EFH&&$('efBox').firstChild)return;var EA=API.replace(/\/ap
 function efMe(O){if(EFME)return;EFME=1;O.api('/efir/host/me').then(function(j){var fx=FXP&&ECOEFIR.fx.data(),on=fx?!(fx.me&&fx.me.ui2===0):!!(j&&j.ok&&j.ui2);if(!on||typeof ECOEFIR.host2!=='function')return;
   EF2=1;if(EFH&&EFH.stop)EFH.stop();EFH=null;var ob=$('efBox'),nb=ob.cloneNode(false);ob.parentNode.replaceChild(nb,ob);/* старый пульт, дорисовывая ответ, пишет в прежний узел — он уже вне страницы */try{efMount2(O,fx?fx.role:j.role)}catch(x){/* новый раздел упал — назад на старый пульт, вкладка не остаётся пустой */EF2=0;EFH=ECOEFIR.host($('efBox'),O)}}).catch(function(){})}
 function efMount2(O,role){var fx=FXP&&ECOEFIR.fx.data(),sub=EFSUB0||(location.hash.match(/^#efir\/(.+)$/)||[])[1]||'';EFSUB0='';if(fx&&fx.hash)sub=String(fx.hash).replace(/^#(host|efir)\/?/,'');
-  var O2=Object.assign({},O,{role:role||(ME&&ME.role)||'curator',href:function(h){return '#efir'+String(h).replace(/^#host/,'')},go:function(h){efGo(h)}});EFH=ECOEFIR.host2($('efBox'),O2);efGo('#host/'+sub)}
-function efGo(h){var ph='#efir'+String(h).replace(/^#host/,'');if(ph==='#efir/')ph='#efir';try{if(location.hash!==ph)history.replaceState(history.state,'',location.pathname+location.search+ph)}catch(x){}try{if(EMB&&!MA)parent.postMessage({ecoHash:ph},'*')}catch(x){}if(EF2&&EFH&&EFH.route)EFH.route(h)}
+  var O2=Object.assign({},O,{role:role||(ME&&ME.role)||'curator',href:function(h){return '#efir'+String(h).replace(/^#host/,'')},go:function(h){efGo(h)},nav:function(L){EFNAV=L;kNavDraw()}});EFH=ECOEFIR.host2($('efBox'),O2);efGo('#host/'+sub)}
+function efGo(h){var ph='#efir'+String(h).replace(/^#host/,'');if(ph==='#efir/')ph='#efir';/* 07.11 Эфиры Э7 (§7.4): пульт эфира — на весь экран, меню кабинета скрыто; шапка пульта не дублирует заголовок раздела */var de=document.documentElement;de.classList.toggle('ef7full',!!EF2&&/^#efir\/(live|as\/[^\/]+\/live)\//.test(ph));de.classList.toggle('ef2on',!!EF2&&kTab()==='ef');try{if(location.hash!==ph)history.replaceState(history.state,'',location.pathname+location.search+ph)}catch(x){}try{if(EMB&&!MA)parent.postMessage({ecoHash:ph},'*')}catch(x){}if(EF2&&EFH&&EFH.route)EFH.route(h)}
 function efHash(h){if(!EF2||!EFH||!EFH.route||!/^#efir(\/|$)/.test(h||''))return;efGo('#host'+h.slice(5))}
 addEventListener('hashchange',function(){efHash(location.hash)});
 addEventListener('message',function(e){if(e.source===window.parent&&e.data&&typeof e.data.ecoTab==='string')efHash(e.data.ecoTab)});
@@ -913,23 +916,25 @@ function kMore(){var a=kAdm();return (a?['cu']:[]).concat(['ms','rv','ef','hr','
 function kHw(){if(HWIN){tabGo('hw');return}siteGo('/teach/control/answers')}
 function kQ(){var q=ME&&xHw();if(q)return q;return TD&&TD.hw&&kNum(TD.hw.n)?{n:TD.hw.n,old:TD.hw.old48||0,at:TD.hw.at}:null}
 function kWaitN(){var W=stWait();return W?W.length:DATA?DATA.students.filter(function(s){return s.wait}).length:0}
-function kBadges(){var r=document.querySelector('#tabs [data-t="rv"] .rvBd'),q=kQ();return {td:TD?TD.items.filter(tdMine).length:0,st:DATA?DATA.students.length:0,hw:q?q.n:0,hwOld:q&&q.old,ch:kWaitN(),rv:r?+r.textContent||0:0}}
+function kBadges(){try{return kBadges0()}catch(x){return {td:0,st:0,hw:0,ch:0,rv:0}}}/* 07.11 Э7: меню не пропадает, если данные пульта ещё не пришли */
+function kBadges0(){var r=document.querySelector('#tabs [data-t="rv"] .rvBd'),q=kQ();return {td:TD&&TD.items?TD.items.filter(tdMine).length:0,st:DATA&&DATA.students?DATA.students.length:0,hw:q?q.n:0,hwOld:q&&q.old,ch:kWaitN(),rv:r?+r.textContent||0:0}}
 function kColor(s){var k=0;s=String(s||'?');for(var i=0;i<s.length;i++)k=(k*31+s.charCodeAt(i))%7;return ['#8fd3ff','#9be3b5','#ffc29a','#ff9fb8','#ffd36b','#c9a2ff','#b7c4ff'][k]}
 function kAvH(n,cls){return '<span class="av'+(cls?' '+cls:'')+'" style="background:'+kColor(n)+'">'+esc(kIni(n))+'</span>'}
-function kNavDraw(){var N=$('kNav'),B=$('kBar');if(!N||!ME||!document.documentElement.classList.contains('kk'))return;var t=kTab(),b=kBadges(),inMo=kMore().indexOf(t)>=0||t==='mo';
+function kNavDraw(){var N=$('kNav'),B=$('kBar');if(!N||!ME||!document.documentElement.classList.contains('kk'))return;var t=kTab(),b=kBadges(),efg=!!(EF2&&EFNAV&&EFNAV.length),inMo=(kMore().indexOf(t)>=0&&!(efg&&t==='ef'))||t==='mo';
   var nv=function(k,lab,n,red){var on=k==='mo'?inMo:t===k;return '<button class="nv'+(on?' on':'')+'" data-go="'+k+'"'+(k==='hw'&&!HWIN?' title="Лента ответов на сайте школы"':'')+'>'+KI[k]+'<span>'+lab+'</span>'+(n?'<em class="n'+(red?' r':'')+'">'+n+'</em>':'')+'</button>'};
-  var st=(STATS&&STATS.curators)||[],c1=st.length===1?st[0]:null,me=kAdm()?'Роман':String(ME.name||'Куратор').split(' ')[0],n=DATA?DATA.students.length:0;
+  var st=(STATS&&STATS.curators)||[],c1=st.length===1?st[0]:null,me=kAdm()?'Роман':String(ME.name||'Куратор').split(' ')[0],n=DATA&&DATA.students?DATA.students.length:0;
   var cid=!kAdm()&&(ME.cid||((ME.curators||[])[0]||{}).id)||'',ph=cid?'https://romanoduvanov.github.io/otzyvy/gc/curators/'+encodeURIComponent(cid)+'.jpg':'';
   /* 03.11 (Роман): в шапке меню — фото куратора (gc/curators/<cid>.jpg), у Романа — знак школы из docs/BRAND.md; нет фото — инициалы */
   var mark=ph?'<span class="bw">'+kAvH(me)+'<img class="bph" src="'+ph+'" alt="" onload="var a=this.previousElementSibling;if(a)a.style.visibility=\'hidden\'" onerror="this.remove()"></span>':'<svg class="blg" viewBox="0 0 64 64" aria-hidden="true">'+[[0,0],[22,0],[44,0],[0,22],[44,22],[0,44],[22,44],[44,44]].map(function(p,k){return '<rect x="'+p[0]+'" y="'+p[1]+'" width="20" height="20" rx="3" fill="'+(k===2?'#c9a2ff':'#fff')+'"/>'}).join('')+'</svg>';
-  N.innerHTML='<div class="brand">'+mark+'<div><b>'+(ph?esc(me):'Кабинет куратора')+'</b><small>'+(ph?'Кабинет куратора':'OduvanovSchool')+'</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+nv('mo','Ещё',b.rv,1).replace(/<\/button>$/,'<i class="nch'+(inMo||MOOPEN?' up':'')+'" aria-hidden="true"></i></button>')
-    +'<div class="nsub'+(inMo||MOOPEN?'':' hid')+'">'+kMore().map(function(k){return '<button data-go="'+k+'"'+(t===k?' class="on"':'')+'>'+kLabel(k)+(k==='rv'&&b.rv?'<em class="n">'+b.rv+'</em>':'')+'</button>'}).join('')+'</div>'
+  N.innerHTML='<div class="brand">'+mark+'<div><b>'+(ph?esc(me):'Кабинет куратора')+'</b><small>'+(ph?'Кабинет куратора':'OduvanovSchool')+'</small></div></div>'+nv('td','Сегодня',b.td,1)+nv('st','Ученики',b.st)+nv('hw','ДЗ',b.hw,0)+nv('ch','Чаты',b.ch,1)+nv('bc','Рассылки')+(efg?'<div class="ngrp"><small class="ngl">Мои эфиры</small>'+EFNAV.map(function(x){return '<button class="nv'+(t==='ef'&&x.on?' on':'')+'" data-efh="'+esc(x.h)+'"><span>'+esc(x.t)+'</span>'+(x.n?'<em class="n">'+x.n+'</em>':'')+'</button>'}).join('')+'</div>':'')+nv('mo','Ещё',b.rv,1).replace(/<\/button>$/,'<i class="nch'+(inMo||MOOPEN?' up':'')+'" aria-hidden="true"></i></button>')
+    +'<div class="nsub'+(inMo||MOOPEN?'':' hid')+'">'+kMore().filter(function(k){return !(efg&&k==='ef')}).map(function(k){return '<button data-go="'+k+'"'+(t===k?' class="on"':'')+'>'+kLabel(k)+(k==='rv'&&b.rv?'<em class="n">'+b.rv+'</em>':'')+'</button>'}).join('')+'</div>'
     +'<div class="nfoot"><div class="me">'+kAvH(me)+'<div>'+esc(me)+'<br><small style="color:var(--ink3);font-size:12px">'+(kAdm()?'админ':'куратор')+' · '+n+'&nbsp;'+plr(n,'ученик','ученика','учеников')+'</small></div></div>'
     +(c1&&c1.hours?'<span>Рабочие часы '+c1.hours[0]+'–'+c1.hours[1]+' МСК</span>':'')+'<span>'+esc($('upd').textContent||'')+'</span></div>';
   if(B)B.innerHTML=[['td','Сегодня',b.td,''],['st','Ученики',0,''],['hw','ДЗ',b.hw,'n'],['ch','Чаты',b.ch,''],['mo','Ещё',b.rv,'']].map(function(x){var on=x[0]==='mo'?(inMo||t==='bc'):t===x[0];
     return '<button class="'+(on?'on':'')+'" data-go="'+x[0]+'">'+KI[x[0]].replace(/width="20" height="20"/,'width="22" height="22"')+(x[2]?'<em'+(x[3]?' class="'+x[3]+'"':'')+'>'+x[2]+'</em>':'')+'<b>'+x[1]+'</b></button>'}).join('')}
 function kMoDraw(){var b=kBadges();$('moBox').innerHTML=['bc'].concat(kMore()).map(function(k){return '<button class="panel'+(k==='bc'?' mOnly':'')+'" data-go="'+k+'"><h4>'+kLabel(k)+(k==='rv'&&b.rv?' <span class="sg r">'+b.rv+'&nbsp;'+plr(b.rv,'низкая','низкие','низких')+'</span>':'')+'</h4><span class="ex">'+(k==='ms'&&kAdm()?'Цифры выбранного вверху куратора':KD[k]||'')+'</span></button>'}).join('')}
 function kOn(t){var h='#'+(KT[t]||t)+(DR&&DR.u?'/u='+DR.u+'/'+DR.tab:'');if(t==='ef'&&EF2&&/^#efir\//.test(location.hash))h=location.hash;try{if(location.hash!==h)history.replaceState(history.state,'',location.pathname+location.search+h)}catch(x){}try{if(EMB&&!MA)parent.postMessage({ecoHash:h},'*')}catch(x){}
+  document.documentElement.classList.toggle('ef2on',!!EF2&&t==='ef');document.documentElement.classList.toggle('ef7full',!!EF2&&t==='ef'&&/^#efir\/(live|as\/[^\/]+\/live)\//.test(location.hash));
   $('kpis').classList.toggle('hid',t!=='st');$('hTitle').textContent=kLabel(t)||$('hTitle').textContent;if(!K0)K0=$('hSub').textContent;$('hSub').textContent=t==='td'?tdSub():t==='hw'?'Лента ответов — проверка без перехода в урок':K0;
   var q=kQ(),X=$('hdX');X.classList.toggle('hid',t!=='td');X.innerHTML=t==='td'&&q?'<button class="b2 sm" data-go="hw">Очередь ДЗ · '+q.n+'</button>':'';
   if(t==='mo')kMoDraw();if(t==='td')tdLoad(!TD||Date.now()-TDL>60e3);kNavDraw()}
@@ -938,7 +943,7 @@ function kInit(){if(!MA)document.documentElement.classList.add('kk');var h=(loca
 $('tabs').addEventListener('click',function(e){var b=e.target.closest('button[data-t]');if(b)kOn(b.getAttribute('data-t'))});
 /* 04.11 (Роман): в боковом меню «Ещё» — раскрывающийся пункт: подпункты видны, только когда раскрыт или открыт один из них; нажатие на «Ещё» сворачивает/разворачивает */
 var MOOPEN=false;
-document.addEventListener('click',function(e){var g=e.target.closest('#kNav [data-go],#kBar [data-go],#moBox [data-go],#hdX [data-go]');if(!g)return;var k=g.getAttribute('data-go');
+document.addEventListener('click',function(e){var eh=e.target.closest('#kNav [data-efh]');if(eh){MOOPEN=false;if(kTab()!=='ef')tabGo('ef');efGo(eh.getAttribute('data-efh'));kNavDraw();return}/* 07.11 Эфиры Э7: группа «Мои эфиры» */var g=e.target.closest('#kNav [data-go],#kBar [data-go],#moBox [data-go],#hdX [data-go]');if(!g)return;var k=g.getAttribute('data-go');
   if(k==='mo'&&g.closest('#kNav')){var t=kTab(),inMo=kMore().indexOf(t)>=0||t==='mo';MOOPEN=!(inMo||MOOPEN);if(inMo&&!MOOPEN){var sub=g.parentNode.querySelector('.nsub');if(sub)sub.classList.add('hid');var c=g.querySelector('.nch');if(c)c.classList.remove('up');return}kNavDraw();return}
   if(g.closest('#kNav')&&kMore().indexOf(k)<0)MOOPEN=false;if(k==='hw')kHw();else tabGo(k)});
 (function(){var s0=start;start=function(){s0();var n=0,iv=setInterval(function(){if(ME){clearInterval(iv);kInit()}else if(++n>300)clearInterval(iv)},50)}})();
@@ -1067,7 +1072,7 @@ function drOpen(u,o){o=o||{};u=+u;if(!u)return;var was=DR.u,same=was===u;DR.u=u;
   drHead();drTab(t,o.text||null,!same);if(!same)drLoad(u);rowSel()}
 function drClose(pop){if(!DR.u)return;drLeave();DR.u=0;DR.info=null;$('kDr').classList.add('hid');document.documentElement.classList.remove('dron');$('drB').innerHTML='';fdBack();rowSel();
   if(!pop&&history.state&&history.state.kdr){try{history.back();return}catch(x){}}kHashSet(drHash())}
-addEventListener('popstate',function(e){if(DR.u&&!(e.state&&e.state.kdr))drClose(1);else if(!DR.u)kHashSet(drHash())});
+addEventListener('popstate',function(e){if(DR.u&&!(e.state&&e.state.kdr))drClose(1);else if(!DR.u&&!(EF2&&/^#efir(\/|$)/.test(location.hash)))kHashSet(drHash())});/* 07.11 Эфиры Э7: переход по ссылке нового раздела (#efir/…) — не сбрасывать адрес на #efir */
 function drNav(d){var L=DR.list||[],i=L.indexOf(DR.u);if(i<0||!L[i+d])return;drOpen(L[i+d],{list:L,tab:DR.tab})}
 function drLoad(u){api('student?u='+u).then(function(j){if(DR.u!==u)return;DR.info=j&&j.ok?j:{err:(j&&j.err)||'Не загрузилось'};if(j&&j.name&&!DR.name)DR.name=j.name;drHead();if(DR.tab==='sum'||DR.tab==='rev')drTab(DR.tab)}).catch(function(e){if(DR.u!==u)return;DR.info={err:e&&e.message==='auth'?'Нужно войти заново':'Нет связи с сервером'};if(DR.tab==='sum'||DR.tab==='rev')drTab(DR.tab)})}
 function drHead(){if(!DR.u)return;var u=DR.u,s=stuRec(u)||{},j=DR.info||{},nm=DR.name||j.name||s.name||'Ученик',L=DR.list||[],i=L.indexOf(u),cur=kAdm()?(j.curName||(s.cur?curName(s.cur).split(' ')[0]:'')):'';
