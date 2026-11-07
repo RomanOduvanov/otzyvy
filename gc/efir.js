@@ -459,6 +459,7 @@
     ".efn .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.45)}",
     ".efn .tb>*,.efn .th>*{min-width:0;overflow-wrap:anywhere}",
     ".efn .tb>.pill{max-width:100%;overflow:hidden}",
+    ".efn .seg.segt button{font-weight:600}",
     /* база (§7.1): на досках у .pg размер не задан — 16px / normal; tnum только у .num и отсчётов. Свой box-sizing — как у браузера, не от .efx и не от страницы-хозяина */
     ".efn{font:400 16px/normal 'Inter Tight',system-ui,sans-serif;color:#fff;font-feature-settings:normal;letter-spacing:normal;text-align:left;-webkit-text-size-adjust:100%}",
     ".efn,.efn *{box-sizing:revert}.efn .tnum{font-variant-numeric:tabular-nums}",
