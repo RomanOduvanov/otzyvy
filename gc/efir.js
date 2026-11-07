@@ -464,14 +464,19 @@
     ".efn,.efn *{box-sizing:revert}.efn .tnum{font-variant-numeric:tabular-nums}",
     /* Nav (доска Nav, §6.4): колонка 260 слева в каждом экране #host/*, кроме пульта */
     ".efn .enav{width:260px;min-height:900px;box-sizing:border-box;padding:28px 14px;display:flex;flex-direction:column;gap:4px;background:#08080b;border-right:1px solid rgba(255,255,255,.06);font-family:'Inter Tight',system-ui,sans-serif;color:#fff}",
-    ".efn .enav>b{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);padding:0 12px 10px}",
+    ".efn .enav .enst>b{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);padding:0 12px 10px}",
     ".efn .enav a.enit{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:0 12px;border-radius:12px;text-decoration:none;font-size:15px;color:rgba(255,255,255,.72)}",
     ".efn .enav a.enit.on{background:#1f1f22;color:#fff;font-weight:600}",
     ".efn .enav .ecnt{font-size:12px;padding:2px 8px;border-radius:999px;background:rgba(215,127,255,.2);color:#ecd5ff}",
     ".efn .enav .efl{flex:1 1 auto}",
     ".efn .enav a.enc{display:flex;align-items:center;justify-content:center;height:46px;border-radius:14px;background:linear-gradient(180deg,#fef8ff,#fccbff);color:#602364;font-weight:600;text-decoration:none}",
     /* §7.5: < 1100 — меню строкой чипов сверху (52 px, вид .seg, своя прокрутка, «+ Создать» последним) */
-    "@media (max-width:1099px){.efn.pg{flex-direction:column;flex-wrap:nowrap}.efn.pg>.enav{width:auto;min-height:0;height:52px;padding:6px 16px;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;border-right:0;border-bottom:1px solid rgba(255,255,255,.06);flex:none}.efn.pg>.enav::-webkit-scrollbar{display:none}.efn.pg>.enav>b,.efn.pg>.enav .efl{display:none}.efn.pg>.enav a.enit{min-height:38px;padding:0 14px;border-radius:10px;font-size:14px;white-space:nowrap;flex:none}.efn.pg>.enav a.enit.on{background:#262626}.efn.pg>.enav a.enc{height:38px;padding:0 14px;border-radius:10px;font-size:14px;white-space:nowrap;flex:none}.efn .mn{padding:20px 16px 40px}.efn .g4,.efn .g5,.efn .g3{grid-template-columns:repeat(2,minmax(0,1fr))}}",
+    "@media (max-width:1099px){.efn.pg{flex-direction:column;flex-wrap:nowrap}.efn.pg>.enav{width:auto;min-height:0;height:52px;padding:6px 16px;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;border-right:0;border-bottom:1px solid rgba(255,255,255,.06);flex:none}.efn.pg>.enav::-webkit-scrollbar{display:none}.efn.pg>.enav .enst>b,.efn.pg>.enav .efl{display:none}.efn.pg>.enav a.enit{min-height:38px;padding:0 14px;border-radius:10px;font-size:14px;white-space:nowrap;flex:none}.efn.pg>.enav a.enit.on{background:#262626}.efn.pg>.enav a.enc{height:38px;padding:0 14px;border-radius:10px;font-size:14px;white-space:nowrap;flex:none}.efn .mn{padding:20px 16px 40px}.efn .g4,.efn .g5,.efn .g3{grid-template-columns:repeat(2,minmax(0,1fr))}}",
+    /* круг 4 приёмки (решение Романа): меню раздела липкое — на длинных экранах (мастер, 5.5, 6.1) пункты не уезжают вверх. ≥ 1100 колонка по-прежнему на всю высоту страницы
+       (фон и рамка, «+ Создать» внизу — как на досках), а пункты в .enst держатся у верха окна; < 1100 — вся строка чипов липкая сверху */
+    ".efn .enav>.enst,.efn .e7nav>.enst{display:flex;flex-direction:column;gap:4px}",
+    "@media (min-width:1100px){.efn.pg>.enav>.enst,.efn.pg>.e7nav>.enst{position:sticky;top:28px}}",
+    "@media (max-width:1099px){.efn .enav>.enst,.efn .e7nav>.enst{display:contents}.efn.pg>.enav,.efn.pg>.e7nav{position:sticky;top:0;z-index:20}}",
     "@media (max-width:767px){.efn .g2{grid-template-columns:minmax(0,1fr)}}",
     /* заголовок экрана: .col с gap 4 (как на досках) */
     ".efn .ehd{gap:4px}",

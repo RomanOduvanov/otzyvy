@@ -31,7 +31,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <div id="ef"></div>
 </div>
 <div id="efn"></div>
-<script defer src="efir.js?v=46"></script>
+<script defer src="efir.js?v=47"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -57,12 +57,14 @@ if(!GR&&!FXN&&STAFF0&&EFU)try{var sv=(document.querySelector('script[src*="efir.
 if(!GR&&!FXN){$('bar').classList.remove('hid');if(HOST0){$('ef').className='efx';$('ef').innerHTML=hostSk()}else if(!/^#(e\d+(\/days)?|host([\/?].*)?)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
   ef0.innerHTML=(d0?'<div class="ef-row ef-sp" style="align-items:flex-end;flex-wrap:wrap;gap:12px;min-height:66px"><div><h2>Эфиры</h2><div class="ef-mut" style="font-size:15px">Разборы, вопрос-ответ и&nbsp;встречи потока</div></div></div>':'')+'<span class="ef-sk" style="height:220px"></span><span class="ef-sk" style="height:70px"></span><span class="ef-sk" style="height:70px"></span>'}}
 /* круг 3 приёмки: ссылка/F5 на экран нового раздела (#host/…, флаг запомнен на устройстве у этого же пользователя) — сразу скелет раздела: меню (админ) и серые блоки; пульт (#host/live/…) — без меню */
-var PRE=0;if(!GR&&!FXN&&STAFF0&&TK&&EFU&&/^#host\/(?!old$)/.test(location.hash||'')){try{var pu=(localStorage.getItem('efUi2')||'').split(':');PRE=pu[0]===EFU&&pu[1]==='1'?1:0}catch(e){}
-  if(PRE){var lv=/^#host\/live\//.test(location.hash),sk='<span class="ef-sk" style="height:24px;width:220px;border-radius:8px"></span><span class="ef-sk" style="height:16px;width:min(520px,80%);border-radius:8px"></span><span class="ef-sk" style="height:160px"></span><span class="ef-sk" style="height:120px"></span><span class="ef-sk" style="height:120px"></span>';
-    $('bar').classList.add('hid');$('ef').className='';$('ef').innerHTML='';document.body.classList.add('efn-on');
-    $('efn').innerHTML='<div class="epre" data-pre>'+(ROLE==='admin'&&!lv?'<nav aria-hidden="true"><b>Эфиры</b><i></i><i></i><i></i><i></i><i></i><i></i></nav>':'')+'<main class="efx">'+sk+'</main></div>'}}
-/* раунд 3: кабинет держит поверх фрейма свою заставку, пока здесь пусто — шапка нарисована, можно убирать (комната #e — свой скелет в efir.js) */
-if(EMB&&!FXN&&window.parent!==window&&($('ef').className==='efx'||PRE))try{parent.postMessage({efPaint:1},'*')}catch(e){}
+/* круг 4 приёмки: скелет нового раздела — для любого адреса #host/… (раньше только если флаг уже запомнен на устройстве: после включения флага, без сессии на устройстве
+   или у нового пользователя фрейм оставался тёмным до efir-host.js) и для пустого адреса, когда флаг запомнен (сразу вид раздела, без промежуточного старого списка) */
+var PRE=0,SKK=HOST0?'host':$('ef').className==='efx'?'list':'',HS=/^#host\/(?!old$)/.test(location.hash||''),U2M=0;try{var pu=(localStorage.getItem('efUi2')||'').split(':');U2M=!!EFU&&pu[0]===EFU&&pu[1]==='1'}catch(e){}
+if(!GR&&!FXN&&(HS||(STAFF0&&TK&&U2M&&/^#?$/.test(location.hash||'')))){PRE=1;var lv=/^#host\/live\//.test(location.hash),nv=(ROLE==='admin'||ROLE==='curator')&&!lv,sk='<span class="ef-sk" style="height:24px;width:220px;border-radius:8px"></span><span class="ef-sk" style="height:16px;width:min(520px,80%);border-radius:8px"></span><span class="ef-sk" style="height:160px"></span><span class="ef-sk" style="height:120px"></span><span class="ef-sk" style="height:120px"></span>';
+  $('bar').classList.add('hid');$('ef').className='';$('ef').innerHTML='';document.body.classList.add('efn-on');SKK=nv?'nav':'main';
+  $('efn').innerHTML='<div class="epre" data-pre>'+(nv?'<nav aria-hidden="true"><b>Эфиры</b><i></i><i></i><i></i><i></i><i></i><i></i></nav>':'')+'<main class="efx">'+sk+'</main></div>'}
+/* раунд 3: кабинет держит поверх фрейма свою заставку, пока здесь пусто — шапка нарисована, можно убирать (комната #e — свой скелет в efir.js). Круг 4: и какой скелет (кабинет в следующий раз рисует такой же) */
+if(EMB&&!FXN&&window.parent!==window&&SKK)try{parent.postMessage({efPaint:1,sk:SKK},'*')}catch(e){}
 function apiF(p,o){o=o||{};if(FXN)return window.ECOEFIR?ECOEFIR.fx.api(p,o):Promise.resolve({ok:false});var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
