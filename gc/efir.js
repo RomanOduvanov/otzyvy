@@ -374,7 +374,9 @@
     TYR = new RegExp('(^|[^0-9A-Za-zА-Яа-яЁё\\-])(' + TYW + ')[ \\t]+(?=\\S)', 'gi');
   function typo(s) { s = s == null ? '' : String(s); if (!s) return s; var p; do { p = s; s = s.replace(TYR, '$1$2' + NB) } while (s !== p);
     /* круг 1 приёмки: «52-я мин», «2-й день» — числительное не отрывается от слова (в «Заявках» на 768 «мин» уезжало на новую строку) */
-    return s.replace(/[ \t]+([—–])/g, NB + '$1').replace(/(\d)[ \t]+(?=\S)/g, '$1' + NB).replace(/(\d-(?:я|й|е|го|му|м|х|ю|ой|ая|ое))[ \t]+(?=\S)/g, '$1' + NB) }
+    /* круг 3: короткое число в конце фразы не остаётся одно на строке («по модулю 3» в 5.3 на 1380) */
+    return s.replace(/[ \t]+([—–])/g, NB + '$1').replace(/(\d)[ \t]+(?=\S)/g, '$1' + NB).replace(/(\d-(?:я|й|е|го|му|м|х|ю|ой|ая|ое))[ \t]+(?=\S)/g, '$1' + NB)
+      .replace(/([А-Яа-яЁёA-Za-z])[ \t]+(\d{1,2})(?=$|[.,:;!?)»]*(\s|$))/g, '$1' + NB + '$2') }
   function ty(s) { return esc(typo(s)) }
   function typoDom(root) { if (!root || !document.createTreeWalker) return root; var w = document.createTreeWalker(root, 4, null, false), n, L = [];
     while ((n = w.nextNode())) { var p = n.parentNode; if (!p || /^(SCRIPT|STYLE|TEXTAREA|CODE|PRE)$/.test(p.nodeName) || (p.closest && p.closest('[data-notypo]')) || n.nodeValue.indexOf('{{') >= 0) continue; L.push(n) }
@@ -430,8 +432,8 @@
     ".efn .sw{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}",
     ".efn .tgm{max-width:420px;padding:12px 14px;border-radius:16px 16px 16px 4px;background:#212d3b;font-size:14px;line-height:1.45}",
     ".efn .tgb{display:block;text-align:center;padding:9px;border-radius:10px;background:#2b3a4c;font-size:13px;max-width:420px;box-sizing:border-box}",
-    /* круг 2 приёмки: в app.html свои .ph{width:96px;height:96px} (фото) и .in{margin:0 16px 10px;display:flex} (строка ввода) — в разделе они не действуют */
-    ":where(.efn) .ph{width:auto;height:auto;box-shadow:none;object-fit:fill}:where(.efn) .in{margin:0;display:revert;align-items:normal;gap:normal;box-shadow:none}",
+    /* круг 2 приёмки: в app.html свои .ph{width:96px;height:96px} (фото) и .in{margin:0 16px 10px;display:flex} (строка ввода) — в разделе они не действуют; круг 3: align-items — revert (у select своё center — текст по середине поля, как на доске), не normal */
+    ":where(.efn) .ph{width:auto;height:auto;box-shadow:none;object-fit:fill}:where(.efn) .in{margin:0;display:revert;align-items:revert;gap:normal;box-shadow:none}",
     ".efn .ph{border-radius:20px;background:linear-gradient(160deg,#241a3a,#0c0c0c);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;box-sizing:border-box;color:rgba(255,255,255,.4);font-size:14px;position:relative;aspect-ratio:16/9}",
     ".efn .ov{position:absolute;inset:0;background:rgba(0,1,6,.72);display:flex;align-items:flex-start;justify-content:flex-end}",
     ".efn .drw{width:520px;max-width:100%;min-height:100%;box-sizing:border-box;background:#121214;border-left:1px solid rgba(255,255,255,.08);padding:24px;display:flex;flex-direction:column;gap:14px}",

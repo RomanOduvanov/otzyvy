@@ -20,6 +20,9 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 @media (max-width:767px){.wrap{padding:12px 12px 60px}html.emb .wrap{padding:8px 12px 40px}}
 /* 07.11 Эфиры Э0: новый раздел команды (флаг efir_ui2) — вне .wrap, на всю ширину (ТЗ §7.4); старые экраны — в .wrap, как были */
 #efn:empty{display:none}body.efn-on>.wrap{display:none}
+/* круг 3 приёмки: скелет нового раздела до efir-host.js — F5 и ссылка на экран раздела (#host/…) в кабинете 4–7 с показывали пустой фон. Меню 260 — там же, где настоящее (доска Nav); < 1100 — полоса 52 сверху (§7.5) */
+.epre{display:flex;min-height:100vh}.epre>nav{width:260px;flex:none;box-sizing:border-box;padding:28px 14px;display:flex;flex-direction:column;gap:4px;background:#08080b;border-right:1px solid rgba(255,255,255,.06)}.epre>nav b{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);padding:0 12px 10px;font-weight:600}.epre>nav i{display:block;height:44px;border-radius:12px;background:rgba(255,255,255,.03)}.epre>main{flex:1 1 auto;min-width:0;padding:28px 40px 56px;display:flex;flex-direction:column;gap:18px}
+@media (max-width:1099px){.epre{flex-direction:column}.epre>nav{width:auto;height:52px;padding:6px 16px;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}.epre>nav b{display:none}.epre>nav i{width:110px;height:38px}.epre>main{padding:20px 16px 40px}}
 </style></head><body>
 <div class="wrap">
 <div class="bar hid" id="bar"><button id="bBack" class="hid">← Все эфиры</button><span></span><button id="bHost" class="hid">Пульт эфиров</button></div>
@@ -28,7 +31,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <div id="ef"></div>
 </div>
 <div id="efn"></div>
-<script defer src="efir.js?v=45"></script>
+<script defer src="efir.js?v=46"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -53,8 +56,13 @@ var STAFF0=ROLE==='admin'||ROLE==='curator'||ROLE==='mod',HOST0=/^#host(\/old)?$
 if(!GR&&!FXN&&STAFF0&&EFU)try{var sv=(document.querySelector('script[src*="efir.js?v="]')||{}).src||'',pv=(sv.match(/[?&]v=(\d+)/)||[])[1],pl=document.createElement('link');pl.rel='preload';pl.as='script';pl.href='efir-host.js'+(pv?'?v='+pv:'');if(!/^#host/.test(location.hash||''))pl.setAttribute('fetchpriority','low');document.head.appendChild(pl)}catch(e){}
 if(!GR&&!FXN){$('bar').classList.remove('hid');if(HOST0){$('ef').className='efx';$('ef').innerHTML=hostSk()}else if(!/^#(e\d+(\/days)?|host([\/?].*)?)$/.test(location.hash||'')){var ef0=$('ef'),d0=(ef0.clientWidth||innerWidth)>=860;ef0.className='efx';
   ef0.innerHTML=(d0?'<div class="ef-row ef-sp" style="align-items:flex-end;flex-wrap:wrap;gap:12px;min-height:66px"><div><h2>Эфиры</h2><div class="ef-mut" style="font-size:15px">Разборы, вопрос-ответ и&nbsp;встречи потока</div></div></div>':'')+'<span class="ef-sk" style="height:220px"></span><span class="ef-sk" style="height:70px"></span><span class="ef-sk" style="height:70px"></span>'}}
+/* круг 3 приёмки: ссылка/F5 на экран нового раздела (#host/…, флаг запомнен на устройстве у этого же пользователя) — сразу скелет раздела: меню (админ) и серые блоки; пульт (#host/live/…) — без меню */
+var PRE=0;if(!GR&&!FXN&&STAFF0&&TK&&EFU&&/^#host\/(?!old$)/.test(location.hash||'')){try{var pu=(localStorage.getItem('efUi2')||'').split(':');PRE=pu[0]===EFU&&pu[1]==='1'?1:0}catch(e){}
+  if(PRE){var lv=/^#host\/live\//.test(location.hash),sk='<span class="ef-sk" style="height:24px;width:220px;border-radius:8px"></span><span class="ef-sk" style="height:16px;width:min(520px,80%);border-radius:8px"></span><span class="ef-sk" style="height:160px"></span><span class="ef-sk" style="height:120px"></span><span class="ef-sk" style="height:120px"></span>';
+    $('bar').classList.add('hid');$('ef').className='';$('ef').innerHTML='';document.body.classList.add('efn-on');
+    $('efn').innerHTML='<div class="epre" data-pre>'+(ROLE==='admin'&&!lv?'<nav aria-hidden="true"><b>Эфиры</b><i></i><i></i><i></i><i></i><i></i><i></i></nav>':'')+'<main class="efx">'+sk+'</main></div>'}}
 /* раунд 3: кабинет держит поверх фрейма свою заставку, пока здесь пусто — шапка нарисована, можно убирать (комната #e — свой скелет в efir.js) */
-if(EMB&&!FXN&&window.parent!==window&&$('ef').className==='efx')try{parent.postMessage({efPaint:1},'*')}catch(e){}
+if(EMB&&!FXN&&window.parent!==window&&($('ef').className==='efx'||PRE))try{parent.postMessage({efPaint:1},'*')}catch(e){}
 function apiF(p,o){o=o||{};if(FXN)return window.ECOEFIR?ECOEFIR.fx.api(p,o):Promise.resolve({ok:false});var h={'Content-Type':'application/json'};if(TK&&!GR)h.Authorization='Bearer '+TK;var url=API+p+(GR?(p.indexOf('?')<0?'?':'&')+'r='+GR:'');
   return fetch(url,{method:o.method||'GET',headers:h,body:o.body}).then(function(r){if(r.status===401&&!GR){if(!apiF.re){apiF.re=1;return viaSite(true).then(function(ok){apiF.re=0;if(ok)return apiF(p,o);login();throw new Error('auth')})}}if(r.status===404&&!/json/.test(r.headers.get('Content-Type')||''))return {ok:false,nf:1};return r.json()})}
 function open(u){if(EMB&&/^https:\/\/oduvanovroman\.getcourse\.ru/.test(u)){try{top.location.href=u;return}catch(e){}}window.open(u,'_blank','noopener')}
@@ -64,7 +72,7 @@ var O={api:apiF,open:open,role:GR?'guest':'',webJoin:function(r,eid){try{localSt
   /* 07.11 Эфиры Э8: новый вид «Эфиры» ученика 6.3 (флаг efir_ui2) — так же вне .wrap, на всю ширину, без полосы .bar (ТЗ §7.4) */
   list2:function(j){var n=$('efn');n.innerHTML='';$('ef').innerHTML='';$('ef').className='';$('bar').classList.add('hid');document.body.classList.add('efn-on');document.documentElement.classList.add('efn-on');return ECOEFIR.list2(n,O,j)},
   room2:function(id,j){var n=$('efn');n.innerHTML='';$('bar').classList.add('hid');document.body.classList.add('efn-on');document.documentElement.classList.add('efn-on');return ECOEFIR.room2(n,id,O,j)}};
-function login(){$('ef').innerHTML='';$('bar').classList.add('hid');$('login').classList.remove('hid')}
+function login(){$('ef').innerHTML='';$('bar').classList.add('hid');if($('efn').querySelector('[data-pre]')){$('efn').innerHTML='';document.body.classList.remove('efn-on')}$('login').classList.remove('hid')}
 $('bLogin').onclick=function(){var b=this;b.disabled=true;$('lgSt').textContent='Открываю Telegram…';
   fetch(API+'/app/api/login/start?kind=student',{method:'POST'}).then(function(r){return r.json()}).then(function(j){var w=window.open(j.link,'_blank');if(!w)location.href=j.link;$('lgSt').textContent='Нажми «Старт» в боте. Жду подтверждения…';var n=0;
     var iv=setInterval(function(){if(++n>150){clearInterval(iv);b.disabled=false;$('lgSt').textContent='Время вышло, попробуй ещё раз';return}
