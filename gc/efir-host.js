@@ -1795,6 +1795,187 @@
 
     return { live: start, click: function (e) { return setClick(e) || click(e) }, input: input, change: setChange, key: key, leave: leave, stop: stop, mod: modList, set: setLoad } }
 
+  /* ================= 07.11 «Эфиры 2.0», этап Э6: итоги 5.1 (#host/ev/<id>/stats[/<день>]), заявки 5.2 (#host/leads[?ev=&p=&st=&q=&pg=]), карточка человека 5.2б (#host/leads/<k>[?id=]) — docs/plan/efiry-tz.md §3.5, §6.4 =================
+     Разметка — как на досках Stats, Leads, L2 (docs/mockups/efiry/boards), инлайн-стили досок — классами .efn .e6… с теми же числами. Режимы продаж (доска Modes): плитки, воронка, отметка заявки на графике и колонки — по sale.mode.
+     Сервер: GET /efir/host/event/stats?id=&day= (раз в 30 с, пока идёт эфир), GET /efir/leads?v=2&…, GET /efir/leads.csv?json=1&… («Выгрузить в Excel» — файл с BOM и «;»), GET/POST /efir/host/person, POST /efir/host/lead/retry, POST /efir/host/dm. */
+  var CSS6H = [
+    ".efn .row.e6g6{gap:6px}.efn .row.e6g8{gap:8px}.efn .k.e6k{flex:1 1 140px}.efn .k.e6hl{background:rgba(103,36,173,.35)}",
+    ".efn .e6fn{gap:8px;font-size:14px}.efn .row.e6fr{gap:12px}.efn .e6fl{width:200px}.efn .e6fv{width:80px;text-align:right}.efn .e6f1{flex:1}",
+    ".efn .e6bar{height:22px;border-radius:6px;background:#9657e8}.efn .e6f1>.e6bar{min-width:4px}.efn .e6bar.e6c2{background:#b07af0}.efn .e6bar.e6c3{background:#d77fff}.efn .e6bar.e6c4{background:#fccbff}.efn .e6f1>.e6bar.e6z{min-width:0}",
+    ".efn .e6gr{height:160px;border-radius:12px;background:#0e0e10;position:relative;overflow:hidden}.efn .e6gr>.dim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}",
+    ".efn .e6tip{position:absolute;top:8px;transform:translateX(-50%);pointer-events:none}.efn .e6vl{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.25);pointer-events:none}",
+    ".efn .e6gm{grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.efn .e6g3{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}",
+    ".efn .e6gl{grid-template-columns:minmax(0,1.4fr) minmax(0,1.8fr) minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.efn .in.e6s300{max-width:300px}.efn .in.e6s200{max-width:200px}.efn .in.e6s260{max-width:260px}",
+    ".efn .tb.e6row{cursor:pointer}.efn .tb.e6row:hover{background:rgba(255,255,255,.025)}.efn .tb.e6row:focus-visible{outline:2px solid rgba(215,127,255,.6);outline-offset:-2px}.efn a.e6s13{font-size:13px}.efn .e6g4{gap:4px}",
+    ".efn .ov.e6ov{position:fixed;z-index:60;overflow:auto}.efn .drw.e6w600{width:600px}.efn .lbl.e6pb6{padding-bottom:6px}.efn .seg button.on[role=radio]{background:#262626;color:#fff;font-weight:600}",
+    ".efn .e6pg{gap:10px;justify-content:flex-start}.efn .e6ans{gap:4px}",
+    /* < 1100: график и «Откуда записались» — друг под другом (в узкой колонке заголовки таблицы рвутся по буквам) */
+    "@media (max-width:1099px){.efn .drw.e6w600{width:100%}.efn .g2.e6g2{grid-template-columns:minmax(0,1fr)}}",
+    "@media (max-width:767px){.efn .e6fl{width:120px}.efn .e6fv{width:56px}.efn .in.e6s300,.efn .in.e6s200,.efn .in.e6s260{max-width:none}}"
+  ];
+  function css6h() { if (document.getElementById('efnCss6h')) return; var s = document.createElement('style'); s.id = 'efnCss6h'; s.textContent = CSS6H.join('\n'); document.head.appendChild(s) }
+  /* проценты как в сводке: от 10 % — целые, меньше — с одной цифрой после запятой */
+  function pct6(a, b) { if (!b || !a) return '0'; var p = a / b * 100; return p < 10 ? String(Math.round(p * 10) / 10).replace('.', ',') : String(Math.round(p)) }
+  var ST6 = [['call', 'Связались'], ['noans', 'Не дозвонились'], ['buy', 'Купил'], ['no', 'Отказ']], PER6 = [['today', 'Сегодня'], ['7', '7 дней'], ['30', 'Последние 30 дней'], ['all', 'Всё время']];
+
+  function E6(O, X) { css6h(); var FXON = X.fx, hf = O.href || function (h) { return h }, el = X.el;
+    var S = { tm: 0, st: null, sid: 0, sday: 0, lj: null, lkey: '', p: null, pk: '', nt: 0, qt: 0, dead: 0, seq: 0 };
+    function toast(t) { X.toast(t) }
+    function fin() { typoDom(el); X.done() }
+    function frame(nv, inner, scr) { return '<div class="efn pg" data-fx-screen="' + esc(scr) + '">' + X.nav(nv) + '<main class="mn">' + inner + '</main></div>' }
+    function errBox(t, a) { return '<div class="c ece ece-bad"><b>' + esc(t || 'Не загрузилось — проверь связь') + '</b><button type="button" class="b2" data-a="' + a + '">Повторить</button></div>' }
+    function stop() { clearTimeout(S.tm); S.tm = 0; clearTimeout(S.nt); clearTimeout(S.qt) }
+
+    /* ---------- 5.1 итоги ---------- */
+    function stats(id, day) { stop(); var keep = S.st && S.sid === id && S.sday === day;
+      if (!keep) { S.sid = id; S.sday = day; el.innerHTML = frame(S.ty || 'mar', '<div class="col ehd"><h1 class="h1">Итоги</h1></div>' + R.h2.skel() + R.h2.skel(), 'Stats') }
+      var my = ++S.seq; api(O, '/efir/host/event/stats?id=' + id + (day ? '&day=' + day : '')).then(function (j) { if (S.dead || my !== S.seq || X.cur() !== 'ev') return;
+        if (!j || !j.ok || !j.ev) { if (!keep) { el.innerHTML = frame(S.ty || 'mar', '<div class="col ehd"><h1 class="h1">Итоги</h1></div>' + errBox(j && (j.err || (j.ok ? 'Итоги не загрузились' : '')), 'sre'), 'Stats'); fin() } return }
+        S.st = j; S.ty = j.ev.type === 'web' ? 'web' : 'mar'; var y = window.scrollY; sDraw(j); if (keep) window.scrollTo(0, y); fin();
+        if (j.live && !FXON) S.tm = setTimeout(function () { if (X.cur() === 'ev') stats(id, day) }, 30e3) }) }
+    function sDraw(j) { var ev = j.ev, mar = ev.type === 'mar', md = ev.mode, back = mar ? ['#host/mar', '← Марафоны'] : ['#host/web', '← Вебинары'], d = j.day;
+      var seg = mar && j.days.length > 1 ? '<div class="seg" role="tablist" aria-label="Период"><button type="button" role="tab" aria-selected="' + !d + '"' + (!d ? ' class="on"' : '') + ' data-a="sday" data-n="0">Весь марафон</button>' +
+        j.days.map(function (x) { return '<button type="button" role="tab" aria-selected="' + (d === x.n) + '"' + (d === x.n ? ' class="on"' : '') + ' data-a="sday" data-n="' + x.n + '">День ' + x.n + '</button>' }).join('') + '</div>' : '';
+      var h = '<div class="row sp xhd"><div class="col xg4"><a class="xback" href="' + esc(hf(back[0])) + '">' + back[1] + '</a><h1 class="h1">Итоги · ' + esc(ev.title) + '</h1><span class="dim">цифры обновляются сами, пока идёт эфир</span></div>' + seg + '</div>';
+      if (j.empty) { var dd = d ? j.days[d - 1] : null; el.innerHTML = frame(mar ? 'mar' : 'web', h + (dd ? '<div class="c eemp"><b>' + esc('День ' + d + ' ещё не прошёл') + '</b><span class="mut">' + esc('Цифры появятся, когда эфир начнётся. Записались на ' + (mar ? 'марафон' : 'вебинар') + ': ' + fN(j.regs) + ' ' + plr(j.regs, 'человек', 'человека', 'человек') + '.') + '</span></div>' : R.h2.emp(O, 'stats', { n: j.regs })), 'Stats'); return }
+      var dayDur = d ? (j.days[d - 1] || {}).dur : 0;
+      var K = [['Записались', fN(j.regs), 'все — через бота'], [d ? 'Пришли' : 'Пришли хоть раз', fN(j.came), pct6(j.came, j.regs) + '% записавшихся']];
+      if (j.multi != null) K.push([j.multi_n === 2 ? 'Были на обоих днях' : 'Были на всех днях', fN(j.multi), pct6(j.multi, j.came) + '% пришедших']);
+      K.push(['Среднее время', j.avg + ' мин', d ? 'из ' + dayDur + ' мин эфира' : (mar ? 'за один день' : 'из ' + ((j.days[0] || {}).dur || 0) + ' мин эфира')]);
+      if (md === 'sell') K.push(['Заявки', fN(j.leads), pct6(j.leads, j.came) + '% пришедших', 1], ['Оплаты', fN(j.paid), (j.pay_at ? fN(j.paid_sum) + ' ₽ · данные на ' + j.pay_at : 'оплаты ещё не сверялись')]);
+      else if (md === 'form') K.push(['Открыли анкету', fN(j.opened), pct6(j.opened, j.came) + '% пришедших'], ['Анкеты', fN(j.forms), pct6(j.forms, j.opened) + '% открывших', 1], ['Купили', fN(j.bought), 'по статусу в таблице']);
+      else K.push(['Досмотрели', fN(j.done), pct6(j.done, j.came) + '% пришедших', 1]);
+      h += '<div class="row e6g6">' + K.map(function (k) { return '<div class="k e6k' + (k[3] ? ' e6hl' : '') + '"><span>' + esc(k[0]) + '</span><b>' + esc(k[1]) + '</b><span>' + esc(k[2]) + '</span></div>' }).join('') + '</div>';
+      /* воронка: ширина — доля от записавшихся */
+      var F = md === 'sell' ? [['Записались', j.regs, ''], ['Пришли хоть раз', j.came, ''], ['Досидели до заявки', j.to_lead || 0, 'e6c2'], ['Оставили заявку', j.leads, 'e6c3'], ['Оплатили', j.paid, 'e6c4']]
+        : md === 'form' ? [['Записались', j.regs, ''], ['Пришли хоть раз', j.came, ''], ['Открыли анкету', j.opened, 'e6c2'], ['Отправили анкету', j.forms, 'e6c3'], ['Купили', j.bought, 'e6c4']]
+        : [['Записались', j.regs, ''], ['Пришли хоть раз', j.came, ''], ['Досмотрели', j.done, 'e6c3']];
+      if (d) F[1][0] = 'Пришли'; var base = j.regs || j.came || 1;
+      h += '<div class="c"><b>Воронка</b><div class="col e6fn">' + F.map(function (f, i) { var w = f[1] > 0 ? Math.max(1, Math.round(f[1] / base * 100)) : 0;
+        return '<div class="row e6fr"><span class="e6fl">' + esc(f[0]) + '</span>' + (i === 0 ? '<div class="e6f1 e6bar"></div>' : '<div class="e6f1"><div class="e6bar' + (f[2] ? ' ' + f[2] : '') + (w ? '' : ' e6z') + '" style="width:' + w + '%"></div></div>') + '<span class="e6fv">' + fN(f[1]) + '</span></div>' }).join('') + '</div></div>';
+      /* онлайн поминутно (SVG 600×160, ось Y до max × 1,1), пунктир: голубой — баннер, розовый — кнопка заявки */
+      var G = j.online || { pts: [], marks: [], sec: 0, n: 1 }, P = G.pts || [], tot = Math.max(60, G.sec || P.length * 60), mx = Math.max.apply(null, [1].concat(P)) * 1.1;
+      var path = P.length ? 'M' + P.map(function (v, i) { return (Math.round(i * 60 / tot * 600 * 10) / 10) + ' ' + (Math.round((160 - v / mx * 160) * 10) / 10) }).join(' L') : '';
+      var lines = (G.marks || []).map(function (m) { var x = Math.round(m.sec / tot * 600 * 10) / 10; return '<line x1="' + x + '" y1="0" x2="' + x + '" y2="160" stroke="' + (m.kind === 'lead' ? '#fccbff' : '#7dd3fc') + '" stroke-dasharray="4 6"></line>' }).join('');
+      var pk = 0, pi = 0; P.forEach(function (v, i) { if (v > pk) { pk = v; pi = i } });
+      var al = P.length ? 'Онлайн: пик ' + pk + ' на ' + pi + '-й минуте' + (G.marks && G.marks.length ? '; отметки: ' + G.marks.map(function (m) { return (m.kind === 'lead' ? 'заявка' : 'баннер') + ' на ' + Math.floor(m.sec / 60) + '-й минуте' }).join(', ') : '') : 'Онлайн: данных нет';
+      var gt = 'Онлайн по минутам' + (mar ? ' · день ' + G.n : '');
+      h += '<div class="g2 e6g2"><div class="c"><b>' + esc(gt) + '</b><div class="e6gr" role="img" aria-label="' + esc(al) + '" data-gr>' + (P.length ? '<svg viewBox="0 0 600 160" preserveAspectRatio="none" width="100%" height="160" aria-hidden="true"><path d="' + path + '" fill="none" stroke="#d77fff" stroke-width="3" data-fx-mask></path>' + lines + '</svg>' : '<span class="dim">Онлайн за этот день не записан</span>') + '</div>' +
+        '<span class="dim" data-fx-mask>' + (md === 'none' ? 'Пунктир: голубой — баннер.' : 'Пунктир: голубой — баннер, розовый — кнопка заявки.') + '</span></div>';
+      /* откуда записались */
+      var lc = md === 'form' ? 'Анкеты' : md === 'sell' ? 'Заявки' : '', gc = lc ? 'xgr' : 'e6g3';
+      h += '<div class="c"><b>Откуда записались</b><div class="tb ' + gc + '"><span class="dim">Источник</span><span class="dim">Записались</span><span class="dim">Пришли</span>' + (lc ? '<span class="dim">' + lc + '</span>' : '') + '</div>' +
+        (j.src || []).map(function (s) { return '<div class="tb ' + gc + '"><span>' + esc(s.title) + '</span><span>' + fN(s.regs) + '</span><span>' + fN(s.came) + '</span>' + (lc ? '<span>' + fN(s.leads) + '</span>' : '') + '</div>' }).join('') + '</div></div>';
+      /* материалы */
+      var KN = { lead: md === 'form' ? 'Кнопка анкеты' : 'Кнопка заявки', banner: 'Баннер', poll: 'Опрос' };
+      h += '<div class="c"><b>Материалы</b>' + ((j.mats || []).length ? '<div class="tb e6gm"><span class="dim">Что показывали</span><span class="dim">Сколько висело</span><span class="dim">Нажали</span><span class="dim">' + (md === 'form' ? 'Анкеты' : 'Заявки') + '</span></div>' +
+        j.mats.map(function (m) { return '<div class="tb e6gm"><span>' + esc((KN[m.kind] || 'Материал') + ' · ' + m.title + ' · ' + (mar ? 'день ' + m.day + ', ' : '') + m.min + '-я мин') + '</span><span>' + m.dur + ' мин</span><span>' + (m.kind === 'poll' ? '—' : fN(m.clicks)) + '</span><span>' + (m.leads == null ? '—' : fN(m.leads)) + '</span></div>' }).join('')
+        : '<span class="dim">Материалы в эфире не показывали</span>') + '</div>';
+      el.innerHTML = frame(mar ? 'mar' : 'web', h, 'Stats') }
+    /* подсказка графика: минута и онлайн */
+    function gMove(e) { var g = e.target.closest && e.target.closest('[data-gr]'); if (!g || !S.st || !S.st.online) return; var P = S.st.online.pts || []; if (!P.length) return;
+      var r = g.getBoundingClientRect(), tot = Math.max(60, S.st.online.sec || P.length * 60), i = Math.max(0, Math.min(P.length - 1, Math.round((e.clientX - r.left) / r.width * tot / 60))), x = i * 60 / tot * r.width;
+      var t = g.querySelector('.e6tip'), v = g.querySelector('.e6vl'); if (!t) { t = document.createElement('span'); t.className = 'pill e6tip'; g.appendChild(t); v = document.createElement('i'); v.className = 'e6vl'; g.appendChild(v) }
+      t.textContent = i + '-я мин · ' + fN(P[i]) + NB + 'онлайн'; t.style.left = Math.max(60, Math.min(r.width - 60, x)) + 'px'; v.style.left = x + 'px' }
+    function gOut(e) { var g = e.target.closest && e.target.closest('[data-gr]'); if (!g) return; [].forEach.call(g.querySelectorAll('.e6tip,.e6vl'), function (x) { x.remove() }) }
+
+    /* ---------- 5.2 заявки ---------- */
+    function lq(q) { var a = ['v=2']; ['ev', 'p', 'st', 'q', 'pg'].forEach(function (k) { if (q[k] != null && q[k] !== '' && !(k === 'p' && q[k] === '30') && !(k === 'st' && q[k] === 'all') && !(k === 'pg' && +q[k] <= 1)) a.push(k + '=' + encodeURIComponent(q[k])) }); return a.join('&') }
+    function lh(q, k) { var a = []; ['ev', 'p', 'st', 'q', 'pg', 'id'].forEach(function (x) { if (q[x] != null && q[x] !== '') a.push(x + '=' + encodeURIComponent(q[x])) }); return '#host/leads' + (k ? '/' + encodeURIComponent(k) : '') + (a.length ? '?' + a.join('&') : '') }
+    function leads(P, q) { stop(); q = q || {}; S.q = q; var k = P[1] ? decodeURIComponent(P[1]) : '', key = lq(q);
+      if (S.lj && S.lkey === key) { lDraw(S.lj, q); if (k) pOpen(k, q.id); else { pClose(true); fin() } return }
+      if (!S.lj) el.innerHTML = frame('leads', '<div class="col ehd"><h1 class="h1">Заявки</h1></div>' + R.h2.skel() + R.h2.skel(), 'Leads');
+      var my = ++S.seq; api(O, '/efir/leads?' + key).then(function (j) { if (S.dead || my !== S.seq || X.cur() !== 'leads') return;
+        if (j && j.ok && !j.rows && !j.none) j.rows = [];
+        if (!j || !j.ok) { el.innerHTML = frame('leads', '<div class="col ehd"><h1 class="h1">Заявки</h1></div>' + errBox(j && j.err, 'lre'), 'Leads'); fin(); return }
+        S.lj = j; S.lkey = key; lDraw(j, q); if (k) pOpen(k, q.id); else fin() }) }
+    function lDraw(j, q) { var foc = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-in') === 'lq', pos = foc ? document.activeElement.selectionStart : 0;
+      var evs = j.evs || [], cur = evs.filter(function (v) { return String(v.id) === String(q.ev || '') })[0], md = cur && cur.mode, st = j.st || q.st || 'all', n = j.n || {};
+      var T = [['all', 'Все'], ['new', 'Новые'], ['paid', 'Оплачены'], ['form', 'Анкеты'], ['err', 'Ошибка']].filter(function (t) { return !md || (md === 'form' ? (t[0] === 'all' || t[0] === 'form') : t[0] !== 'form') });
+      var h = '<div class="row sp xhd"><div class="col xg4"><h1 class="h1">Заявки</h1><span class="mut">Со всех вебинаров, марафонов и автовебинаров. При «Продаём» у заявки есть заказ GetCourse и статус оттуда. При «Анкетах» — ответы и статус из Google Таблицы.</span></div><button type="button" class="b2" data-a="lcsv">Выгрузить в Excel</button></div>';
+      h += '<div class="row e6g8"><select class="in e6s300" aria-label="Эфир" data-in="lev"><option value="">Все эфиры</option>' + evs.map(function (v) { return '<option value="' + v.id + '"' + (String(v.id) === String(q.ev || '') ? ' selected' : '') + '>' + esc(v.title) + '</option>' }).join('') +
+        (j.none ? '<option value="' + j.none.id + '" selected>' + esc(j.none.title) + '</option>' : '') + '</select>' +
+        '<select class="in e6s200" aria-label="Период" data-in="lp">' + PER6.map(function (p) { return '<option value="' + p[0] + '"' + ((q.p || '30') === p[0] ? ' selected' : '') + '>' + p[1] + '</option>' }).join('') + '</select>' +
+        (j.none ? '' : '<div class="seg" role="tablist" aria-label="Статус">' + T.map(function (t) { return '<button type="button" role="tab" aria-selected="' + (st === t[0]) + '"' + (st === t[0] ? ' class="on"' : '') + ' data-a="lst" data-st="' + t[0] + '">' + t[1] + ' ' + (n[t[0]] | 0) + '</button>' }).join('') + '</div>') +
+        '<input class="in e6s260" aria-label="Поиск" placeholder="Имя, телефон или почта" data-in="lq" value="' + esc(q.q || '') + '"></div>';
+      if (j.none) h += '<div class="c eemp"><b>' + esc(j.none.type === 'web' ? 'На этом вебинаре продаж нет' : 'На этом марафоне продаж нет') + '</b><span class="mut">' + esc('Режим «Без продаж» — кнопки заявки не было. Включить продажи можно на шаге 6.') + '</span><a class="b2" href="' + esc(hf('#host/leads')) + '">Все заявки</a></div>';
+      else if (!(j.rows || []).length) h += (q.ev || q.q || (st !== 'all') || (q.p && q.p !== '30') ? R.h2.none('filter', 'lreset') : R.h2.emp(O, 'leads'));
+      else { h += '<div class="col xg0"><div class="th e6gl"><span>Человек</span><span>Контакты</span><span>Откуда</span><span>Смотрел</span><span>Заказ</span><span>Статус</span></div>' + j.rows.map(lRow).join('') + '</div>';
+        if (j.pages > 1) h += '<div class="row e6pg"><button type="button" class="b3 sm" data-a="lpg" data-pg="' + (j.pg - 1) + '"' + (j.pg <= 1 ? ' disabled' : '') + '>← Назад</button><span class="dim">' + esc('Страница ' + j.pg + ' из ' + j.pages + ' · ' + fN(j.total) + ' ' + plr(j.total, 'строка', 'строки', 'строк')) + '</span><button type="button" class="b3 sm" data-a="lpg" data-pg="' + (j.pg + 1) + '"' + (j.pg >= j.pages ? ' disabled' : '') + '>Дальше →</button></div>' }
+      el.innerHTML = frame('leads', h, 'Leads');
+      if (foc) { var inp = el.querySelector('[data-in=lq]'); if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos) } catch (e) {} } } }
+    function lRow(r) { var l1 = r.phone || [r.email, r.tg].filter(Boolean).join(' · '), l2 = r.phone ? [r.email, r.tg].filter(Boolean).join(' · ') : '';
+      var od = r.order ? (r.order.url ? '<a href="' + esc(r.order.url) + '" target="_blank" rel="noopener">№ ' + esc(r.order.num) + '</a>' : '<span>№ ' + esc(r.order.num) + '</span>')
+        : r.err ? '<span class="col e6g4"><span class="bad">не создан</span><a href="#" class="e6s13" data-a="lretry" data-id="' + esc(r.id) + '" data-e="' + (r.efir_id | 0) + '">создать ещё раз</a></span>'
+        : r.kind === 'form' ? (r.form_url ? '<a href="' + esc(r.form_url) + '" target="_blank" rel="noopener">анкета ↗</a>' : '<a href="#" data-a="lopen" data-k="' + esc(r.k) + '" data-id="' + esc(r.id) + '">анкета ↗</a>') : '<span class="dim">—</span>';
+      return '<div class="tb e6gl e6row" data-a="lopen" data-k="' + esc(r.k) + '" data-id="' + esc(r.id) + '" tabindex="0" role="button" aria-label="' + esc('Карточка: ' + r.name) + '"><b data-l="Человек">' + esc(r.name) + '</b><span class="dim x5cut" data-l="Контакты" data-notypo><span>' + esc(l1 || '—') + '</span>' + (l2 ? '<span>' + esc(l2) + '</span>' : '') + '</span>' +
+        '<span class="dim" data-l="Откуда">' + esc(r.from) + (r.outside ? ' <span class="pill">не из эфира</span>' : '') + '</span><span data-l="Смотрел">' + (r.min != null ? r.min + ' мин' : '—') + '</span>' + od + '<span class="pill' + (r.st.c ? ' ' + r.st.c : '') + '">' + esc(r.st.t) + '</span></div>' }
+    function lGo(patch, rep) { var q = Object.assign({}, S.q || {}, patch); delete q.id; if (!('pg' in patch)) delete q.pg; O.go(lh(q, ''), rep) }
+    function csv() { var b = el.querySelector('[data-a=lcsv]'); if (b) b.disabled = true;
+      api(O, '/efir/leads.csv?json=1&' + lq(S.q || {}).replace(/^v=2&?/, '')).then(function (j) { if (b) b.disabled = false; if (!j || !j.ok || typeof j.csv !== 'string') { toast((j && j.err) || 'Файл не собрался — попробуй ещё раз'); return }
+        try { var u = URL.createObjectURL(new Blob([j.csv], { type: 'text/csv;charset=utf-8' })), a = document.createElement('a'); a.href = u; a.download = j.name || 'zayavki.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u) }, 4000); toast('Файл скачан — откроется в Excel') } catch (e) { toast('Браузер не дал скачать файл') } }) }
+
+    /* ---------- 5.2б карточка человека (окно поверх списка) ---------- */
+    function pOpen(k, id) { var key = k + '|' + (id || ''); if (S.pk === key && S.p) { pDraw(S.p); fin(); return } S.pk = key; S.p = null;
+      pShell('<div class="row sp"><h2 class="h2">Карточка</h2><button type="button" class="b3 sm" data-a="pclose" aria-label="Закрыть">✕</button></div>' + R.h2.skel());
+      api(O, '/efir/host/person?k=' + encodeURIComponent(k) + (id ? '&id=' + encodeURIComponent(id) : '')).then(function (j) { if (S.dead || S.pk !== key) return;
+        if (!j || !j.ok) { pShell('<div class="row sp"><h2 class="h2">Карточка</h2><button type="button" class="b3 sm" data-a="pclose" aria-label="Закрыть">✕</button></div>' + errBox(j && j.err, 'pre')); fin(); return }
+        S.p = j; pDraw(j); fin() }) }
+    function pShell(inner) { var pg = el.querySelector('.pg'), ov = el.querySelector('.e6ov'); if (!pg) return;
+      if (!ov) { ov = document.createElement('div'); ov.className = 'ov e6ov'; pg.appendChild(ov) } ov.innerHTML = '<aside class="drw e6w600" role="dialog" aria-modal="true" aria-label="Карточка человека">' + inner + '</aside>' }
+    function pDraw(p) { var lead = p.kind === 'lead';
+      var h = '<div class="row sp"><div class="col xg2"><h2 class="h2">' + esc(p.name) + '</h2><span class="dim">' + esc(p.sub) + '</span></div><button type="button" class="b3 sm" data-a="pclose" aria-label="Закрыть">✕</button></div>';
+      h += '<div class="c0"><span data-notypo>' + esc(p.contacts || 'Контактов нет') + '</span><div class="row xg6">' + (p.tg_url ? '<a class="b2 sm" href="' + esc(p.tg_url) + '" target="_blank" rel="noopener">Написать в Telegram</a>' : p.dm ? '<button type="button" class="b2 sm" data-a="pdm">Написать через бота</button>' : '') +
+        (p.gc_url ? '<a class="b3 sm" href="' + esc(p.gc_url) + '" target="_blank" rel="noopener">Профиль GetCourse</a>' : '') + '</div>' + (S.dm ? '<div class="col xg8"><textarea class="in" rows="2" data-in="pdmt" placeholder="Сообщение придёт от бота школы" aria-label="Сообщение"></textarea><button type="button" class="b1 sm xas" data-a="pdms">Отправить</button></div>' : '') + '</div>';
+      h += '<div class="col xg0"><span class="lbl e6pb6">Эфиры</span>' + (p.efirs || []).map(function (x) { return '<div class="tb e6g3"><span>' + esc(x.title) + '</span>' + (x.min != null ? '<span>' + x.min + ' мин</span>' : x.fut ? '<span class="dim">ещё не было</span>' : '<span class="dim">—</span>') +
+        (x.lead != null ? '<span class="pill pv">' + esc('заявка на ' + x.lead + '′') + '</span>' : x.fut ? '<span></span>' : '<span class="dim">—</span>') + '</div>' }).join('') + '</div>';
+      h += '<div class="col xg6"><span class="lbl">В чате</span>' + ((p.chat || []).length ? '<span class="dim" data-notypo>' + esc(p.chat.map(function (t) { return '«' + t + '»' }).join(' · ')) + '</span>' : '<span class="dim">Сообщений нет</span>') + '</div>';
+      if (lead) { var o = p.order, PS = { 'new': ['новый', 'pgr'], paid: ['оплачен', 'pgr'], no: ['отменён', 'pr'] };
+        h += '<div class="col xg6"><span class="lbl">Заказ</span>' + (o ? '<div class="row"><span class="pill ' + PS[o.pay || 'new'][1] + '">' + esc('№ ' + o.num + ' · ' + PS[o.pay || 'new'][0]) + '</span>' + (o.prod ? '<span class="dim">' + esc(o.prod.title + (o.prod.price ? ' · ' + fN(o.prod.price) + ' ₽' : '')) + '</span>' : '') + '</div>'
+          : p.order_err ? '<div class="row"><span class="pill pr">не создан</span><a href="#" class="e6s13" data-a="lretry" data-id="' + esc(p.id) + '" data-e="' + (p.efir_id | 0) + '">создать ещё раз</a></div>' : '<span class="dim">Заказа нет</span>') + '</div>';
+        h += '<div class="lb">Что сделали<div class="seg" role="radiogroup" aria-label="Статус">' + ST6.map(function (s) { var on = p.mgr_st === s[0]; return '<button type="button" role="radio" aria-checked="' + on + '"' + (on ? ' class="on"' : '') + ' data-a="pst" data-st="' + s[0] + '">' + s[1] + '</button>' }).join('') + '</div></div>';
+        h += '<label class="lb">Заметка менеджера<textarea class="in" rows="3" placeholder="Например: перезвонить в пятницу" data-in="pnote">' + esc(p.note || '') + '</textarea></label>' }
+      else { var SM = { buy: ['купил', 'pgr'], call: ['связались', 'pb'], noans: ['не дозвонились', 'py'], no: ['отказ', 'pr'] }, sm = SM[p.st] || (p.sheet_st ? [p.sheet_st, ''] : ['новая', '']);
+        h += '<div class="col xg6"><span class="lbl">Анкета</span>' + ((p.answers || []).length ? '<div class="col e6ans">' + p.answers.map(function (a) { return '<span class="dim" data-notypo>' + esc(a.q + ': ' + a.a) + '</span>' }).join('') + '</div>' : '<span class="dim">Ответов нет</span>') + '</div>';
+        h += '<div class="col xg6"><span class="lbl">Статус в таблице</span><div class="row"><span class="pill' + (sm[1] ? ' ' + sm[1] : '') + '">' + esc(sm[0]) + '</span>' + (p.sheet_url ? '<a class="b3 sm" href="' + esc(p.sheet_url) + '" target="_blank" rel="noopener">Открыть в таблице</a>' : '') + '</div><span class="dim">Статус анкеты ведут менеджеры в Google Таблице — здесь только чтение.</span></div>' }
+      var ta = el.querySelector('[data-in=pnote]'), keepN = ta && document.activeElement === ta ? ta.value : null;
+      pShell(h); if (keepN != null) { var t2 = el.querySelector('[data-in=pnote]'); if (t2) { t2.value = keepN; t2.focus() } } }
+    function pClose(silent) { var ov = el.querySelector('.e6ov'); if (ov) ov.remove(); S.pk = ''; S.p = null; S.dm = 0; if (!silent) O.go(lh(Object.assign({}, S.q || {}, { id: '' }), '')) }
+    function pSave(b, done) { if (!S.p) return; api(O, '/efir/host/person', Object.assign({ id: S.p.id, k: S.p.k }, b)).then(function (r) { if (!r || !r.ok) { toast((r && r.err) || 'Не сохранилось — попробуй ещё раз'); return } if (done) done(r) }) }
+    function rowSync(id, st) { if (!S.lj) return; (S.lj.rows || []).forEach(function (r) { if (r.id === id && !r.err && r.st.t !== 'оплачено') r.st = { t: { 'new': 'новая', call: 'связались', noans: 'не дозвонились', buy: 'купил', no: 'отказ' }[st], c: { 'new': '', call: 'pb', noans: 'py', buy: 'pgr', no: 'pr' }[st] } }); S.lkey = '' }
+
+    function click(e) { var a = e.target.closest('[data-a]'), cur = X.cur();
+      if (cur === 'leads' && e.target.classList && e.target.classList.contains('e6ov')) { pClose(); return true }
+      if (!a) return false; var k = a.getAttribute('data-a');
+      if (cur === 'ev') { if (k === 'sday') { e.preventDefault(); var n = +a.getAttribute('data-n') || 0; O.go('#host/ev/' + S.sid + '/stats' + (n ? '/' + n : '')); return true } if (k === 'sre') { stats(S.sid, S.sday); return true } return false }
+      if (cur !== 'leads') return false;
+      if (k === 'lopen') { if (e.target.closest('a[href]:not([href="#"])') && !e.target.closest('[data-a=lopen] > a[data-a=lopen]')) return true; e.preventDefault(); var q = Object.assign({}, S.q || {}, { id: a.getAttribute('data-id') }); O.go(lh(q, a.getAttribute('data-k') || '_')); return true }
+      if (k === 'lst') { lGo({ st: a.getAttribute('data-st') === 'all' ? '' : a.getAttribute('data-st') }); return true }
+      if (k === 'lpg') { lGo({ pg: +a.getAttribute('data-pg') || 1 }); window.scrollTo(0, 0); return true }
+      if (k === 'lreset') { e.preventDefault(); O.go('#host/leads'); return true }
+      if (k === 'lre') { S.lj = null; leads(X.P(), S.q); return true }
+      if (k === 'pre') { S.pk = ''; pOpen(decodeURIComponent(X.P()[1] || ''), (S.q || {}).id); return true }
+      if (k === 'lcsv') { csv(); return true }
+      if (k === 'lretry') { e.preventDefault(); e.stopPropagation(); var id = a.getAttribute('data-id'); a.style.pointerEvents = 'none';
+        api(O, '/efir/host/lead/retry', { id: +a.getAttribute('data-e'), lid: +String(id).replace(/\D/g, '') }).then(function (r) { a.style.pointerEvents = ''; if (!r || !r.ok) { toast((r && r.err) || 'GetCourse не ответил — повторим сами через 5 минут'); return }
+          toast('Заказ создан: № ' + r.num); S.lkey = ''; S.pk = ''; leads(X.P(), S.q) }); return true }
+      if (k === 'pclose') { pClose(); return true }
+      if (k === 'pst') { var st = a.getAttribute('data-st'); pSave({ mgr_st: st }, function () { S.p.mgr_st = st; rowSync(S.p.id, st); pDraw(S.p); typoDom(el); toast('Сохранено') }); return true }
+      if (k === 'pdm') { S.dm = S.dm ? 0 : 1; pDraw(S.p); typoDom(el); var t = el.querySelector('[data-in=pdmt]'); if (t) t.focus(); return true }
+      if (k === 'pdms') { var tx = el.querySelector('[data-in=pdmt]'), v = tx ? tx.value.trim() : ''; if (!v) { toast('Напиши сообщение'); return true }
+        api(O, '/efir/host/dm', { id: S.p.efir_id, k: S.p.k, text: v }).then(function (r) { if (!r || !r.ok) { toast((r && r.err) || 'Не отправилось'); return } S.dm = 0; pDraw(S.p); typoDom(el); toast('Отправлено в Telegram') }); return true }
+      return false }
+    function input(e) { var t = e.target, k = t.getAttribute && t.getAttribute('data-in'); if (!k || X.cur() !== 'leads') return;
+      if (k === 'lq') { clearTimeout(S.qt); var v = t.value; S.qt = setTimeout(function () { lGo({ q: v.trim() }, true) }, 500) }
+      if (k === 'pnote') { clearTimeout(S.nt); var v2 = t.value, id = S.p && S.p.id; S.nt = setTimeout(function () { if (!S.p || S.p.id !== id) return; pSave({ note: v2 }, function () { S.p.note = v2; rowSyncNote(id, v2) }) }, 800) } }
+    function rowSyncNote(id, v) { if (!S.lj) return; (S.lj.rows || []).forEach(function (r) { if (r.id === id) r.note = v }) }
+    function change(e) { var t = e.target, k = t.getAttribute && t.getAttribute('data-in'); if (!k || X.cur() !== 'leads') return; if (k === 'lev') lGo({ ev: t.value }); if (k === 'lp') lGo({ p: t.value === '30' ? '' : t.value }) }
+    function key(e) { if (X.cur() !== 'leads') return; if (e.key === 'Escape' && el.querySelector('.e6ov')) { pClose(); return }
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('e6row')) { e.preventDefault(); e.target.click() } }
+    el.addEventListener('mousemove', gMove); el.addEventListener('mouseleave', gOut, true);
+    function leave() { stop() }
+    return { stats: stats, leads: leads, click: click, input: input, change: change, key: key, leave: leave, kill: function () { S.dead = 1; stop() }, P: function () { return S } } }
+
   R.host2 = function (el, O) { css2(); var S = { h: '', P: [], n: null, tm: 0, cntAt: 0, dead: 0 }, FXON = R.fx && R.fx.on();
     var role = O.role || 'admin', ttl = function (t) { try { document.title = t + ' · Эфиры · OduvanovSchool' } catch (e) {} };
     function cnt(force) { if (role !== 'admin') return; if (!force && Date.now() - S.cntAt < 55e3) return; S.cntAt = Date.now();
@@ -1809,9 +1990,16 @@
     /* 07.11 Э5: пульт эфира, модератор, настройки эфиров */
     var X5 = E5(O, { el: el, fx: FXON, nav: function (a) { return nav2(O, a, S.n) }, done: function () { if (FXON) R.fx.done(el.querySelector('[data-fx-screen]')) }, toast: function (t) { toast2(t) },
       go: function (h) { O.go(h) }, cur: function () { return S.P[0] }, P: function () { return S.P }, ui2line: function () { return role === 'admin' && !FXON ? ui2Line('new') : '' } });
+    /* 07.11 Э6: итоги, заявки, карточка человека */
+    var X6 = E6(O, { el: el, fx: FXON, nav: function (a) { return nav2(O, a, S.n) }, done: function () { if (FXON) R.fx.done(el.querySelector('[data-fx-screen]')) }, toast: function (t) { toast2(t) },
+      cur: function () { return S.P[0] }, P: function () { return S.P } });
     function draw() { var P = S.P, k = P[0], s = SCR2[k], fx = FXON ? R.fx.data() : null; try { X5.leave() } catch (e) {}
       if (k === 'web' || k === 'mar' || k === 'new') { ttl(k === 'mar' ? 'Марафоны' : 'Вебинары'); X2.list(k === 'new' ? 'web' : k, P, S.q, k === 'new'); return }
+      if (k !== 'ev' && k !== 'leads') X6.leave();
       if (k === 'live') { ttl('Пульт'); X5.live(P); return } X5.stop();
+      if (k === 'ev' && P[2] === 'stats') { ttl('Итоги'); X6.stats(+P[1] || 0, +P[3] || 0); return }
+      if (k === 'leads') { ttl('Заявки'); X6.leads(P, S.q); return }
+      X6.leave();
       if (k === 'set') { ttl('Настройки эфиров'); X5.set(); return }
       if (k === 'mod') { ttl('Идущие эфиры'); X5.mod(); return }
       if (k === 'ev' && P[1] !== 'new') { ttl('Мероприятие'); X2.wiz(+P[1] || 0, P[2] || '1', P.slice(3)); return }
@@ -1829,14 +2017,14 @@
       if (P[0] === 'ev' && P[1] === 'new') { O.go('#host/new', true); return }
       X2.leave(); S.h = h; S.P = P; S.q = X.q; if (FXON && R.fx.data().api && R.fx.data().api['GET /efir/leads/count']) S.n = +R.fx.data().api['GET /efir/leads/count'].n || 0;
       draw(); if (!FXON) cnt(true) }
-    el.onclick = function (e) { if (X5.click(e)) return; if (X2.click(e)) return; var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (/^(old|fwd|ovclose|winclose|mwclose|swclose|rwclose)$/.test(k)) return; e.preventDefault(); if (k === 'ui2off') { a.setAttribute('data-on', '0'); ui2Set(O, a, toast2); return } toast2('Появится в своём этапе') };
-    el.oninput = function (e) { X5.input(e); X2.input(e) }; el.onchange = function (e) { X5.change(e); X2.change(e) }; el.onpointerdown = function (e) { X2.pdown(e) };
-    var kd = function (e) { if (!S.dead && el.isConnected) { X5.key(e); X2.key(e) } }; document.addEventListener('keydown', kd);
+    el.onclick = function (e) { if (X6.click(e)) return; if (X5.click(e)) return; if (X2.click(e)) return; var a = e.target.closest('[data-a]'); if (!a) return; var k = a.getAttribute('data-a'); if (/^(old|fwd|ovclose|winclose|mwclose|swclose|rwclose)$/.test(k)) return; e.preventDefault(); if (k === 'ui2off') { a.setAttribute('data-on', '0'); ui2Set(O, a, toast2); return } toast2('Появится в своём этапе') };
+    el.oninput = function (e) { X6.input(e); X5.input(e); X2.input(e) }; el.onchange = function (e) { X6.change(e); X5.change(e); X2.change(e) }; el.onpointerdown = function (e) { X2.pdown(e) };
+    var kd = function (e) { if (!S.dead && el.isConnected) { X6.key(e); X5.key(e); X2.key(e) } }; document.addEventListener('keydown', kd);
     /* тост (§7.6): .pill .pgr снизу по центру, 2 с */
     function toast2(t) { if (O.toast) return O.toast(t); var d = document.querySelector('.efn-toast'); if (d) d.remove(); d = document.createElement('div'); d.className = 'efn efn-toast'; d.innerHTML = '<span class="pill pgr">' + ty(t) + '</span>'; document.body.appendChild(d); setTimeout(function () { d.remove() }, 2000) }
     /* счётчик новых заявок — при каждом переходе и раз в 60 с при видимой вкладке (§6.4 Nav) */
     if (!FXON) S.tm = setInterval(function () { if (!el.isConnected) { stop(); return } if (document.visibilityState === 'visible') cnt(true) }, 60e3);
-    function stop() { S.dead = 1; clearInterval(S.tm); S.tm = 0; try { X2.leave() } catch (e) {} try { X5.stop() } catch (e) {} document.removeEventListener('keydown', kd) }
+    function stop() { S.dead = 1; clearInterval(S.tm); S.tm = 0; try { X2.leave() } catch (e) {} try { X5.stop() } catch (e) {} try { X6.kill() } catch (e) {} document.removeEventListener('keydown', kd) }
     return { route: route, stop: stop } };
   R.h2 = { parse: hParse, def: hDef, stage: hStage, nav: nav2, emp: emp2, none: none2, err: err2, skel: skel2 };
 })();

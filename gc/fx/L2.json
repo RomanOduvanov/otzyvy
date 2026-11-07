@@ -1,0 +1,257 @@
+{
+ "board": "L2",
+ "w": 1440,
+ "h": 1100,
+ "now": "2026-11-11T12:00:00+03:00",
+ "now_checked": true,
+ "role": "admin",
+ "me": {
+  "uid": 499631257,
+  "name": "Роман",
+  "ui2": 1
+ },
+ "hash": "#host/leads/t500001",
+ "shell": "",
+ "api": {
+  "GET /efir/leads/count": {
+   "ok": true,
+   "n": 48
+  },
+  "GET /efir/leads?v=2": {
+   "ok": true,
+   "rows": [
+    {
+     "id": "l501",
+     "kind": "lead",
+     "k": "t500001",
+     "name": "Анна К.",
+     "phone": "+7 900 123-45-67",
+     "email": "anna@mail.ru",
+     "tg": "@anna_k",
+     "from": "Марафон, день 2 · 52-я мин",
+     "outside": 0,
+     "min": 81,
+     "order": {
+      "num": "2731",
+      "url": "https://oduvanovroman.getcourse.ru/sales/control/deal/update/id/419002731"
+     },
+     "err": 0,
+     "form_url": "",
+     "st": {
+      "t": "новая",
+      "c": ""
+     },
+     "at": 1794505920000,
+     "efir_id": 41,
+     "note": ""
+    },
+    {
+     "id": "l502",
+     "kind": "lead",
+     "k": "t500002",
+     "name": "Денис",
+     "phone": "+7 912 345-67-89",
+     "email": "den@mail.ru",
+     "tg": "@denis_m",
+     "from": "Марафон, день 2 · 53-я мин",
+     "outside": 0,
+     "min": 94,
+     "order": {
+      "num": "2732",
+      "url": "https://oduvanovroman.getcourse.ru/sales/control/deal/update/id/419002732"
+     },
+     "err": 0,
+     "form_url": "",
+     "st": {
+      "t": "оплачено",
+      "c": "pgr"
+     },
+     "at": 1794505980000,
+     "efir_id": 41,
+     "note": ""
+    },
+    {
+     "id": "f88",
+     "kind": "form",
+     "k": "t500003",
+     "name": "Ирина",
+     "phone": "+7 903 456-78-90",
+     "email": "irina@gmail.com",
+     "tg": "",
+     "from": "Вебинар «Нейрофото» · 44-я мин",
+     "outside": 0,
+     "min": 58,
+     "order": null,
+     "err": 0,
+     "form_url": "https://docs.google.com/spreadsheets/d/1AbC/edit#gid=0&range=A5",
+     "st": {
+      "t": "связались",
+      "c": "pb"
+     },
+     "at": 1794330000000,
+     "efir_id": 35,
+     "note": ""
+    },
+    {
+     "id": "l480",
+     "kind": "lead",
+     "k": "t500004",
+     "name": "Ольга",
+     "phone": "+7 921 234-56-78",
+     "email": "olga@yandex.ru",
+     "tg": "",
+     "from": "Вебинар «100 000 ₽» · 61-я мин",
+     "outside": 0,
+     "min": 70,
+     "order": null,
+     "err": 1,
+     "form_url": "",
+     "st": {
+      "t": "ошибка",
+      "c": "pr"
+     },
+     "at": 1794200000000,
+     "efir_id": 33,
+     "note": ""
+    }
+   ],
+   "n": {
+    "all": 312,
+    "new": 48,
+    "paid": 31,
+    "form": 96,
+    "err": 2
+   },
+   "total": 312,
+   "pg": 1,
+   "pages": 1,
+   "evs": [
+    {
+     "id": 12,
+     "title": "Дизайнер карточек за 3 дня",
+     "mode": "sell"
+    },
+    {
+     "id": 9,
+     "title": "Нейрофото",
+     "mode": "form"
+    },
+    {
+     "id": 7,
+     "title": "100 000 ₽ на карточках",
+     "mode": "sell"
+    }
+   ],
+   "ev": 0,
+   "p": "30",
+   "st": "all"
+  },
+  "GET /efir/host/person?k=t500001": {
+   "ok": true,
+   "id": "l501",
+   "kind": "lead",
+   "k": "t500001",
+   "efir_id": 41,
+   "name": "Анна К.",
+   "sub": "не ученик · запись 9 ноя по ссылке «Instagram»",
+   "contacts": "+7 900 123-45-67 · anna@mail.ru · @anna_k",
+   "tg_url": "https://t.me/anna_k",
+   "dm": 0,
+   "gc_url": "https://oduvanovroman.getcourse.ru/user/control/user/update/id/500001",
+   "efirs": [
+    {
+     "id": 40,
+     "title": "День 1 · Первая карточка",
+     "min": 74,
+     "lead": null,
+     "fut": 0
+    },
+    {
+     "id": 41,
+     "title": "День 2 · Инфографика",
+     "min": 81,
+     "lead": 52,
+     "fut": 0
+    },
+    {
+     "id": 42,
+     "title": "День 3 · Первые клиенты",
+     "min": null,
+     "lead": null,
+     "fut": 1
+    }
+   ],
+   "chat": [
+    "А сколько стоит обучение?",
+    "Есть рассрочка?"
+   ],
+   "mode": "sell",
+   "mgr_st": "new",
+   "note": "",
+   "order": {
+    "num": "2731",
+    "url": "https://oduvanovroman.getcourse.ru/sales/control/deal/update/id/419002731",
+    "pay": "new",
+    "prod": {
+     "title": "AI-дизайнер 3.0 — Премиум",
+     "price": 69990
+    }
+   },
+   "order_err": 0
+  }
+ },
+ "ui": {},
+ "mask": [
+  ".ph",
+  "[data-fx-mask]"
+ ],
+ "stage": "Э6",
+ "mask_notes": "§6.2: «Заявки · список — под затемнением» — под окном настоящий экран 5.2 из фикстуры (тексты и пиксели вне окна не сверяются)",
+ "board_texts": [
+  "Эфиры",
+  "Вебинары",
+  "Марафоны",
+  "Автовебинары",
+  "Эфиры кураторов",
+  "Заявки",
+  "48 новых",
+  "Настройки эфиров",
+  "+ Создать",
+  "Заявки",
+  "список — под затемнением",
+  "Анна К.",
+  "не ученик · запись 9 ноя по ссылке «Instagram»",
+  "✕",
+  "+7 900 123-45-67 · anna@mail.ru · @anna_k",
+  "Написать в Telegram",
+  "Профиль GetCourse",
+  "Эфиры",
+  "День 1 · Первая карточка",
+  "74 мин",
+  "—",
+  "День 2 · Инфографика",
+  "81 мин",
+  "заявка на 52′",
+  "День 3 · Первые клиенты",
+  "ещё не было",
+  "В чате",
+  "«А сколько стоит обучение?» · «Есть рассрочка?»",
+  "Заказ",
+  "№ 2731 · новый",
+  "AI-дизайнер 3.0 — Премиум · 69 990 ₽",
+  "Что сделали",
+  "Связались",
+  "Не дозвонились",
+  "Купил",
+  "Отказ",
+  "Заметка менеджера"
+ ],
+ "window": true,
+ "crop": [
+  840,
+  0,
+  600,
+  1100
+ ],
+ "keep": true
+}
