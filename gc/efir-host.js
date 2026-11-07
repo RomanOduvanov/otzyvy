@@ -501,7 +501,8 @@
     ".efn a.xback{font-size:14px;text-decoration:none}",
     /* 1.1 */
     ".efn .c.xlivec{flex-direction:row;align-items:center;flex-wrap:wrap;gap:18px}.efn .xlvt{flex:1 1 320px;gap:4px}.efn .in.xsrch{max-width:300px}",
-    ".efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.6fr)}.efn .live.xl24{height:24px;font-size:12px}.efn .row.xact{justify-content:flex-end;gap:6px}",
+    /* круг 1 приёмки: кнопки строки 1.1 — в один ряд (nowrap): в кабинете (фрейм 1380, колонка 198 px) «Пульт» + «Настройки» + «···» (198 px) уходили во второй ряд — теперь выступают влево на ≤ 6 px в пустое поле «Готовности», колонки как на доске; < 1100 колонка кнопок не уже 204 px */
+    ".efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.6fr)}@media (max-width:1099px){.efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(204px,1.6fr)}}.efn .live.xl24{height:24px;font-size:12px}.efn .row.xact{justify-content:flex-end;gap:6px;flex-wrap:nowrap}",
     ".efn .c.xempt{align-items:center;text-align:center;padding:40px 20px}.efn .xempt>b{font-size:18px}.efn .xempt>.mut{max-width:460px}",
     /* 1.2 */
     ".efn .b3.sm.xdots{width:36px;padding:0}.efn .c0.xrow{flex-direction:row;align-items:center;gap:10px}",
@@ -548,7 +549,8 @@
     ".efn .xpop.xcal{width:300px;gap:8px}.efn .xcalg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.efn .xcalg>.sm{padding:0;min-width:0}.efn .xcalg>.sm:disabled{opacity:.35}.efn .xcalg>i{font-style:normal;font-size:11px;text-align:center;color:rgba(255,255,255,.45)}",
     ".efn .in[readonly]{cursor:pointer}.efn .xsk{min-height:240px}.efn .xw280{width:280px;flex:none}.efn .x14t{margin-top:14px}",
     /* §7.5 < 1100: Steps — лента кружков с названием текущего шага; окна — на всю ширину */
-    "@media (max-width:1099px){.efn .row.xwz{flex-direction:column;align-items:stretch;flex-wrap:nowrap}.efn .xwz .estp{width:auto;flex-direction:row;align-items:center;overflow-x:auto;scrollbar-width:none;padding:8px 10px;border-radius:16px}.efn .xwz .estph{display:none}.efn .xwz a.estpi{min-height:44px;padding:0 6px;gap:8px;flex:none}.efn .xwz a.estpi .estpt{display:none}.efn .xwz a.estpi.on .estpt{display:flex}.efn .xwz a.estpi.on{padding:0 14px 0 8px}.efn .xwz .estpt>span+span{display:none}.efn .xwz .estpl{width:1px;height:28px;margin:0 6px;flex:none}.efn .xwz a.estpx{flex:none;white-space:nowrap}.efn .xwzm,.efn .xwzm.xw940{max-width:none;flex:none}.efn .drw{width:100%}.efn .ov.xovc{padding:20px 16px}}",
+    /* круг 1 приёмки: §7.5 «< 1100 — окно .drw на всю ширину» не срабатывало у окон с шириной в классе (.xw640, .xw860, .e7w560 — сильнее селектор); .drw.drw.drw — сильнее любого из них */
+    "@media (max-width:1099px){.efn .row.xwz{flex-direction:column;align-items:stretch;flex-wrap:nowrap}.efn .xwz .estp{width:auto;flex-direction:row;align-items:center;overflow-x:auto;scrollbar-width:none;padding:8px 10px;border-radius:16px}.efn .xwz .estph{display:none}.efn .xwz a.estpi{min-height:44px;padding:0 6px;gap:8px;flex:none}.efn .xwz a.estpi .estpt{display:none}.efn .xwz a.estpi.on .estpt{display:flex}.efn .xwz a.estpi.on{padding:0 14px 0 8px}.efn .xwz .estpt>span+span{display:none}.efn .xwz .estpl{width:1px;height:28px;margin:0 6px;flex:none}.efn .xwz a.estpx{flex:none;white-space:nowrap}.efn .xwzm,.efn .xwzm.xw940{max-width:none;flex:none}.efn .drw.drw.drw{width:100%}.efn .ov.xovc{padding:20px 16px}}",
     /* < 768: таблицы → карточки «подпись: значение» */
     "@media (max-width:767px){.efn .th{display:none}.efn .tb{display:flex;flex-direction:column;align-items:stretch;gap:6px;background:#0e0e10;border:0;border-radius:16px;padding:14px;margin-top:8px}.efn .tb>[data-l]::before{content:attr(data-l) ': ';color:rgba(255,255,255,.5)}.efn .tb>.row.xact{justify-content:flex-start}.efn .xwin{padding:20px}.efn .in.xsrch{max-width:none}}"
   ];
@@ -1196,7 +1198,9 @@
       var opts = [['all', SEG9.all + ' — ' + nf(C.all || 0)], ['came_day', SEG9.came_day + ' — выбрать день'], ['miss_day', SEG9.miss_day + ' — выбрать день'], ['never', SEG9.never + ' — ' + nf(C.never || 0)]].concat(md === 'sell' ? [['leads', SEG9.leads + ' — ' + nf(C.leads || 0)]] : md === 'form' ? [['forms', SEG9.forms + ' — ' + nf(C.forms || 0)]] : []);
       var dayOn = f.seg === 'came_day' || f.seg === 'miss_day', past = D.filter(function (d) { return d.id }), dsel = '<select class="in" data-bc="efir_id"' + (dayOn ? '' : ' disabled') + '><option value="0">— выбери день —</option>' + past.map(function (d, i) { var x = (C.days || []).filter(function (y) { return y.id === d.id })[0], k = f.seg === 'came_day' ? 'came' : 'miss', n = x ? x[k] : null;
         return '<option value="' + d.id + '"' + (+f.efir_id === d.id ? ' selected' : '') + '>' + (mar ? 'День ' + (i + 1) + ' · ' : '') + (d.start ? dS(d.start) : '') + (dayOn && n != null ? ' — ' + plrS(n, 'человек', 'человека', 'человек') : '') + '</option>' }).join('') + '</select>';
-      var rules = '<div class="c xg8"><h2 class="h2">' + (mar ? 'Что можно менять у идущего марафона' : 'Что можно менять у идущего вебинара') + '</h2><div class="g2">' +
+      /* круг 1 приёмки (замечание 4): у черновика и тестового прогона мероприятие ещё не идёт — «у идущего …» там неправда */
+      var run9 = e.status === 'reg' || e.status === 'done';
+      var rules = '<div class="c xg8"><h2 class="h2">' + (!run9 ? 'Что можно будет менять после запуска' : mar ? 'Что можно менять у идущего марафона' : 'Что можно менять у идущего вебинара') + '</h2><div class="g2">' +
         '<div class="col xg6"><span class="ok">✓ можно в любой момент</span><span class="dim">тексты бота, материалы, время будущих дней, продукт, доступ к записи, новые ссылки с метками</span></div>' +
         '<div class="col xg6"><span class="warn">• только с предупреждением</span><span class="dim">перенос дня, который начнётся меньше чем через сутки — бот предложит разослать «эфир перенесён»</span></div>' +
         '<div class="col xg6"><span class="bad">✕ нельзя</span><span class="dim">удалить прошедший день (есть запись и статистика) — только скрыть</span></div>' +
@@ -1445,7 +1449,7 @@
     ".efn .x5feed{flex:1 1 0;height:0;min-height:0;overflow-y:auto;gap:12px;padding:6px 16px 12px;font-size:14px}.efn .x5feed.x5f2{gap:10px;padding:14px}",
     ".efn .x5inr{padding:12px;gap:8px;border-top:1px solid rgba(255,255,255,.06)}.efn .x5ma{gap:6px;margin-top:6px}.efn .x5m .x5ma{display:none}.efn .x5m:hover .x5ma,.efn .x5m.on .x5ma,.efn .x5m:focus-within .x5ma{display:flex}",
     ".efn .c0.x5hm{background:rgba(215,127,255,.12)}.efn .x5hm>.row{gap:6px}.efn .x5new{align-self:center}.efn .x5mh{opacity:.55}",
-    ".efn .c0.x5tgl{flex-direction:row;flex-wrap:wrap;gap:10px;align-items:center}.efn .x5tgl>.dim{flex:1 1 200px}.efn .x5tgl>.row{gap:8px}",
+    ".efn .c0.x5tgl{flex-direction:row;flex-wrap:wrap;gap:10px;align-items:center}.efn .x5tgl>.dim{flex:1 1 200px}@media (max-width:899px){.efn .x5tgl>.dim{flex-basis:100%}}.efn .x5tgl>.row{gap:8px}",
     ".efn .c.x5g8{gap:8px}.efn .c.x5dash{border-style:dashed}.efn .x5big{font-size:28px}.efn .c.cv.x5poll{border-color:rgba(251,191,36,.45)}",
     ".efn .x5bars{gap:6px;font-size:13px}.efn .x5bar{height:6px;border-radius:4px;background:#262626}.efn .x5bar>div{height:6px;border-radius:4px;background:#d77fff}",
     ".efn .x5cut{min-width:0}.efn .x5cut>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.efn b.x5n14,.efn .x5n14{font-size:14px}",
@@ -1984,9 +1988,10 @@
      «Скачать» — подписанная короткая ссылка сервера (без токена в адресе). «Смотреть как куратор» (#host/as/<cid>) — только чтение. */
   var CSS7 = [
     ".efn .row.e7hd{align-items:flex-end}.efn .col.e7g4{gap:4px}.efn .col.e7g2{gap:2px}.efn .col.e7g6{gap:6px}.efn .col.e7g0{gap:0}.efn .col.e7g8{gap:8px}.efn .row.e7g4{gap:4px}.efn .row.e7g6{gap:6px}.efn .row.e7g10{gap:10px}.efn .row.e7g16{gap:16px}",
-    ".efn .row.e7two{align-items:flex-start;gap:16px}.efn .col.e7l{flex:3 1 520px;gap:0}.efn .c.e7f{flex:2 1 380px;gap:12px}.efn .row.e7end{justify-content:flex-end}.efn .row.e7end6{justify-content:flex-end;gap:6px}",
-    ".efn .e7c5{grid-template-columns:minmax(0,2.3fr) minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,1.4fr)}.efn .e7c1{grid-template-columns:minmax(0,2.4fr) minmax(0,1.3fr) minmax(0,1.2fr) minmax(0,.9fr) minmax(0,1.4fr)}",
-    ".efn .e7rc{grid-template-columns:minmax(0,2.4fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,1.6fr)}.efn .e7wc4{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr)}",
+    ".efn .row.e7two{align-items:flex-start;gap:16px}.efn .col.e7l{flex:3 1 520px;gap:0}.efn .c.e7f{flex:2 1 380px;gap:12px}.efn .row.e7end{justify-content:flex-end}.efn .row.e7end6{justify-content:flex-end;gap:6px;flex-wrap:nowrap}",
+    /* круг 1 приёмки (замечание 3): колонка кнопок строки не уже «Запись» + «Кто был» (152 px, одна на все строки — колонки не съезжают) — на 768 «Запись» и «Кто был» были в два ряда; на 1440 ширина та же (1.4fr шире кнопок) */
+    ".efn .e7c5{grid-template-columns:minmax(0,2.3fr) minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,1.4fr)}.efn .e7c1{grid-template-columns:minmax(0,2.4fr) minmax(0,1.3fr) minmax(0,1.2fr) minmax(0,.9fr) minmax(152px,1.4fr)}",
+    ".efn .e7rc{grid-template-columns:minmax(0,2.4fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,.9fr) minmax(152px,1.6fr)}.efn .e7wc4{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr)}",
     /* 6.1: левая колонка 260 (efir.html и кабинет) */
     ".efn .e7nav{width:260px;box-sizing:border-box;padding:28px 14px;display:flex;flex-direction:column;gap:4px;background:#08080b;border-right:1px solid rgba(255,255,255,.06)}.efn .e7nav>.lbl{padding:0 12px 10px}",
     ".efn .e7ni{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:0 12px;border-radius:12px;color:rgba(255,255,255,.72);text-decoration:none;box-sizing:border-box}.efn .e7ni.on{background:#1f1f22;color:#fff;font-weight:600}.efn .e7ni:hover{color:#fff}.efn .e7sp{flex:1 1 auto}",
@@ -2105,7 +2110,7 @@
     /* ---------- 6.1 мои эфиры (куратор; админ — «смотреть как куратор») ---------- */
     function myH(sub) { return (S.ro ? '#host/as/' + S.cid : '#host/my') + (sub ? '/' + sub : '') }
     function myNav(tab, n) { var it = [['', 'Эфиры'], ['works', 'Работы на разбор'], ['recs', 'Записи']];
-      if (O.nav) { try { O.nav(it.map(function (x) { return { h: myH(x[0]), t: x[1], n: x[0] === 'works' ? n : 0, on: x[0] === tab } })) } catch (e) {} } /* pult.html: пункты — в #kNav; на телефоне (#kNav скрыт) — строка чипов ниже */
+      if (O.nav) { try { O.nav(it.map(function (x) { return { h: myH(x[0]), t: typo(x[1]), n: x[0] === 'works' ? n : 0, on: x[0] === tab } })) } catch (e) {} } /* pult.html: пункты — в #kNav; на телефоне (#kNav скрыт) — строка чипов ниже. Круг 1 приёмки: подписи через typo — в #kNav 200 px «Работы на» висело в конце строки */
       return '<nav class="e7nav' + (O.nav ? ' e7navm' : '') + '" aria-label="Эфиры куратора">' + (S.ro ? '<a class="e7back e7mb" href="' + esc(hf('#host/cur')) + '">← Эфиры кураторов</a>' : '') + '<b class="lbl">' + (S.ro ? 'Эфиры · ' + esc((S.my && S.my.name) || S.cid) : 'Мои эфиры') + '</b>' + it.map(function (x) { var on = x[0] === tab; return '<a class="e7ni' + (on ? ' on' : '') + '" href="' + esc(hf(myH(x[0]))) + '"' + (on ? ' aria-current="page"' : '') + '>' + x[1] + (x[0] === 'works' && n ? ' <span class="pill pv">' + n + '</span>' : '') + '</a>' }).join('') + '<div class="e7sp"></div><button type="button" class="b1" data-a="m7new">+ Новый эфир</button></nav>' }
     function myFrame(tab, inner) { var n = S.my ? S.my.works_n : 0; return frame(myNav(tab, n), inner, 'C1', '', 'e7mx') }
     function myHead(t, sub) { var nb = O.nav ? '<button type="button" class="b1 sm" data-a="m7new">+ Новый эфир</button>' : ''; return '<div class="' + (nb ? 'row sp e7hd' : 'col e7g4') + '">' + (nb ? '<div class="col e7g4">' : '') + '<h1 class="h1">' + t + '</h1><span class="mut">' + sub + '</span>' + (nb ? '</div>' + nb : '') + '</div>' }

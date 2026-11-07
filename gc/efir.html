@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<html lang="ru" style="background:#000106;color-scheme:dark"><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- круг 1 приёмки (замечание 6): тёмная схема и фон — с первого байта; пока перезагружается фрейм (выключили флаг → старый пульт), кабинет не показывает белый лист -->
 <title>Эфиры · OduvanovSchool</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
@@ -27,7 +28,7 @@ html.emb,html.emb body{height:100%;min-height:0;overflow:auto;-webkit-overflow-s
 <div id="ef"></div>
 </div>
 <div id="efn"></div>
-<script defer src="efir.js?v=43"></script>
+<script defer src="efir.js?v=44"></script>
 <script>
 (function(){
 /* 30.10: страница «Эфиры» на сайте (/teach/control/stream?fs=efir — фрейм на весь экран, eco.js) и ссылка из бота для гостей открытого эфира (?id=&r=).
@@ -116,6 +117,10 @@ function start(){if(!window.ECOEFIR){$('ef').innerHTML='<div class="ef-mut" styl
 /* 07.11 (откат Э0): страховка от пустого фрейма — если через 8 с не видно ни экрана, ни входа, пишем, что делать (и сообщаем кабинету, что можно убрать заставку) */
 if(!FXN)setTimeout(function(){var ef=$('ef'),n=$('efn');if((ef.textContent||'').trim()||ef.querySelector('img,iframe,video,.ef-sk')||(n&&n.firstChild)||!$('login').classList.contains('hid'))return;
   document.body.classList.remove('efn-on');document.documentElement.classList.remove('efn-on');$('bar').classList.remove('hid');ef.className='efx';ef.innerHTML='<div class="ef-mut" style="padding:20px 0;font-size:15px">Эфиры не загрузились. <a href="#" style="color:#d77fff" onclick="location.reload();return false">Обновить страницу</a></div>';try{console.error('efir: пустой экран через 8 с')}catch(e){}},8000);
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+/* круг 1 приёмки (замечание 1): во фрейме кабинета окно в первые мгновения бывает ещё без размера — экраны, выбирающие вид по ширине (6.3/6.4, комната 4.x/4.7), рисовали телефонный вид и прыгали.
+   Первая отрисовка ждёт, пока у окна фрейма появится ширина (до 1,5 с; скелет уже нарисован выше) */
+function sized(cb){var t0=Date.now(),w=function(){if((document.documentElement.clientWidth||innerWidth)>=200||Date.now()-t0>1500)return cb();setTimeout(w,30)};w()}
+function go0(){if(EMB&&!FXN)sized(start);else start()}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go0);else go0();
 })();
 </script></body></html>

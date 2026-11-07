@@ -373,7 +373,8 @@
   var TYW = 'в|во|на|с|со|к|ко|по|о|об|обо|у|и|а|но|да|за|из|от|до|для|без|под|над|при|про|через|не|ни|или|что|как|если|чем|то',
     TYR = new RegExp('(^|[^0-9A-Za-zА-Яа-яЁё\\-])(' + TYW + ')[ \\t]+(?=\\S)', 'gi');
   function typo(s) { s = s == null ? '' : String(s); if (!s) return s; var p; do { p = s; s = s.replace(TYR, '$1$2' + NB) } while (s !== p);
-    return s.replace(/[ \t]+([—–])/g, NB + '$1').replace(/(\d)[ \t]+(?=\S)/g, '$1' + NB) }
+    /* круг 1 приёмки: «52-я мин», «2-й день» — числительное не отрывается от слова (в «Заявках» на 768 «мин» уезжало на новую строку) */
+    return s.replace(/[ \t]+([—–])/g, NB + '$1').replace(/(\d)[ \t]+(?=\S)/g, '$1' + NB).replace(/(\d-(?:я|й|е|го|му|м|х|ю|ой|ая|ое))[ \t]+(?=\S)/g, '$1' + NB) }
   function ty(s) { return esc(typo(s)) }
   function typoDom(root) { if (!root || !document.createTreeWalker) return root; var w = document.createTreeWalker(root, 4, null, false), n, L = [];
     while ((n = w.nextNode())) { var p = n.parentNode; if (!p || /^(SCRIPT|STYLE|TEXTAREA|CODE|PRE)$/.test(p.nodeName) || (p.closest && p.closest('[data-notypo]')) || n.nodeValue.indexOf('{{') >= 0) continue; L.push(n) }
@@ -481,6 +482,9 @@
     ".efn-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;pointer-events:none}",
     /* фон в бою (§7.1): body::before на весь экран, тот же градиент, что .pg доски — и вне кабинета, и в кабинете (html.emb) */
     "html.efn-on{background:#000106!important}html.efn-on body{background:transparent!important;min-height:100vh}",
+    /* круг 1 приёмки (замечание 5): корень экрана .pg (как на доске — свой фон с подсветкой) был высотой с содержимое — в кабинете подсветка обрывалась под последним блоком.
+       В бою фон — только body::before на весь экран, а .pg — прозрачный и не ниже окна; в режиме сверки (html.fx) — как на доске */
+    "html.efn-on:not(.fx) .efn.pg{background:transparent;min-height:100vh}",
     "html.efn-on.efn-on body::before{content:\"\";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(85% 42% at 55% 100%,rgba(150,87,232,.38),rgba(96,0,255,.14) 45%,transparent 100%),#000106}",
     /* режим сверки (§6.0): без анимаций и переходов, без мигающего курсора; фон — у корня экрана, как .pg доски */
     "html.fx *,html.fx *::before,html.fx *::after{animation:none!important;transition:none!important;caret-color:transparent!important}",
@@ -495,6 +499,8 @@
   var CSS6 = [
     ".efn.pg.x6pg{padding:24px 40px;box-sizing:border-box;gap:16px;align-items:flex-start;min-height:100vh}.efn .x6l{flex:3 1 520px;gap:14px}",
     ".efn .x6side{flex:2 1 340px;min-height:900px;gap:0;background:#111;border-radius:22px;border:1px solid rgba(255,255,255,.06)}.efn .x6t10{padding:10px}.efn .seg.x6seg{display:flex}.efn .x6seg button{flex:1}",
+    /* круг 1 приёмки: 768–1099 — общее правило .efn.pg «в колонку» делало из flex-basis 520 px высоту, колонка комнаты сжималась до содержимого (видео 420 px, пустое место справа и под ним). По §7.5 (как у пульта): чат — под основной колонкой на всю ширину, высота 600 */
+    "@media (min-width:768px) and (max-width:1099px){.efn.pg.x6pg{align-items:stretch}.efn .x6l{flex:none}.efn .x6side{flex:none;min-height:0;height:600px}}",
     ".efn .x6feed{flex:1 1 auto;gap:12px;padding:6px 16px;font-size:14px}.efn .x6inr{padding:12px;gap:8px;border-top:1px solid rgba(255,255,255,.06)}.efn .x6inr>.in{flex:1}.efn .b1.x6sq{width:44px;height:44px;padding:0}",
     ".efn .x6cl{padding:12px;border-top:1px solid rgba(255,255,255,.06)}.efn .c0.x6pin{background:rgba(215,127,255,.12)}.efn .x6mn{color:#e2c9ff}.efn .pill.x6you{font-size:11px}",
     ".efn .ph.x6col{flex-direction:column;gap:10px}.efn .x6cd{font-size:40px;color:#fff;font-feature-settings:'tnum'}.efn .x6w22{font-size:22px;color:#fff}.efn .x6w{color:#fff}",
@@ -754,13 +760,17 @@
     /* окно «Работа на разбор» (§7.6) */
     ".efn .drw.s8drw{overflow-y:auto;max-height:100vh;max-height:100dvh}.efn .s8x{width:36px;padding:0}",
     "@media (max-width:767px){.efn.pg.s8pg>.mn{padding:16px 14px 32px}}",
-    "@media (max-width:359px){.efn .c0.s8r{flex-wrap:wrap}.efn .c0.s8r>.b1,.efn .c0.s8r>.b2{width:100%}}"
+    /* §7.5 «< 375 (320): .b1 в строках — на всю ширину» (решение Романа 07.11: на 375 — в строке справа, как на доске 390; и «✓ Напомню» .b2 той же кнопки — чтобы строка не прыгала при нажатии); fxsnap перерисовывает доску S2 на < 375 по тому же правилу */
+    "@media (max-width:374px){.efn .c0.s8r{flex-wrap:wrap}.efn .c0.s8r>.b1,.efn .c0.s8r>.b2{width:100%}}"
   ];
   function css8() { if (document.getElementById('efnCss8')) return; var s = document.createElement('style'); s.id = 'efnCss8'; s.textContent = CSS8.join('\n'); document.head.appendChild(s) }
   function day8(ms, long) { var a = mk(ms), b = mk(Date.now()), c = mk(Date.now() + 864e5); return a.day === b.day ? 'сегодня' : a.day === c.day ? 'завтра' : a.d + ' ' + (long ? MG : MS)[a.mo] }
   R.list2 = function (el, O, j0) { css2(); css6(); css8(); el.classList.remove('efx', 'desk'); var FXON = R.fx && R.fx.on(), S = { j: j0, f: 'all', dead: 0 }, app = !!O.app;
     function now() { return Date.now() }
-    function phone() { return (el.clientWidth || innerWidth) < 768 }
+    /* круг 1 приёмки (замечание 1): во фрейме кабинета окно фрейма в первые мгновения бывает ещё без размера (innerWidth 0) — тогда рисовался телефонный S2, а через resize — S1 (прыжок).
+       Ширина < 200 px — «размера ещё нет»: первая отрисовка ждёт настоящую ширину (каждые 50 мс, до 1,5 с), потом рисует сразу нужный вид */
+    function wd() { return el.clientWidth || document.documentElement.clientWidth || innerWidth || 0 }
+    function phone() { return wd() < 768 }
     function hs(x) { var h = host(x); return h.short || h.name || 'Роман' }
     function ttl(x, ph) { return ph && x.short ? x.short : x.title }
     function L() { return S.j.live || [] } function So() { return (S.j.soon || []).filter(function (x) { return !(phone() && x.locked) }) } function Rc() { return S.j.rec || [] }
@@ -807,9 +817,10 @@
       if (f !== 'rec') { h += '<span class="lbl">Ближайшие</span>'; h += so.length ? so.map(soonM).join('') : none(f === 'my' ? 'Напоминаний пока нет — нажми «Напомнить» у эфира' : 'Ближайших эфиров нет — напомним в Telegram, когда появятся', 1) }
       if (f !== 'my') { var rr = f === 'rec' ? rc : rc.slice(0, 3); h += '<span class="lbl">Записи</span>'; h += rr.length ? rr.map(recM).join('') : none('Записей пока нет', 1) }
       return '<div class="efn pg s8m' + (app ? ' s8app' : '') + '" data-fx-screen="S2">' + h + '</div>' }
-    function draw() { if (S.dead || !el.isConnected) return; var ph = phone(); S.ph = ph; el.innerHTML = ph ? mob() : desk(); typoDom(el) }
+    function draw() { if (S.dead || !el.isConnected) return; if (S.ph === undefined && wd() < 200 && (S.wt = (S.wt || 0) + 1) <= 30) { R.fx.later(function () { if (S.ph === undefined) draw() }, 50); return }
+      var ph = phone(); S.ph = ph; el.innerHTML = ph ? mob() : desk(); typoDom(el) }
     function stop() { S.dead = 1; window.removeEventListener('resize', onRs); var o = document.querySelector('.s8ov'); if (o) o.remove() }
-    var rt = 0; function onRs() { clearTimeout(rt); rt = setTimeout(function () { if (!el.isConnected) return stop(); if (phone() !== S.ph) draw() }, 150) } window.addEventListener('resize', onRs);
+    var rt = 0; function onRs() { clearTimeout(rt); rt = setTimeout(function () { if (!el.isConnected) return stop(); if (S.ph !== undefined && phone() !== S.ph) draw() }, 150) } window.addEventListener('resize', onRs);
     function find(id) { return L().concat(S.j.soon || [], Rc()).filter(function (x) { return x.id === id })[0] }
     function reg(b) { var id = +b.getAttribute('data-reg'), x = find(id); if (!x || b.disabled) return; if (O.ro) { toast(O, 'Режим просмотра — только чтение'); return } b.disabled = true;
       api(O, '/efir/reg', { id: id, on: x.reg ? 0 : 1 }).then(function (j) { b.disabled = false; if (!j || !j.ok) { toast(O, (j && j.err) || 'Не получилось — попробуй ещё раз'); return } x.reg = j.reg ? 1 : 0; if (j.sess) x.start = j.sess; draw();
