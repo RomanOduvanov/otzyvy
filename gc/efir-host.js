@@ -605,7 +605,8 @@
     function firstStart(x) { if (x.k === 'efir') return x.start || 0; var d = (x.days || []).filter(function (d) { return d.start }); return d.length ? d[0].start : 0 }
     function firstT(st) { for (var i = 1; i <= 8; i++) if ((st || {})[i] === 't') return i; for (i = 1; i <= 8; i++) if ((st || {})[i] === 'o') return i; return 1 }
     function setHref(x) { return x.k === 'efir' ? '#host/web/edit/' + x.id : x.status === 'draft' ? '#host/ev/' + x.id + '/1' : '#host/ev/' + x.id + '/info' }
-    function accPill(x) { var a = x.access || {}; if (x.k === 'efir' && !(a.streams || []).length) return '<span class="pill pv">' + (a.all ? 'все ученики' : 'выбранные ученики') + '</span>';
+    function accPill(x) { var a = x.access || {}; if (a.who === 'open') return '<span class="pill pb">по ссылке</span>'; /* 07.11: открытый эфир без мероприятия показывал «выбранные ученики» */
+      if (x.k === 'efir' && !(a.streams || []).length) return '<span class="pill pv">' + (a.all ? 'все ученики' : 'выбранные ученики') + '</span>';
       return a.who === 'stream' ? '<span class="pill pv">' + esc('ученики ' + (a.streams || []).join(' · ')) + '</span>' : '<span class="pill pb">по ссылке</span>' }
     function list(type, P, q, create) { var key = type, c = S.L[key], tab = P[1] && (type === 'web' ? ['up', 'draft', 'past', 'test'] : ['up', 'draft', 'past']).indexOf(P[1]) >= 0 ? P[1] : 'up';
       if (create) tab = 'up';
