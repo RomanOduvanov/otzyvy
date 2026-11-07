@@ -502,7 +502,7 @@
     /* 1.1 */
     ".efn .c.xlivec{flex-direction:row;align-items:center;flex-wrap:wrap;gap:18px}.efn .xlvt{flex:1 1 320px;gap:4px}.efn .in.xsrch{max-width:300px}",
     /* круг 1 приёмки: кнопки строки 1.1 — в один ряд (nowrap): в кабинете (фрейм 1380, колонка 198 px) «Пульт» + «Настройки» + «···» (198 px) уходили во второй ряд — теперь выступают влево на ≤ 6 px в пустое поле «Готовности», колонки как на доске; < 1100 колонка кнопок не уже 204 px */
-    ".efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.6fr)}@media (max-width:1099px){.efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(204px,1.6fr)}}.efn .live.xl24{height:24px;font-size:12px}.efn .row.xact{justify-content:flex-end;gap:6px;flex-wrap:nowrap}",
+    ".efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.6fr)}@media (max-width:1099px){.efn .xgw{grid-template-columns:minmax(0,2.6fr) minmax(0,1.3fr) minmax(88px,1fr) minmax(72px,.8fr) minmax(76px,.8fr) minmax(204px,1.6fr)}}.efn .live.xl24{height:24px;font-size:12px}.efn .row.xact{justify-content:flex-end;gap:6px;flex-wrap:nowrap}",
     ".efn .c.xempt{align-items:center;text-align:center;padding:40px 20px}.efn .xempt>b{font-size:18px}.efn .xempt>.mut{max-width:460px}",
     /* 1.2 */
     ".efn .b3.sm.xdots{width:36px;padding:0}.efn .c0.xrow{flex-direction:row;align-items:center;gap:10px}",
@@ -552,7 +552,12 @@
     /* круг 1 приёмки: §7.5 «< 1100 — окно .drw на всю ширину» не срабатывало у окон с шириной в классе (.xw640, .xw860, .e7w560 — сильнее селектор); .drw.drw.drw — сильнее любого из них */
     "@media (max-width:1099px){.efn .row.xwz{flex-direction:column;align-items:stretch;flex-wrap:nowrap}.efn .xwz .estp{width:auto;flex-direction:row;align-items:center;overflow-x:auto;scrollbar-width:none;padding:8px 10px;border-radius:16px}.efn .xwz .estph{display:none}.efn .xwz a.estpi{min-height:44px;padding:0 6px;gap:8px;flex:none}.efn .xwz a.estpi .estpt{display:none}.efn .xwz a.estpi.on .estpt{display:flex}.efn .xwz a.estpi.on{padding:0 14px 0 8px}.efn .xwz .estpt>span+span{display:none}.efn .xwz .estpl{width:1px;height:28px;margin:0 6px;flex:none}.efn .xwz a.estpx{flex:none;white-space:nowrap}.efn .xwzm,.efn .xwzm.xw940{max-width:none;flex:none}.efn .drw.drw.drw{width:100%}.efn .ov.xovc{padding:20px 16px}}",
     /* < 768: таблицы → карточки «подпись: значение» */
-    "@media (max-width:767px){.efn .th{display:none}.efn .tb{display:flex;flex-direction:column;align-items:stretch;gap:6px;background:#0e0e10;border:0;border-radius:16px;padding:14px;margin-top:8px}.efn .tb>[data-l]::before{content:attr(data-l) ': ';color:rgba(255,255,255,.5)}.efn .tb>.row.xact{justify-content:flex-start}.efn .xwin{padding:20px}.efn .in.xsrch{max-width:none}}"
+    "@media (max-width:767px){.efn .th{display:none}.efn .tb{display:flex;flex-direction:column;align-items:stretch;gap:6px;background:#0e0e10;border:0;border-radius:16px;padding:14px;margin-top:8px}.efn .tb>[data-l]::before{content:attr(data-l) ': ';color:rgba(255,255,255,.5)}.efn .tb>.row.xact{justify-content:flex-start}.efn .xwin{padding:20px}.efn .in.xsrch{max-width:none}}",
+    /* круг 2 приёмки (§6.3 В2, §7.5 < 768): на 320–390 ничего не вылезает за экран и не наезжает — шаги 2.5 (название под сроком), превью анкеты 2.6, шаги Google Формы 2.6в (кнопка и поле — под текстом), длинные кнопки мастера переносятся */
+    "@media (max-width:767px){.efn a.c0.xst{flex-wrap:wrap;row-gap:8px}.efn a.c0.xst>.pill.xwp{min-width:0}.efn a.c0.xst>.xstc{flex:1 1 100%;order:3}.efn a.c0.xst>.xstc~.dim{margin-left:auto}"
+    + ".efn .row.xpvr{flex-direction:column;align-items:stretch}.efn .c0.xpv{width:auto;max-width:300px}"
+    + ".efn .sw:has(>.row.xg6>.b2),.efn .sw:has(>.row.xg6>.in){flex-wrap:wrap}.efn .sw>.row.xg6{margin-left:auto}.efn .sw>.row.xg6.xfn{flex:1 1 100%}.efn .sw>.row.xg6>.in.xw220{width:auto;flex:1;min-width:0}"
+    + ".efn .xwzm .row>.b1:not(.sm),.efn .xwzm .row>.b2:not(.sm),.efn .xwzm .row>.b3:not(.sm){white-space:normal;height:auto;min-height:44px;padding-top:10px;padding-bottom:10px;line-height:1.25;text-align:center}}"
   ];
   function cssh() { if (document.getElementById('efnCssH')) return; var s = document.createElement('style'); s.id = 'efnCssH'; s.textContent = CSSH.join('\n'); document.head.appendChild(s) }
 
@@ -1474,7 +1479,9 @@
     ".efn.x5qov{position:fixed;inset:0;z-index:60}.efn.x5qov>.ov{position:fixed;overflow-y:auto}.efn.x5qov .drw{overflow-y:auto}",
     ".efn .x5conf{gap:8px;padding:6px 6px 6px 14px;border-radius:14px;background:rgba(239,68,68,.14);border:1px solid rgba(248,113,113,.5)}",
     "@media (max-width:1099px){.efn .x5side{flex:1 1 100%;height:600px}.efn .x5feed{height:auto}}",
-    "@media (max-width:767px){.efn .x5hd{padding:12px 14px}.efn .x5bd{padding:12px 14px 20px}.efn .x5dn{padding:14px}}"
+    "@media (max-width:767px){.efn .x5hd{padding:12px 14px}.efn .x5bd{padding:12px 14px 20px}.efn .x5dn{padding:14px}}",
+    /* круг 2 приёмки (§6.3 В2): на 320–375 подпись «так сейчас видят зрители: …» на заставке и кнопки быстрых сообщений («Не закрывайте страницу — скоро вернёмся») переносятся, а не уходят за экран */
+    "@media (max-width:767px){.efn .pill.x5phb{right:12px;white-space:normal;text-align:left}.efn .x5r2 .row.x5g6>.b2.sm{white-space:normal;height:auto;min-height:36px;padding-top:8px;padding-bottom:8px;line-height:1.25;text-align:left;max-width:100%}}"
   ];
   function css5() { if (document.getElementById('efnCss5')) return; var s = document.createElement('style'); s.id = 'efnCss5'; s.textContent = CSS5.join('\n'); document.head.appendChild(s) }
   var hm = function (ms) { return mk(ms).t }, mm = function (sec) { return Math.floor(Math.max(0, sec || 0) / 60) }, cd = function (s) { return hms(Math.max(0, Math.round(s))) };
@@ -1667,7 +1674,9 @@
     function start(P) { var id = +P[1] || 0, tab = ['chat', 'qs', 'leads', 'online', 'hands', 'works'].indexOf(P[2]) >= 0 ? P[2] : 'chat', fx = fxd();
       if (FXON && fx && fx.ui && fx.ui.grid) return h4(fx);
       if (id !== S.id || !S.j || S.dead) { stop(); S = Object.assign(S, { id: id, j: null, after: 0, msgs: [], lay: '', on: null, newc: 0, conf: 0, rep: null, hl: {}, dead: 0 }); S.tab = tab;
-        el.innerHTML = '<div class="efn pg x5pg" data-fx-screen="H"><header class="row x5hd"><a class="x5ex" href="' + esc(hf('#host/web')) + '">← Выйти из пульта</a></header><div class="row x5bd"><section class="col x5l">' + R.h2.skel() + '</section><section class="col x5r">' + R.h2.skel() + '</section></div></div>';
+        /* круг 2 приёмки (§6.3 В4): у куратора пульт — всегда 6.2, скелет сразу той же формы («← Мои эфиры»), а не пульта 3.x */
+        el.innerHTML = O.role === 'curator' ? '<div class="efn pg e7c2" data-fx-screen="C2"><header class="row e7hdr"><a class="e7back" href="' + esc(hf('#host/my')) + '">← Мои эфиры</a></header><div class="row e7bd"><section class="col e7l2">' + R.h2.skel() + '</section><section class="col e7r">' + R.h2.skel() + '</section></div></div>'
+          : '<div class="efn pg x5pg" data-fx-screen="H"><header class="row x5hd"><a class="x5ex" href="' + esc(hf('#host/web')) + '">← Выйти из пульта</a></header><div class="row x5bd"><section class="col x5l">' + R.h2.skel() + '</section><section class="col x5r">' + R.h2.skel() + '</section></div></div>';
         load(true); if (!FXON) { S.tm = setInterval(function () { if (S.dead || !el.isConnected) return stop(); if (S.pend) return; if (document.visibilityState === 'visible' || now() - (S.hp || 0) > 25e3) { S.hp = now(); load(false); if (S.tab === 'online') loadOn() } }, 4000); S.tk = setInterval(tick, 1000) } return }
       if (tab !== S.tab) { S.tab = tab; delete S.hl[tab]; if (tab === 'online') loadOn(); var side = el.querySelector('[data-r=side]'); if (side) { side.innerHTML = sideHtml(); typoDom(side); var fd = el.querySelector('[data-r=feed]'); if (fd && tab === 'chat') fd.scrollTop = fd.scrollHeight } else draw(true) } }
     /* фрагмент H4 (режим сверки): содержимое 4 вкладок в сетке доски */

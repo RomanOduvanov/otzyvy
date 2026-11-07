@@ -430,6 +430,8 @@
     ".efn .sw{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}",
     ".efn .tgm{max-width:420px;padding:12px 14px;border-radius:16px 16px 16px 4px;background:#212d3b;font-size:14px;line-height:1.45}",
     ".efn .tgb{display:block;text-align:center;padding:9px;border-radius:10px;background:#2b3a4c;font-size:13px;max-width:420px;box-sizing:border-box}",
+    /* круг 2 приёмки: в app.html свои .ph{width:96px;height:96px} (фото) и .in{margin:0 16px 10px;display:flex} (строка ввода) — в разделе они не действуют */
+    ":where(.efn) .ph{width:auto;height:auto;box-shadow:none;object-fit:fill}:where(.efn) .in{margin:0;display:revert;align-items:normal;gap:normal;box-shadow:none}",
     ".efn .ph{border-radius:20px;background:linear-gradient(160deg,#241a3a,#0c0c0c);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;box-sizing:border-box;color:rgba(255,255,255,.4);font-size:14px;position:relative;aspect-ratio:16/9}",
     ".efn .ov{position:absolute;inset:0;background:rgba(0,1,6,.72);display:flex;align-items:flex-start;justify-content:flex-end}",
     ".efn .drw{width:520px;max-width:100%;min-height:100%;box-sizing:border-box;background:#121214;border-left:1px solid rgba(255,255,255,.08);padding:24px;display:flex;flex-direction:column;gap:14px}",
@@ -448,6 +450,8 @@
     ".efn .row>.in+.b1,.efn .row>.in+.b2,.efn .row>.in+.b3,.efn .row>.in~.b1,.efn .row>.in~.b2{height:44px}",
     ".efn .tab5{display:flex}",
     ".efn .tab5 button{flex:1;padding:0 8px}",
+    /* круг 2 приёмки: вкладки пульта на телефоне в одну строку («Вопросы 3», «Вопр. 14», «Работы 6» на 320–390 рвались на две) */
+    "@media (max-width:767px){.efn .tab5 button{white-space:nowrap;min-width:0}}@media (max-width:374px){.efn .tab5 button{padding:0 2px;font-size:13px}}",
     ".efn .mode{border-radius:18px;padding:14px;background:#0e0e10;display:flex;flex-direction:column;gap:8px;min-width:0}",
     ".efn .off{opacity:.4}",
     ".efn .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.45)}",
@@ -526,7 +530,13 @@
     ".efn .x6mi{padding:10px 12px 22px;gap:8px;border-top:1px solid rgba(255,255,255,.06);flex-wrap:nowrap}.efn .x6mi>.in{flex:1;min-width:0}.efn .b2.x6hd{padding:0 12px}",
     ".efn .ph.x6o5{opacity:.5}.efn .x6sh{position:absolute;left:0;right:0;bottom:0;top:150px;border-radius:24px 24px 0 0;background:#141218;border-top:1px solid rgba(215,127,255,.4);padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;overflow-y:auto}",
     ".efn .x6hn{width:40px;height:4px;border-radius:4px;background:rgba(255,255,255,.25);align-self:center;flex:none}.efn .b1.x6mt0{margin-top:auto}.efn .x6ctr{text-align:center}.efn .x6inv{visibility:hidden}",
-    "@media (max-width:767px){.efn.pg.x6pg{padding:12px}}"
+    "@media (max-width:767px){.efn.pg.x6pg{padding:12px}}",
+    /* круг 2 приёмки (§7.4 app.html, 4.7): в мини-приложении комната — сразу под шапкой до низа экрана, нижние вкладки скрыты (html.chopen), как у старой комнаты */
+    /* круг 2 приёмки (4.7): когда карточек под видео много (опрос, сцена, баннер — V5), блок под видео прокручивается сам, строка ввода остаётся на экране */
+    ".efn.pg.x6m>.x6mt{min-height:0;overflow-y:auto;scrollbar-width:none}.efn.pg.x6m>.x6mt::-webkit-scrollbar{display:none}",
+    ".efn.pg.x6m.x6app{position:fixed;left:0;right:0;bottom:0;height:auto;min-height:0;z-index:7;max-width:560px;margin:0 auto}",
+    /* общие классы app.html (.L b, .L .seg, .pill) не должны менять блоки доски — как у S2 (.s8app) */
+    ".efn.x6app b{font-weight:700}.efn.x6app .seg{margin:0;padding:4px;overflow:visible;flex:0 1 auto;scrollbar-width:auto}.efn.x6app .seg button{position:static;display:block;white-space:normal;align-items:normal}.efn.x6app .seg button::after{content:none}.efn.x6app .seg button.on{background:#262626;color:#fff}.efn.x6app .pill{height:auto;font-weight:400}"
   ];
   function css6() { if (document.getElementById('efnCss6')) return; var s = document.createElement('style'); s.id = 'efnCss6'; s.textContent = CSS6.join('\n'); document.head.appendChild(s) }
   var LOGO = '<svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true">' + [[0, 0], [22, 0], [44, 0], [0, 22], [44, 22], [0, 44], [22, 44], [44, 44]].map(function (p, i) { return '<rect x="' + p[0] + '" y="' + p[1] + '" width="20" height="20" rx="3" fill="' + (i === 2 ? '#c9a2ff' : '#fff') + '"/>' }).join('') + '</svg>';
@@ -537,8 +547,9 @@
     function hm(ms) { return mk(ms).t } function cd(s) { s = Math.max(0, Math.round(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? h + ':' + ('0' + m).slice(-2) + ':' + ('0' + x).slice(-2) : ('0' + m).slice(-2) + ':' + ('0' + x).slice(-2) }
     function cd2(s) { s = Math.max(0, Math.round(s)); var m = Math.floor(s / 60), x = s % 60; return m + ':' + ('0' + x).slice(-2) }
     function phone() { return (el.clientWidth || innerWidth) < 768 }
-    function stop() { S.dead = 1; clearInterval(S.tm); clearInterval(S.tk); S.tm = S.tk = 0; document.documentElement.classList.remove('efn-on') }
+    function stop() { S.dead = 1; clearInterval(S.tm); clearInterval(S.tk); S.tm = S.tk = 0; document.documentElement.classList.remove('efn-on'); if (app) document.documentElement.classList.remove('chopen') }
     function alive() { if (!el.isConnected || S.dead) { stop(); return false } return true }
+    function fitApp() { var m = app && el.querySelector('.efn.pg.x6m'); if (!m) return; m.classList.add('x6app'); m.style.top = Math.max(0, Math.round(O.top ? O.top() : 0)) + 'px'; document.documentElement.classList.add('chopen') }
     function toastR(t) { toast(O, t) }
     function st() { var r = S.r; if (X.kick || (r && r.kick)) return 'kick'; if (S.deny) return 'deny'; if (r && r.state === 'live') return 'live'; if (E.state === 'live' && !r) return 'live'; if (E.state === 'done' || (r && r.state === 'done')) return E.rec ? 'rec' : 'end'; return 'wait' }
     function mode() { return X.mode || 'sell' }
@@ -632,9 +643,10 @@
       return '<div class="efn pg x6pg" data-fx-screen="Room"><section class="col x6l"><div data-r="top">' + topRow() + '</div><div data-r="ph">' + ph + '</div><div class="x6bl" data-r="rv">' + revStrip() + '</div>' + titleHtml() + '<div class="x6bl" data-r="bl">' + blocks() + '</div>' + workCard() + '</section>' +
         '<section class="col x6side" aria-label="Чат"><div class="x6t10" data-r="tabs">' + tabs() + '</div><div class="col x6feed" data-r="feed" data-sc>' + feed() + '</div><div data-r="in">' + inputRow() + '</div></section></div>' }
     function phoneHtml() { var s = st(), r = S.r || {}, L = r.lead, sh = S.sheet && (L || S.form);
-      var ph = sh ? '<div class="ph x6r0 x6o5" data-pl>' + (FXON ? 'Видео (звук продолжает идти)' : video(E.video)) + '</div>' : s === 'live' ? livePh(1) : s === 'wait' ? waitPh(1) : s === 'rec' ? recPh() : '<div class="ph x6r0 x6col"><span class="pill pgr">эфир закончился</span><span>запись через несколько минут</span></div>';
+      var ph = sh ? '<div class="ph x6r0 x6o5" data-pl>' + (FXON ? 'Видео (звук продолжает идти)' : video(E.video)) + '</div>' : s === 'live' ? livePh(1) : s === 'wait' ? waitPh(1) : s === 'rec' ? recPh() : endPh7();
       var mid = '<div class="col x6mt" data-r="bl">' + midInner() + '</div>' + (workOn() ? '<div class="col x6mt">' + workCard() + '</div>' : '');
       return '<div class="efn pg x6m" data-fx-screen="Room">' + '<div data-r="ph">' + ph + '</div>' + (sh ? leadForm(1) : mid + '<div class="col x6mf" data-r="feed" data-sc>' + feed() + '</div><div data-r="in">' + inputRow(1) + '</div>') + '</div>' } /* шторка формы (4.8) закрывает всё под видео — под ней ничего не рисуем */
+    function endPh7() { return '<div class="ph x6r0 x6col"><span class="pill pgr">эфир закончился</span><span>запись через несколько минут</span></div>' }
     function midInner() { var s = st(), r = S.r || {}, L = r.lead;
       var card = s === 'live' && L && mode() !== 'none' && !(S.sent && !S.form) ? '<div class="c cv x6lc"><div class="row sp"><b>' + esc(L.title) + '</b>' + (L.remain != null ? '<span class="pill" data-tm="lr2" data-u="' + (now() + L.remain * 1000) + '">' + cd2(L.remain) + '</span>' : '') + '</div><button type="button" class="b1 w100" data-x="sheet">' + esc(L.btn || 'Забронировать место') + '</button></div>' : s === 'live' && S.sent ? sentCard(1) : '';
       return '<b class="x6b16">' + esc(short()) + '</b>' + revStrip() + card + (s === 'live' ? stageCard() + pollCard() + bannerCard() : s === 'end' || s === 'rec' ? nextCard() : '') + '<div data-r="tabs">' + tabs() + '</div>' }
@@ -643,12 +655,12 @@
       return '<div class="efn pg x6pg" data-fx-screen="Room"><section class="col x6l">' + topRow() + '<div class="ph x6col"><b class="x6w">' + esc(t) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + (D.cur && D.kind !== 'guest' ? '<a class="b2 sm" href="' + esc(D.cur) + '" target="_blank" rel="noopener">Написать куратору</a>' : '') + '</div></section></div>' }
     function draw(force) { if (!alive()) return; var s = st(), lay = (phone() ? 'p' : 'd') + s + (S.sheet ? 's' : ''), fd = el.querySelector('[data-r=feed]'), nearB = fd ? fd.scrollHeight - fd.scrollTop - fd.clientHeight < 80 : true, top0 = fd ? fd.scrollTop : 0;
       if (force || lay !== S.lay) { var ae = document.activeElement, ai = ae && ae.getAttribute && (ae.getAttribute('data-in') || ae.getAttribute('data-lf')), av = ae && ae.value;
-        if (S.form || S.sheet) readVals(); S.lay = lay; el.innerHTML = s === 'deny' || s === 'kick' ? denyHtml() : phone() ? phoneHtml() : deskHtml(); typoDom(el);
+        if (S.form || S.sheet) readVals(); S.lay = lay; el.innerHTML = s === 'deny' || s === 'kick' ? denyHtml() : phone() ? phoneHtml() : deskHtml(); typoDom(el); fitApp();
         if (ai) { var x = el.querySelector('[data-in="' + ai + '"],[data-lf="' + ai + '"]'); if (x) { x.value = av; x.focus() } } }
       else { if (S.form || S.sheet) readVals(); var pr = function (sel, h) { var x = el.querySelector(sel); if (!x || x.__h === h) return; x.__h = h; x.innerHTML = h; typoDom(x) };
         var lf = el.querySelector('[data-r=lead]'), keepLead = lf && lf.contains(document.activeElement);
         var r = S.r || {}, pk = s + '|' + r.sig + '|' + (r.screen ? r.screen.text : '') + '|' + (S.err >= 2 ? 1 : 0), phx = el.querySelector('[data-r=ph]');
-        if (phx && phx.__k !== pk && s !== 'rec' && s !== 'wait') { phx.__k = pk; phx.innerHTML = s === 'live' ? livePh(phone() ? 1 : 0) : phone() ? '' : endPh(); typoDom(phx) } else if (phx && !phx.__k) phx.__k = pk;
+        if (phx && phx.__k !== pk && s !== 'rec' && s !== 'wait') { phx.__k = pk; phx.innerHTML = s === 'live' ? livePh(phone() ? 1 : 0) : phone() ? endPh7() : endPh(); /* круг 2: на телефоне заставка «эфир закончился» пропадала после первого опроса ('' вместо 4.6) */ typoDom(phx) } else if (phx && !phx.__k) phx.__k = pk;
         var vw = el.querySelector('[data-r=vw]'); if (vw) vw.textContent = (r.viewers || 0) + (phone() ? '' : ' смотрят');
         if (!keepLead && !S.sheet) pr('[data-r=bl]', phone() ? midInner() : blocks()); pr('[data-r=rv]', revStrip()); pr('[data-r=wkl]', wkList()); /* 07.11 Э7 */
         var wk0 = el.querySelector('[data-r=wk]'); if (!!wk0 !== workOn() && !phone()) { var sec0 = el.querySelector('.x6l'); if (wk0) wk0.remove(); else if (sec0) { sec0.insertAdjacentHTML('beforeend', workCard()); typoDom(sec0.lastElementChild) } }
@@ -713,7 +725,8 @@
     if (X.lead_sent) S.sent = X.lead_sent;
     if (j0.deny) { S.deny = j0.deny; E = E || { title: '', start: 0 } }
     if (FXON && FX) { if (FX.api['GET /efir/room']) { var r0 = FX.api['GET /efir/room']; S.r = r0; S.msgs = r0.msgs || []; S.qs = r0.qs || [] } if (U0.form) S.form = 1; if (U0.sheet) S.sheet = 1; if (U0.tab) S.tab = U0.tab; if (U0.vx) return vx(); if (st() === 'rec') S.recT0 = now() - (U0.rec_pos || 0) * 1000; draw(true); if (/\/days$/.test(FX.hash || '')) daysWin(); R.fx.done(el.querySelector('[data-fx-screen]')); return { stop: stop } }
-    if (st() === 'rec') S.recT0 = now(); draw(true); poll();
+    /* круг 2 приёмки (§6.3 В4): идущий эфир и ожидание рисуются после первого ответа /efir/room (заявка, опрос, сцена, «эфир закончился» — сразу на месте, без прыжка ленты); пока — скелет, не дольше 1,5 с */
+    if (st() === 'rec') S.recT0 = now(); if (st() === 'live' || st() === 'wait') { setTimeout(function () { if (alive() && !S.lay) draw(true) }, 1500); poll() } else { draw(true); poll() }
     S.tm = setInterval(function () { if (!alive()) return; var s = st(); if (s === 'deny' || s === 'kick') return; var hid = document.visibilityState !== 'visible', per = s === 'live' || (s === 'wait' && X.pre_chat && E.start - now() < 36e5) ? (hid ? 25e3 : 4e3) : 15e3; if (now() - (S.pt || 0) >= per - 200) { S.pt = now(); poll() } }, 1000);
     S.tk = setInterval(tick, 1000); if (/\/days$/.test(location.hash)) daysWin();
     var rt = 0; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (alive() && S.lay && S.lay[0] !== (phone() ? 'p' : 'd')) draw(true) }, 150) });
@@ -875,7 +888,7 @@
   function fxDone(root) { if (!FX || FXDONE) return; FXDONE = 1; root = root || document.querySelector('[data-fx-screen]') || document.body; var U = FX.ui || {};
     /* плееры и комнаты Kinescope не создаются — на их месте заглушка .ph (маска) */
     [].forEach.call(document.querySelectorAll('iframe'), function (f) { if (!/kinescope|speak|youtube|vk\.com/.test(f.src || '')) return; var d = document.createElement('div'); d.className = 'ph'; d.setAttribute('data-fx-mask', ''); d.style.cssText = 'width:100%;height:100%'; f.parentNode.replaceChild(d, f) });
-    if (FX.h && root && root.style && root !== document.body) root.style.minHeight = FX.h + 'px';
+    if (FX.h && root && root.style && root !== document.body && !root.classList.contains('x6app')) root.style.minHeight = FX.h + 'px'; /* круг 2: комната в приложении (.x6app) — по окну, не по высоте доски */
     try { Object.keys(U.inputs || {}).forEach(function (s) { var x = document.querySelector(s); if (x) x.value = U.inputs[s] }) } catch (e) {}
     if (U.scroll) try { var sc = typeof U.scroll === 'object' ? document.querySelector(U.scroll.sel) : null; if (sc) sc.scrollTop = +U.scroll.y || 0; else window.scrollTo(0, +U.scroll || 0) } catch (e) {}
     var fin = function () { requestAnimationFrame(function () { requestAnimationFrame(function () { document.body.setAttribute('data-fx-done', '1') }) }) }, n = 0;
