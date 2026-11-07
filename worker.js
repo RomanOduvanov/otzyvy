@@ -692,6 +692,8 @@ async function syncPay(env, from, to, B, polls = 3) {
   const rows = info.items.filter(r => +r[I.id]).map(r => stm.bind(+r[I.id], +r[I.deal] || null, r[I.email] || '', r[I.user] || '', r[I.at] || '', String(r[I.at] || '').slice(0, 10), r[I.type] || '', r[I.st] || '', rub(r[I.sum]), Math.abs(rub(r[I.fee])), rub(r[I.net]), r[I.title] || '', now));
   for (let i = 0; i < rows.length; i += 80) await env.DB.batch(rows.slice(i, i + 80));
   await kvPut(env, 'pay_synced', now); await finDays(env, true);
+  /* 07.11 Эфиры Э6: заявки эфиров ↔ оплаты (по номеру заказа и почте) — сразу после каждой синхронизации (только D1) */
+  try { await ef6PayMatch(env) } catch (e) { await logIt(env, 'efir-paym-err', 0, String(e && e.message || e).slice(0, 200)) }
   return { n: rows.length, from: info._from, to: info._to };
 }
 /* быстрая досинхронизация последних 3 дней — после оплаты (процесс GetCourse зовёт /pay) и по кнопке «Обновить»; не чаще раза в minGap секунд */
@@ -4059,6 +4061,9 @@ async function efirHostApi(env, req, path, u, o, W, now) { if (!W.s) return W.mo
     try { await efPlanSync(env, await efGet(env, nid)) } catch (x) { await logIt(env, 'efir-plan-err', 0, nid + ' ' + String(x && x.message || x).slice(0, 200)) }
     await logIt(env, 'efir-save', W.uid, nid + ' ' + kind + ' ' + (W.cid || 'admin')); return json(req, Object.assign({ ok: true, id: nid, ev: cfg.ev || null }, kin_warn ? { kin_warn } : {})) }
   if (path === '/efir/host/events' || path.startsWith('/efir/host/event/')) return evHostApi(env, req, path, u, o, W);
+  /* 07.11 Э6 (5.2б): карточка человека — только админ (модератору и куратору закрыто, §0.3) */
+  if (path === '/efir/host/person') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env);
+    if (req.method === 'POST') { const r = await ef6PersonSave(env, o, W); return json(req, r, r.st || 200) } const r = await ef6Person(env, String(u.searchParams.get('k') || ''), String(u.searchParams.get('id') || ''), now); return json(req, r, r.ok ? 200 : 404, { 'Cache-Control': 'no-store' }) }
   const e = await efGet(env, id); if (!e) return json(req, { ok: false, err: 'Эфир не найден' }, 404);
   if (!efOwn(W, e)) { if (W.mod && !W.modr && EF5_MODP.test(path) && efModCan(e, now)) W = Object.assign({}, W, { modr: 1, modId: e.id, adm: false, cid: null }); else return json(req, { ok: false, err: 'Это эфир другого ведущего' }, 403) } /* 07.11 Э5: куратор-модератор в чужом эфире */
   if (W.modr && req.method === 'POST') await efModLog(env, W, e, path, o);
@@ -4256,11 +4261,17 @@ async function efirScenApi(env, req, path) { const u = new URL(req.url); await e
     await env.DB.prepare('UPDATE efir_scen SET items=?, at=? WHERE id=?').bind(JSON.stringify(items), now, old.id).run(); EFSC.delete(old.id); return json(req, { ok: true, id: old.id, ver: old.ver }) }
   /* 07.11 Эфиры Э0 (§6.4 Nav): счётчик новых заявок в меню раздела. До Э5 (колонка mgr_st ещё не заполнена) — по старому efir_lead.st='new' */
   if (path === '/efir/leads/count') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env);
-    const r = await env.DB.prepare("SELECT COUNT(*) n FROM efir_lead WHERE COALESCE(mgr_st, st)='new'").first(); return json(req, { ok: true, n: (r && r.n) || 0 }) }
+    const r = await env.DB.prepare("SELECT COUNT(*) n FROM efir_lead WHERE COALESCE(mgr_st, st)='new' AND COALESCE(pay_st,'')<>'paid' AND NOT (order_num IS NULL AND order_err IS NOT NULL)").first(); /* 07.11 Э6: как вкладка «Новые» в 5.2 — без оплаченных и ошибок заказа */ return json(req, { ok: true, n: (r && r.n) || 0 }) }
+  /* 07.11 Э6 (5.2): новая лента заявок (v=2) и выгрузка CSV; без v — старый ответ для старого экрана заявок */
+  if (path === '/efir/leads' && req.method === 'GET' && u.searchParams.get('v') === '2') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env); return json(req, await ef6Leads(env, u), 200, { 'Cache-Control': 'no-store' }) }
+  if (path === '/efir/leads.csv') { if (!W.adm) return json(req, { ok: false, err: 'Только админ' }, 403); await ef2Ensure(env); const csv = await ef6LeadsCsv(env, u), nm = 'zayavki-' + msk(new Date(msNow())).toISOString().slice(0, 10) + '.csv';
+    await logIt(env, 'efir-leads-csv', W.uid || 0, String(u.searchParams.get('ev') || 'all'));
+    if (u.searchParams.get('json')) return json(req, { ok: true, name: nm, csv }, 200, { 'Cache-Control': 'no-store' });
+    return new Response(csv, { headers: Object.assign({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + nm + '"', 'Cache-Control': 'no-store' }, cors(req)) }) }
   if (path === '/efir/leads') { if (req.method === 'POST') { const c = { chats: (Array.isArray(o.chats) ? o.chats : String(o.chats || '').split(/[\s,;]+/)).map(x => String(x).trim()).filter(x => /^-?\d{3,20}$/.test(x)).slice(0, 5) }; await kvPut(env, 'efir_leads', c); return json(req, { ok: true, cfg: c }) }
     return json(req, { ok: true, cfg: (await kvGet(env, 'efir_leads')) || {}, leads: await qAll(env.DB.prepare('SELECT l.*, e.title FROM efir_lead l LEFT JOIN efir e ON e.id=l.efir_id ORDER BY l.id DESC LIMIT 200')) }) }
   return json(req, { ok: false, err: 'not found' }, 404) }
-const EFIR_SCEN_API = ['/efir/scen', '/efir/mod', '/efir/leads', '/efir/leads/count'];
+const EFIR_SCEN_API = ['/efir/scen', '/efir/mod', '/efir/leads', '/efir/leads/count', '/efir/leads.csv'];
 
 /* ---------- эфиры в боте: /start e<id> (запись, в т.ч. не-учеников), напоминания за сутки / за час / при старте (cron, учитывает «Уведомления» → Эфиры) ---------- */
 async function efLink(env, e, k) { return k[0] === 't' ? 'https://romanoduvanov.github.io/otzyvy/gc/efir.html?id=' + e.id + '&r=' + await efGuestTok(env, k.slice(1)) : maLink(env, 'e' + e.id) }
@@ -4331,7 +4342,7 @@ const EF2_SCHEMA = [
 const EF2_COLS = {
   efir_event: ['type TEXT', 'status TEXT', 'host TEXT', 'fmt TEXT', 'dur INTEGER', 'short TEXT', 'reg TEXT', 'sale TEXT', 'access TEXT', 'rec TEXT', 'steps TEXT', 'named INTEGER'], /* named — Э2: заголовок мастера «Новый марафон», пока не ушли с шага 1 */
   ev_reg: ['phone TEXT', 'email TEXT', 'src_code TEXT', 'gc_ok INTEGER', 'gc_uid INTEGER', 'test INTEGER DEFAULT 0'],
-  efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER', 'ip TEXT'], /* 07.11 Э5: ip — хеш IP гостя (лимит §3.4) */
+  efir_lead: ['phone TEXT', 'email TEXT', 'tg TEXT', 'order_id TEXT', 'order_num TEXT', 'order_err TEXT', 'pay_st TEXT', 'src TEXT', 'mat_id INTEGER', 'note TEXT', 'mgr_st TEXT', 'tries INTEGER DEFAULT 0', 'next_at INTEGER', 'ip TEXT', 'pay_sum REAL', 'pay_at INTEGER'], /* 07.11 Э6: сумма и время сверки оплаты (5.1, 5.2) */ /* 07.11 Э5: ip — хеш IP гостя (лимит §3.4) */
   efir_msg: ['title TEXT', 'note TEXT'],
   efir_pollv: ['opts TEXT'],
   bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'],
@@ -4610,6 +4621,7 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
   const ev = await evGet(env, o.ev || u.searchParams.get('ev') || o.id || u.searchParams.get('id')); if (!ev) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
   /* 07.11 Э2: мастер (§3.2) — мероприятие целиком, дни, проверка, запуск, дубль, метки (POST — создать) */
   if (path === '/efir/host/event/get') return json(req, await ev2Get(env, ev));
+  if (path === '/efir/host/event/stats') return json(req, await ef6Stats(env, ev, +u.searchParams.get('day') || 0), 200, { 'Cache-Control': 'no-store' }); /* 07.11 Э6: итоги 5.1 */
   if (path === '/efir/host/event/days' && req.method === 'POST') { const r = await ev2DaysSave(env, ev, o, W); return json(req, r, r.conflict ? 409 : 200) }
   if (path === '/efir/host/event/check') return json(req, await ev2Check(env, ev));
   /* 07.11 Э3 (§3.2, §5): шаг 6 — скрипт таблицы, проверка таблицы и Google Формы, состояние подключения, вопросы прошлых мероприятий */
@@ -5214,18 +5226,191 @@ async function evFormStatus(env, B, lim) { B = B || budget(3); await ef2Ensure(e
     for (const f of F) { const v = gf ? (r.j.rn || {})[f.row_n] : (r.j.st || {})[f.k]; if (v == null) continue; const t = bStr(v, 100); st.push(env.DB.prepare('UPDATE ev_form SET sheet_st=?, st=COALESCE(?, st) WHERE id=?').bind(t || null, ev3Status(t), f.id)) }
     if (st.length) { await env.DB.batch(st); out.st += st.length } }
   return out }
-/* 06.11 (Роман): вместо уведомления о каждой заявке — одна сводка админам после «Завершить эфир» */
-async function efReport(env, e) { const id = e.id, dur = Math.max(1, Math.round(((e.at_end || msNow()) - (e.at_live || e.start || msNow())) / 6e4));
-  const [rg, sn, ms, qs, ld, wk, vc] = await env.DB.batch([env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(id), env.DB.prepare('SELECT COUNT(DISTINCT k) n, AVG(min) a, SUM(CASE WHEN min>=?2 THEN 1 ELSE 0 END) half FROM efir_seen WHERE efir_id=?1 AND sess=0').bind(id, Math.max(1, Math.round(dur / 2))),
-    env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='msg' AND role='stu' AND del=0").bind(id), env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='q' AND del=0").bind(id),
-    env.DB.prepare('SELECT COUNT(*) n, COUNT(DISTINCT k) u FROM efir_lead WHERE efir_id=?').bind(id), env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='work'").bind(id), env.DB.prepare("SELECT data FROM efir_ev WHERE efir_id=? AND kind='vc'").bind(id)]);
-  const f = r => ((r.results || [])[0] || {}); let peak = 0; for (const x of vc.results || []) { const d = efJ(x.data, {}); peak = Math.max(peak, +(d.n || d.v || d.viewers || 0)) }
-  const S = f(sn), viewers = S.n || 0, avg = Math.round(S.a || 0), L = f(ld);
-  const t = '📊 <b>' + nbt('Эфир завершён') + '</b>\n«' + th(e.title) + '» · ' + dur + NB + 'мин\n\n'
-    + 'Записались: <b>' + (f(rg).n || 0) + '</b>\nЗрителей: <b>' + viewers + '</b>' + (peak ? ' · одновременно до ' + peak : '') + '\n'
-    + 'Среднее время просмотра: <b>' + avg + NB + 'мин</b>' + (viewers ? ' (' + Math.round(avg / dur * 100) + '% эфира) · досмотрели до середины ' + Math.round((S.half || 0) / viewers * 100) + '%' : '') + '\n'
-    + 'Сообщений в чате: <b>' + (f(ms).n || 0) + '</b> · вопросов: <b>' + (f(qs).n || 0) + '</b>' + (f(wk).n ? ' · работ: ' + f(wk).n : '') + '\n'
-    + 'Заявок: <b>' + (L.u || 0) + '</b>' + (viewers && L.u ? ' (' + Math.round(L.u / viewers * 100) + '% зрителей)' : '');
-  /* 07.11 Э5 (5.5): сводка выключается в настройках (kv efir_report=0), получатели — kv efir_report_to (по умолчанию все админы бота, как раньше) */
+/* ===== 07.11 «Эфиры 2.0», этап Э6 (docs/plan/efiry-tz.md §3.5, §6.4 5.1 / 5.2 / 5.2б / 5.6): итоги, заявки, карточка человека, сводка после эфира, сверка оплат =====
+   Итоги 5.1: GET /efir/host/event/stats?id=&day= (memo 30 с). Заявки 5.2: GET /efir/leads?v=2&ev=&p=&st=&q=&pg= — заявки ∪ анкеты (при dup=1), по 50; GET /efir/leads.csv (UTF-8 с BOM, «;» — Excel с русскими настройками).
+   Карточка 5.2б: GET/POST /efir/host/person. Сводка 5.6: efReport — строки по доске Tg. Оплаты: ef6PayMatch — сразу после каждой синхронизации pay (syncPay: cron :25, дозабор :45, и /pay после оплаты)
+   и лениво при открытии итогов и заявок, если pay_synced сменился. Подпись на экране — «данные на ЧЧ:ММ» (время pay_synced). */
+const EF6_ST = { new: ['новая', ''], call: ['связались', 'pb'], noans: ['не дозвонились', 'py'], buy: ['купил', 'pgr'], no: ['отказ', 'pr'] };
+const EF6_OLD = { new: 'new', call: 'mgr', noans: 'mgr', buy: 'done', no: 'no' }; /* в старую колонку st — старый экран заявок видит то же */
+const ef6Mode = ev => { const S = ev2Sale(ev) || {}; return S.legacy ? 'sell' : (['sell', 'form', 'none'].includes(S.mode) ? S.mode : 'none') };
+const ef6Pct = (a, b) => { if (!b || !a) return '0'; const p = a / b * 100; return p < 10 ? String(Math.round(p * 10) / 10).replace('.', ',') : String(Math.round(p)) };
+const ef6Num = n => String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
+const ef6Dur = m => { m = Math.max(0, Math.round(m)); return m < 60 ? m + NB + 'мин' : Math.floor(m / 60) + NB + 'ч' + (m % 60 ? ' ' + (m % 60) + NB + 'мин' : '') };
+const ef6Phone = p => { const d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && /^[78]/.test(d)) return '+7 ' + d.slice(1, 4) + ' ' + d.slice(4, 7) + '-' + d.slice(7, 9) + '-' + d.slice(9); return p ? String(p) : '' };
+const ef6DayDur = (e, now) => Math.max(1, e.at_live && e.at_end && e.at_end > e.at_live ? Math.round((e.at_end - e.at_live) / 6e4) : (e.at_live && e.status === 'live' ? Math.round(((now || msNow()) - e.at_live) / 6e4) : (+e.dur || 60)));
+const ef6Ph = a => a.length ? a.map(() => '?').join(',') : 'NULL';
+const ef6One = r => ((r && r.results) || [])[0] || {};
+const ef6HM = iso => { const t = Date.parse(iso || ''); if (!isFinite(t)) return ''; const d = msk(new Date(t)); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') };
+const EF6_MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const ef6Day = ms => { const d = msk(new Date(ms)); return d.getUTCDate() + NB + EF6_MON[d.getUTCMonth()] };
+/* сверка оплат: заявка оплачена, если в pay есть «Получен» по номеру/id заказа или по почте заявки в течение 30 дней после неё. Только D1, без подзапросов наружу */
+async function ef6PayMatch(env) { const syn = await kvGet(env, 'pay_synced').catch(() => null); if (!syn) return { skip: 'nopay' };
+  const cond = "p.status='Получен' AND p.sum>0 AND (p.deal=CAST(efir_lead.order_num AS INTEGER) OR p.deal=CAST(efir_lead.order_id AS INTEGER) OR (COALESCE(efir_lead.email,'')<>'' AND lower(p.email)=lower(efir_lead.email) AND p.day>=date(efir_lead.at/1000, 'unixepoch', '+3 hours') AND p.day<=date(efir_lead.at/1000, 'unixepoch', '+3 hours', '+30 days')))";
+  const r = await env.DB.prepare("UPDATE efir_lead SET pay_st='paid', pay_sum=(SELECT SUM(p.sum) FROM pay p WHERE " + cond + "), pay_at=? WHERE COALESCE(pay_st,'')<>'paid' AND at>? AND EXISTS (SELECT 1 FROM pay p WHERE " + cond + ")").bind(msNow(), msNow() - 180 * 864e5).run();
+  await kvPut(env, 'efir_paym', syn); const n = (r && r.meta && r.meta.changes) | 0; if (n) await logIt(env, 'efir-paym', 0, n + ' · ' + syn); return { n, at: syn } }
+async function ef6PayLazy(env) { const syn = await kvGet(env, 'pay_synced').catch(() => null); if (!syn) return null;
+  if ((await kvGet(env, 'efir_paym').catch(() => null)) !== syn) await ef6PayMatch(env).catch(e => logIt(env, 'efir-paym-err', 0, String(e && e.message || e).slice(0, 200))); return syn }
+/* 5.1 итоги мероприятия: весь марафон (прошедшие + идущий день) или один день */
+async function ef6Stats(env, ev, dayN) { const syn = await ef6PayLazy(env).catch(() => null);
+  return memo(env, 'ef6st:' + ev.id + ':' + (dayN | 0), 30, async () => { const now = msNow(), D = (await ev2Days(env, ev.id)).filter(x => !efJ(x.cfg, {}).hide), type = ev2Type(ev, D), mode = ef6Mode(ev);
+    const days = D.map((e, i) => ({ n: i + 1, id: e.id, title: e.title || '', short: efJ(e.cfg, {}).short || '', status: e.status, start: e.start || 0, at_live: e.at_live || 0, at_end: e.at_end || 0, dur: ef6DayDur(e, now) }));
+    const past = days.filter(d => d.at_live), sel = dayN ? past.filter(d => d.n === +dayN) : past, ids = sel.map(d => d.id), ph = ef6Ph(ids), allIds = past.map(d => d.id);
+    const out = { ok: true, ev: { id: ev.id, title: ev.title || '', short: ev.short || '', type, mode, status: ev2Status(ev) }, days, day: dayN | 0, past: past.length, live: sel.some(d => d.status === 'live') ? 1 : 0, now, pay_at: ef6HM(syn) };
+    out.regs = ef6One(await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(ev.id).all()).n | 0;
+    if (!ids.length) { out.empty = 1; return out }
+    /* первый показ заявки каждого дня — для «Досидели до заявки» (efir_seen.first ≤ показ ≤ last) */
+    const LA = await qAll(env.DB.prepare("SELECT efir_id, MIN(at_on) a FROM ev_mat_log WHERE kind='lead' AND efir_id IN (" + ph + ') GROUP BY efir_id').bind(...ids)), LAt = {}; for (const x of LA) LAt[x.efir_id] = x.a;
+    for (const x of await qAll(env.DB.prepare("SELECT efir_id, MIN(at) a FROM efir_ev WHERE kind='lead' AND efir_id IN (" + ph + ') GROUP BY efir_id').bind(...ids))) if (!LAt[x.efir_id]) LAt[x.efir_id] = x.a;
+    const toL = Object.keys(LAt).map(id => '(s.efir_id=' + (+id) + ' AND s.first<=' + (+LAt[id]) + ' AND s.last>=' + (+LAt[id]) + ')').join(' OR ');
+    const doneQ = sel.map(d => '(s.efir_id=' + (+d.id) + ' AND s.min>=' + Math.ceil(d.dur * 0.8) + ')').join(' OR ');
+    const [sn, mul, tl, dn, ld, pd, fm, fo, fb] = await env.DB.batch([
+      env.DB.prepare('SELECT COUNT(DISTINCT k) n, AVG(min) a FROM efir_seen s WHERE sess=0 AND efir_id IN (' + ph + ')').bind(...ids),
+      env.DB.prepare('SELECT COUNT(*) n FROM (SELECT k FROM efir_seen WHERE sess=0 AND efir_id IN (' + ef6Ph(allIds) + ') GROUP BY k HAVING COUNT(DISTINCT efir_id)>=?)').bind(...allIds, allIds.length),
+      env.DB.prepare('SELECT COUNT(DISTINCT k) n FROM efir_seen s WHERE sess=0 AND (' + (toL || '0') + ')'),
+      env.DB.prepare('SELECT COUNT(DISTINCT k) n FROM efir_seen s WHERE sess=0 AND (' + (doneQ || '0') + ')'),
+      env.DB.prepare('SELECT COUNT(*) n FROM efir_lead WHERE efir_id IN (' + ph + ')').bind(...ids),
+      env.DB.prepare("SELECT COUNT(*) n, SUM(pay_sum) s FROM efir_lead WHERE pay_st='paid' AND efir_id IN (" + ph + ')').bind(...ids),
+      env.DB.prepare('SELECT COUNT(*) n FROM ev_form WHERE COALESCE(test,0)=0 AND COALESCE(outside,0)=0 AND efir_id IN (' + ph + ')').bind(...ids),
+      env.DB.prepare("SELECT COUNT(DISTINCT data) n FROM efir_ev WHERE kind='fopen' AND efir_id IN (" + ph + ')').bind(...ids),
+      env.DB.prepare("SELECT COUNT(*) n FROM ev_form WHERE COALESCE(test,0)=0 AND st='buy' AND efir_id IN (" + ph + ')').bind(...ids)]);
+    Object.assign(out, { came: ef6One(sn).n | 0, avg: Math.round(ef6One(sn).a || 0), multi: !dayN && allIds.length >= 2 ? ef6One(mul).n | 0 : null, multi_n: allIds.length, to_lead: toL ? ef6One(tl).n | 0 : null, done: ef6One(dn).n | 0,
+      leads: ef6One(ld).n | 0, paid: ef6One(pd).n | 0, paid_sum: Math.round(ef6One(pd).s || 0), forms: ef6One(fm).n | 0, opened: ef6One(fo).n | 0, bought: ef6One(fb).n | 0 });
+    /* онлайн поминутно: выбранный день или последний прошедший / идущий; отметки — баннер и кнопка заявки (без продаж — только баннер) */
+    const gd = dayN ? sel[0] : past[past.length - 1], vc = await qAll(env.DB.prepare("SELECT sec, data FROM efir_ev WHERE efir_id=? AND kind='vc' ORDER BY sec").bind(gd.id)), P = [];
+    for (const x of vc) { const i = Math.max(0, Math.floor((+x.sec || 0) / 60)); if (i > 600) continue; P[i] = Math.max(P[i] || 0, +(efJ(x.data, {}).n || 0)) } for (let i = 0; i < P.length; i++) if (P[i] == null) P[i] = i ? P[i - 1] : 0;
+    const MK = await qAll(env.DB.prepare("SELECT kind, MIN(sec_on) sec FROM ev_mat_log WHERE efir_id=? AND kind IN ('banner','lead') GROUP BY mat_id, kind ORDER BY sec").bind(gd.id));
+    out.online = { n: gd.n, sec: Math.max(gd.dur * 60, P.length * 60), pts: P, marks: MK.filter(m => m.sec != null && (m.kind === 'banner' || mode !== 'none')).map(m => ({ kind: m.kind, sec: +m.sec })) };
+    /* откуда записались: метки ev_src — записались (за всё время), пришли (в выбранные дни), заявки (анкеты при «Анкетах», пришедшие при «Без продаж» не нужны — колонки нет) */
+    const [S0, C0, L0] = await env.DB.batch([env.DB.prepare("SELECT code, title FROM ev_src WHERE ev_id=? AND code<>'test' ORDER BY code<>'', at, code").bind(ev.id),
+      env.DB.prepare("SELECT COALESCE(r.src_code,'') c, COUNT(*) regs, SUM(CASE WHEN EXISTS (SELECT 1 FROM efir_seen z WHERE z.k=r.k AND z.sess=0 AND z.efir_id IN (" + ph + ')) THEN 1 ELSE 0 END) came FROM ev_reg r WHERE r.ev_id=? AND COALESCE(r.test,0)=0 GROUP BY 1').bind(...ids, ev.id),
+      mode === 'form' ? env.DB.prepare("SELECT COALESCE(r.src_code,'') c, COUNT(*) n FROM ev_form f LEFT JOIN ev_reg r ON r.ev_id=f.ev_id AND r.k=f.k WHERE COALESCE(f.test,0)=0 AND COALESCE(f.outside,0)=0 AND f.efir_id IN (" + ph + ') GROUP BY 1').bind(...ids)
+        : env.DB.prepare("SELECT COALESCE(src,'') c, COUNT(*) n FROM efir_lead WHERE efir_id IN (" + ph + ') GROUP BY 1').bind(...ids)]);
+    const by = {}; for (const x of C0.results || []) by[x.c] = { regs: x.regs | 0, came: x.came | 0, leads: 0 }; for (const x of L0.results || []) (by[x.c] = by[x.c] || { regs: 0, came: 0, leads: 0 }).leads = x.n | 0;
+    const SL = (S0.results || []).slice(); if (!SL.some(s => s.code === '')) SL.unshift({ code: '', title: 'Основная' }); for (const c in by) if (!SL.some(s => s.code === c)) SL.push({ code: c, title: c });
+    out.src = SL.map(s => Object.assign({ code: s.code, title: s.code ? (s.title || s.code) : 'Основная ссылка' }, by[s.code] || { regs: 0, came: 0, leads: 0 })).filter(s => s.regs || s.came || s.leads || s.code === '' || s.code === 'site')
+      .sort((a, b) => b.regs - a.regs || b.came - a.came);
+    /* материалы: что показывали, сколько висело, нажали, заявки */
+    const ML = await qAll(env.DB.prepare('SELECT g.efir_id, g.mat_id, g.kind, g.sec_on, g.at_on, g.at_off, g.clicks, g.leads, m.data FROM ev_mat_log g LEFT JOIN ev_mat m ON m.id=g.mat_id WHERE g.efir_id IN (' + ph + ') ORDER BY CASE g.kind WHEN \'lead\' THEN 0 WHEN \'banner\' THEN 1 ELSE 2 END, g.at_on').bind(...ids)); /* как на доске: сначала кнопки заявки, потом баннеры и опросы */
+    out.mats = ML.map(g => { const d = efJ(g.data, {}), dd = days.find(x => x.id === g.efir_id) || {}; return { kind: g.kind, title: d.short || d.title || d.q || '', day: dd.n || 0, min: Math.floor((+g.sec_on || 0) / 60), dur: Math.max(1, Math.round(((g.at_off || now) - (g.at_on || now)) / 6e4)), clicks: g.clicks | 0, leads: g.kind === 'lead' ? g.leads | 0 : null } });
+    return out }) }
+
+/* 5.2 заявки: строки лентой (заявки efir_lead ∪ анкеты ev_form при dup=1), фильтры и счётчики вкладок; CSV — те же строки без страниц */
+const EF6_PER = ['today', '7', '30', 'all'];
+async function ef6Rows(env, u) { await ef6PayLazy(env).catch(() => null); const now = msNow(), evq = +u.searchParams.get('ev') || 0, per = EF6_PER.includes(u.searchParams.get('p')) ? u.searchParams.get('p') : '30';
+  const t0 = per === 'all' ? 0 : per === 'today' ? (() => { const d = msk(new Date(now)); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 3 * 36e5 })() : now - (+per) * 864e5;
+  const EV = await qAll(env.DB.prepare('SELECT id, title, short, type, status, sale, offer FROM efir_event WHERE del=0 ORDER BY id DESC')), EVm = {}; for (const v of EV) EVm[v.id] = v;
+  if (evq && EVm[evq] && ef6Mode(EVm[evq]) === 'none') return { none: EVm[evq] };
+  const evF = evq ? ' AND CAST(json_extract(e.cfg, \'$.ev\') AS INTEGER)=' + evq : '', evF2 = evq ? ' AND f.ev_id=' + evq : '';
+  const L = await qAll(env.DB.prepare("SELECT 'l' t, l.id, l.efir_id, l.k, l.uid, l.chat, l.name, l.phone, l.email, l.tg, l.sec, l.at, l.order_id, l.order_num, l.order_err, l.pay_st, l.pay_sum, l.mgr_st, l.st st0, l.note, NULL sheet_st, NULL row_n, NULL fst, 0 outside, CAST(json_extract(e.cfg, '$.ev') AS INTEGER) ev_id, e.title etitle, e.kind ekind, e.cfg ecfg FROM efir_lead l LEFT JOIN efir e ON e.id=l.efir_id WHERE l.at>=?" + evF + ' ORDER BY l.at DESC LIMIT 5000').bind(t0));
+  const F = (await qAll(env.DB.prepare("SELECT 'f' t, f.id, f.efir_id, f.k, f.uid, f.chat, f.name, f.phone, f.email, f.tg, f.sec, f.at, NULL order_id, NULL order_num, NULL order_err, NULL pay_st, NULL pay_sum, NULL mgr_st, NULL st0, NULL note, f.sheet_st, f.row_n, f.st fst, COALESCE(f.outside,0) outside, f.ev_id, e.title etitle, e.kind ekind, e.cfg ecfg FROM ev_form f LEFT JOIN efir e ON e.id=f.efir_id WHERE COALESCE(f.test,0)=0 AND f.at>=?" + evF2 + ' ORDER BY f.at DESC LIMIT 5000').bind(t0)))
+    .filter(f => { const v = EVm[f.ev_id]; return v && ev3Sale(v).form.dup !== 0 });
+  const R = L.concat(F).sort((a, b) => b.at - a.at), q = String(u.searchParams.get('q') || '').trim().toLowerCase().replace(/ё/g, 'е'), qd = q.replace(/\D/g, '');
+  const R2 = q ? R.filter(r => String(r.name || '').toLowerCase().replace(/ё/g, 'е').includes(q) || String(r.email || '').toLowerCase().includes(q) || String(r.tg || '').toLowerCase().includes(q) || (qd.length >= 3 && String(r.phone || '').replace(/\D/g, '').includes(qd))) : R;
+  for (const r of R2) { r.err = r.t === 'l' && !r.order_num && !!r.order_err; r.paid = r.t === 'l' && r.pay_st === 'paid'; r.mst = r.t === 'l' ? (EF6_ST[r.mgr_st] ? r.mgr_st : (EF5_ST[r.st0] || 'new')) : (EF6_ST[r.fst] && r.fst !== 'new' ? r.fst : null) }
+  const tab = { all: () => true, 'new': r => r.t === 'l' && !r.paid && !r.err && r.mst === 'new', paid: r => r.paid, form: r => r.t === 'f', err: r => r.err };
+  const n = {}; for (const k in tab) n[k] = R2.filter(tab[k]).length;
+  const evs = EV.filter(v => ef6Mode(v) !== 'none' && ev2Status(v) !== 'draft').map(v => ({ id: v.id, title: v.title || ('Мероприятие ' + v.id), mode: ef6Mode(v) }));
+  return { rows: R2, n, tab, evs, EVm, evq, per } }
+/* одна строка ленты — как на доске Leads: «Откуда», «Заказ», статус */
+async function ef6Shape(env, rows, EVm) { const DAYS = {}, out = [];
+  for (const id of [...new Set(rows.map(r => r.ev_id).filter(Boolean))]) DAYS[id] = (await ev2Days(env, id)).filter(x => !efJ(x.cfg, {}).hide).map(x => x.id);
+  const SEEN = {}; if (rows.length) { const E = [...new Set(rows.map(r => r.efir_id).filter(Boolean))], K = [...new Set(rows.map(r => r.k).filter(Boolean))];
+    if (E.length && K.length) for (let i = 0; i < K.length; i += 80) for (const s of await qAll(env.DB.prepare('SELECT efir_id, k, min FROM efir_seen WHERE sess=0 AND efir_id IN (' + ef6Ph(E) + ') AND k IN (' + ef6Ph(K.slice(i, i + 80)) + ')').bind(...E, ...K.slice(i, i + 80)))) SEEN[s.efir_id + '|' + s.k] = s.min | 0 }
+  for (const r of rows) { const v = EVm[r.ev_id], ty = v ? ev2Type(v, DAYS[r.ev_id]) : null, mn = r.sec != null ? ' · ' + Math.floor(r.sec / 60) + '-я мин' : '';
+    const from = r.ekind === 'auto' || ty === 'auto' ? 'Автовебинар' + mn : ty === 'mar' ? 'Марафон, день ' + (Math.max(0, (DAYS[r.ev_id] || []).indexOf(r.efir_id)) + 1) + mn : ty === 'web' ? 'Вебинар «' + (v.short || v.title || '') + '»' + mn : 'Эфир «' + (efJ(r.ecfg, {}).short || r.etitle || '') + '»' + mn;
+    const S = v ? ev3Sale(v) : null, sh = S && S.sheet && S.sheet.url ? S.sheet.url : '';
+    const st = r.paid ? ['оплачено', 'pgr'] : r.err ? ['ошибка', 'pr'] : r.t === 'l' ? EF6_ST[r.mst] : r.mst ? EF6_ST[r.mst] : r.sheet_st ? [String(r.sheet_st), ''] : EF6_ST.new;
+    out.push({ id: (r.t === 'l' ? 'l' : 'f') + r.id, kind: r.t === 'l' ? 'lead' : 'form', k: r.k || '', name: r.name || 'Без имени', phone: ef6Phone(r.phone), email: r.email || '', tg: r.tg || '', from, outside: r.outside ? 1 : 0,
+      min: SEEN[r.efir_id + '|' + r.k] != null ? SEEN[r.efir_id + '|' + r.k] : null, order: r.t === 'l' && r.order_num ? { num: String(r.order_num), url: r.order_id ? 'https://oduvanovroman.getcourse.ru/sales/control/deal/update/id/' + r.order_id : '' } : null,
+      err: r.err ? 1 : 0, form_url: r.t === 'f' && sh && r.row_n ? sh + (/#gid=/.test(sh) ? '&' : '#') + 'range=A' + r.row_n : '', st: { t: st[0], c: st[1] }, at: r.at, efir_id: r.efir_id, note: r.note || '', pay_sum: r.pay_sum || 0 }) }
+  return out }
+async function ef6Leads(env, u) { const X = await ef6Rows(env, u); if (X.none) return { ok: true, none: { id: X.none.id, title: X.none.title, type: ev2Type(X.none, []) }, rows: [], n: { all: 0, new: 0, paid: 0, form: 0, err: 0 }, evs: [] };
+  const st = X.tab[u.searchParams.get('st')] ? u.searchParams.get('st') : 'all', R = X.rows.filter(X.tab[st]), pages = Math.max(1, Math.ceil(R.length / 50)), pg = Math.min(pages, Math.max(1, +u.searchParams.get('pg') || 1));
+  return { ok: true, rows: await ef6Shape(env, R.slice((pg - 1) * 50, pg * 50), X.EVm), n: X.n, total: R.length, pg, pages, evs: X.evs, ev: X.evq || 0, p: X.per, st } }
+/* ячейка CSV: «;», кавычки и переводы строк — в кавычках; текст зрителя, начинающийся с = + - @, — с апострофом (Excel не примет его за формулу) */
+const ef6Csv = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s };
+/* телефон для Excel: российский — «8 900 123-45-67» (с «+» Excel считает ячейку формулой), остальные — цифрами; Telegram — ссылкой t.me/… */
+const ef6CsvPh = p => { const d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && /^[78]/.test(d)) return '8 ' + d.slice(1, 4) + ' ' + d.slice(4, 7) + '-' + d.slice(7, 9) + '-' + d.slice(9); return d };
+const ef6CsvTg = t => /^@[\w]{3,40}$/.test(t || '') ? 't.me/' + t.slice(1) : (t || '');
+async function ef6LeadsCsv(env, u) { const X = await ef6Rows(env, u); const st = X.tab[u.searchParams.get('st')] ? u.searchParams.get('st') : 'all', R = X.none ? [] : await ef6Shape(env, X.rows.filter(X.tab[st]).slice(0, 5000), X.EVm);
+  const head = ['Дата (МСК)', 'Имя', 'Телефон', 'Почта', 'Telegram', 'Откуда', 'Смотрел, мин', 'Заказ', 'Статус', 'Заметка'];
+  const dt = ms => { const d = msk(new Date(ms)); return d.toISOString().slice(0, 16).replace('T', ' ') };
+  const lines = [head].concat(R.map(r => [dt(r.at), r.name, ef6CsvPh(r.phone), r.email, ef6CsvTg(r.tg), r.from, r.min == null ? '' : r.min, r.order ? '№ ' + r.order.num : r.kind === 'form' ? 'анкета' : r.err ? 'не создан' : '', r.st.t, r.note]));
+  return '﻿' + lines.map(l => l.map(ef6Csv).join(';')).join('\r\n') + '\r\n' }
+
+/* 5.2б карточка человека: эфиры мероприятия с минутами и минутой заявки, до 10 сообщений, заказ, статус, заметка */
+async function ef6Person(env, k, id, now) { await ef6PayLazy(env).catch(() => null);
+  let L = null, Fm = null; if (/^l\d+$/.test(id || '')) L = await env.DB.prepare('SELECT * FROM efir_lead WHERE id=?').bind(+id.slice(1)).first(); else if (/^f\d+$/.test(id || '')) Fm = await env.DB.prepare('SELECT * FROM ev_form WHERE id=?').bind(+id.slice(1)).first();
+  if (!L && !Fm && k) L = await env.DB.prepare('SELECT * FROM efir_lead WHERE k=? ORDER BY at DESC LIMIT 1').bind(k).first(); if (!L && !Fm && k) Fm = await env.DB.prepare('SELECT * FROM ev_form WHERE k=? AND COALESCE(test,0)=0 ORDER BY at DESC LIMIT 1').bind(k).first();
+  const R = L || Fm; if (!R) return { ok: false, err: 'Заявка не найдена' }; k = R.k || k || '';
+  const e = await efGet(env, R.efir_id), evId = Fm ? Fm.ev_id : e ? +efJ(e.cfg, {}).ev || 0 : 0, ev = evId ? await evGet(env, evId) : null, D = ev ? (await ev2Days(env, ev.id)).filter(x => !efJ(x.cfg, {}).hide || x.id === R.efir_id) : (e ? [e] : []), type = ev ? ev2Type(ev, D) : null, ids = D.map(x => x.id);
+  const [sn, ms, lds, rg] = await env.DB.batch([env.DB.prepare('SELECT efir_id, min FROM efir_seen WHERE sess=0 AND k=? AND efir_id IN (' + ef6Ph(ids) + ')').bind(k, ...ids),
+    env.DB.prepare("SELECT text FROM efir_msg WHERE k=? AND role='stu' AND kind IN ('msg','q') AND del=0 AND efir_id IN (" + ef6Ph(ids) + ') ORDER BY id LIMIT 10').bind(k, ...ids),
+    env.DB.prepare('SELECT efir_id, MIN(sec) sec FROM efir_lead WHERE k=? AND efir_id IN (' + ef6Ph(ids) + ') GROUP BY efir_id').bind(k, ...ids),
+    env.DB.prepare('SELECT r.at, r.src_code, r.gc_uid, s.title FROM ev_reg r LEFT JOIN ev_src s ON s.ev_id=r.ev_id AND s.code=COALESCE(r.src_code,\'\') WHERE r.ev_id=? AND r.k=?').bind(evId, k)]);
+  const SN = {}, LS = {}; for (const x of sn.results || []) SN[x.efir_id] = x.min | 0; for (const x of lds.results || []) LS[x.efir_id] = x.sec;
+  const reg = ef6One(rg), uid = k[0] === 'u' ? +k.slice(1) : (R.uid || 0), stu = uid ? await env.DB.prepare('SELECT uid FROM student WHERE uid=?').bind(uid).first().catch(() => null) : null;
+  const sub = [stu ? 'ученик' : 'не ученик'].concat(reg.at ? ['запись ' + ef6Day(reg.at) + ' по ' + (reg.src_code ? 'ссылке «' + (reg.title || reg.src_code) + '»' : 'основной ссылке')] : []).join(' · ');
+  const efirs = D.map((x, i) => { const c = efJ(x.cfg, {}), t = type === 'mar' ? 'День ' + (i + 1) + ' · ' + (c.short || x.title || '') : (ev ? (ev.short || ev.title) : (c.short || x.title || '')), fut = !x.at_live && x.status !== 'live' && x.status !== 'done' && x.status !== 'rec';
+    return { id: x.id, title: t, min: SN[x.id] != null ? SN[x.id] : null, lead: LS[x.id] != null ? Math.floor(LS[x.id] / 60) : null, fut: fut ? 1 : 0 } });
+  const tg = String(R.tg || ''), un = /^@[\w]{3,40}$/.test(tg) ? tg.slice(1) : null, chat = R.chat || (k ? await efKeyChat(env, k).catch(() => null) : null), gcu = uid || reg.gc_uid || 0;
+  const out = { ok: true, id: (L ? 'l' : 'f') + R.id, kind: L ? 'lead' : 'form', k, efir_id: R.efir_id, name: R.name || 'Без имени', sub, contacts: [ef6Phone(R.phone), R.email, R.tg].filter(Boolean).join(' · '),
+    tg_url: un ? 'https://t.me/' + un : '', dm: !un && chat ? 1 : 0, gc_url: gcu ? 'https://oduvanovroman.getcourse.ru/user/control/user/update/id/' + gcu : '', efirs, chat: (ms.results || []).map(x => String(x.text || '').slice(0, 300)), mode: ev ? ef6Mode(ev) : 'sell' };
+  if (L) { const S = ev ? ev3Sale(ev) : null, of = S ? await ev3Prod(env, S, ev).catch(() => null) : null;
+    Object.assign(out, { mgr_st: EF6_ST[L.mgr_st] ? L.mgr_st : (EF5_ST[L.st] || 'new'), note: L.note || '', order: L.order_num ? { num: String(L.order_num), url: L.order_id ? 'https://oduvanovroman.getcourse.ru/sales/control/deal/update/id/' + L.order_id : '', pay: L.pay_st === 'paid' ? 'paid' : L.pay_st === 'no' ? 'no' : 'new', prod: of && of.title ? { title: of.title, price: +of.price || 0 } : null } : null, order_err: !L.order_num && L.order_err ? 1 : 0 }) }
+  else { const S = ev ? ev3Sale(ev) : null, Q = S ? (S.form.src === 'gform' ? S.form.gform.questions : S.form.questions) || [] : [], A = efJ(Fm.answers, {}) || {}, sh = S && S.sheet && S.sheet.url ? S.sheet.url : '';
+    Object.assign(out, { answers: Object.keys(A).map(q => { const qq = Q.find(x => String(x.id) === String(q) || x.t === q || x.title === q); return { q: (qq && (qq.t || qq.title)) || q, a: Array.isArray(A[q]) ? A[q].join(', ') : String(A[q]) } }).slice(0, 20),
+      sheet_st: Fm.sheet_st || '', st: Fm.st || 'new', sheet_url: sh ? sh + (Fm.row_n ? (/#gid=/.test(sh) ? '&' : '#') + 'range=A' + Fm.row_n : '') : '' }) }
+  return out }
+async function ef6PersonSave(env, o, W) { const id = String(o.id || ''); if (/^f\d+$/.test(id)) return { ok: false, err: 'Статус анкеты ведут в Google Таблице — правь там', st: 400 };
+  const L = /^l\d+$/.test(id) ? await env.DB.prepare('SELECT id FROM efir_lead WHERE id=?').bind(+id.slice(1)).first() : (o.k ? await env.DB.prepare('SELECT id FROM efir_lead WHERE k=? ORDER BY at DESC LIMIT 1').bind(String(o.k)).first() : null);
+  if (!L) return { ok: false, err: 'Заявка не найдена', st: 404 }; const q = [];
+  if (o.mgr_st != null) { if (!EF6_ST[o.mgr_st]) return { ok: false, err: 'Неизвестный статус', st: 400 }; q.push(env.DB.prepare('UPDATE efir_lead SET mgr_st=?, st=? WHERE id=?').bind(o.mgr_st, EF6_OLD[o.mgr_st], L.id)) }
+  if (o.note != null) q.push(env.DB.prepare('UPDATE efir_lead SET note=? WHERE id=?').bind(bStr(o.note, 2000) || null, L.id));
+  if (!q.length) return { ok: false, err: 'Нечего сохранять', st: 400 }; await env.DB.batch(q); await logIt(env, 'efir-person', W.uid || 0, L.id + (o.mgr_st != null ? ' ' + o.mgr_st : '') + (o.note != null ? ' note' : '')); return { ok: true } }
+
+/* 5.6 сводка после «Завершить эфир» (доска Tg; одна на эфир, получатели — 5.5). Тексты — в нейтральной форме, числа — с неразрывными пробелами */
+async function ef6Report(env, e, I) { const id = e.id, dur = ef6DayDur(e), mode = I ? I.mode : (efNoSales(e) ? 'none' : 'sell'), cur = efNoSales(e);
+  const [rg, sn, ms, qs, ld, wk, vc, fm, fo] = await env.DB.batch([I ? env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0').bind(I.ev.id) : env.DB.prepare('SELECT COUNT(*) n FROM efir_reg WHERE efir_id=?').bind(id),
+    env.DB.prepare('SELECT COUNT(DISTINCT k) n, AVG(min) a FROM efir_seen WHERE efir_id=? AND sess=0').bind(id), env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='msg' AND role='stu' AND del=0").bind(id),
+    env.DB.prepare("SELECT COUNT(*) n FROM efir_msg WHERE efir_id=? AND kind='q' AND del=0").bind(id), env.DB.prepare('SELECT COUNT(*) n FROM efir_lead WHERE efir_id=?').bind(id),
+    env.DB.prepare("SELECT COUNT(*) n, SUM(CASE WHEN ans=1 THEN 1 ELSE 0 END) a FROM efir_msg WHERE efir_id=? AND kind='work' AND del=0").bind(id), env.DB.prepare("SELECT sec, data FROM efir_ev WHERE efir_id=? AND kind='vc'").bind(id),
+    env.DB.prepare('SELECT COUNT(*) n FROM ev_form WHERE efir_id=? AND COALESCE(test,0)=0 AND COALESCE(outside,0)=0').bind(id), env.DB.prepare("SELECT COUNT(DISTINCT data) n FROM efir_ev WHERE efir_id=? AND kind='fopen'").bind(id)]);
+  let peak = 0, pmin = 0; for (const x of vc.results || []) { const n = +(efJ(x.data, {}).n || 0); if (n > peak) { peak = n; pmin = Math.floor((+x.sec || 0) / 60) } }
+  const came = ef6One(sn).n | 0, avg = Math.round(ef6One(sn).a || 0), b = s => '<b>' + s + '</b>', L = [];
+  const head = cur ? '📊 ' + b('Эфир завершён') + ' · «' + th(e.title) + '» · ' + ef6Dur(dur) : '📊 ' + b('Эфир завершён') + '\n«' + th(I ? I.ev.title : e.title) + '»' + (I && I.type === 'mar' && I.of > 1 ? ' · День ' + I.n : '') + ' · ' + ef6Dur(dur);
+  if (I) { const prev = I.i > 0 ? I.D[I.i - 1] : null, from = prev ? (prev.at_end || (prev.start || 0) + (+prev.dur || 60) * 6e4) : (e.at_end || msNow()) - 864e5;
+    const add = ef6One(await env.DB.prepare('SELECT COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0 AND at>?').bind(I.ev.id, from).all()).n | 0;
+    L.push('Записались: ' + b(ef6Num(ef6One(rg).n)) + (add ? ' (+' + ef6Num(add) + ' за день)' : '')) }
+  L.push('Пришли: ' + b(ef6Num(came)) + (peak ? ' · пик онлайн ' + ef6Num(peak) + ' на ' + pmin + '-й мин' : ''));
+  L.push('Среднее время: ' + b(avg + NB + 'мин') + (came ? ' (' + ef6Pct(avg, dur) + '% эфира)' : ''));
+  if (!cur && mode !== 'none') { const la = await env.DB.prepare("SELECT MIN(at_on) a FROM ev_mat_log WHERE efir_id=? AND kind='lead'").bind(id).first().catch(() => null), la2 = la && la.a ? la.a : ((await env.DB.prepare("SELECT MIN(at) a FROM efir_ev WHERE efir_id=? AND kind='lead'").bind(id).first()) || {}).a;
+    if (la2) L.push('Досидели до заявки: ' + ef6Num(ef6One(await env.DB.prepare('SELECT COUNT(DISTINCT k) n FROM efir_seen WHERE efir_id=? AND sess=0 AND first<=? AND last>=?').bind(id, la2, la2).all()).n)) }
+  L.push('Сообщений: ' + ef6Num(ef6One(ms).n) + ' · вопросов: ' + ef6Num(ef6One(qs).n));
+  if (cur) { const W2 = ef6One(wk); if (W2.n) L.push('Работ разобрано: ' + (W2.a | 0) + ' из ' + (W2.n | 0)) }
+  else if (mode === 'sell') { const n = ef6One(ld).n | 0; L.push('Заявок: ' + b(ef6Num(n)) + (came ? ' (' + ef6Pct(n, came) + '% пришедших)' : '')) }
+  else if (mode === 'form') L.push('Анкет: ' + b(ef6Num(ef6One(fm).n)) + ' из ' + ef6Num(ef6One(fo).n) + ' открывших');
+  /* опрос дня: последний показанный — «Опрос «<короткое>»: N% — <вариант со строчной>» */
+  const pv = await env.DB.prepare("SELECT id, data FROM efir_ev WHERE efir_id=? AND kind='poll' ORDER BY id DESC LIMIT 1").bind(id).first().catch(() => null);
+  if (pv) { const d = efJ(pv.data, {}), V = await qAll(env.DB.prepare('SELECT opt, COUNT(*) n FROM efir_pollv WHERE ev=? GROUP BY opt ORDER BY n DESC').bind('e' + pv.id)), tot = V.reduce((s, x) => s + x.n, 0);
+    let ttl = d.q || ''; if (d.mat_id) { const m = await env.DB.prepare('SELECT data FROM ev_mat WHERE id=?').bind(+d.mat_id).first().catch(() => null); const md = m ? efJ(m.data, {}) : {}; ttl = md.short || ttl }
+    if (tot && V[0] && (d.opts || [])[V[0].opt] != null) { const o1 = String(d.opts[V[0].opt]); L.push('Опрос «' + th(ttl) + '»: ' + Math.round(V[0].n / tot * 100) + '% — ' + th(o1.charAt(0).toLowerCase() + o1.slice(1))) } }
+  let best = '';
+  if (I) { const all = I.D.filter(x => x.at_live || x.id === id).map(x => x.id), ph = ef6Ph(all);
+    const Q = mode === 'form' ? "SELECT COALESCE(r.src_code,'') c, COUNT(*) n FROM ev_form f LEFT JOIN ev_reg r ON r.ev_id=f.ev_id AND r.k=f.k WHERE COALESCE(f.test,0)=0 AND COALESCE(f.outside,0)=0 AND f.efir_id IN (" + ph + ') GROUP BY 1'
+      : mode === 'sell' ? "SELECT COALESCE(src,'') c, COUNT(*) n FROM efir_lead WHERE efir_id IN (" + ph + ') GROUP BY 1'
+      : "SELECT COALESCE(r.src_code,'') c, COUNT(DISTINCT s.k) n FROM efir_seen s JOIN ev_reg r ON r.ev_id=? AND r.k=s.k AND COALESCE(r.test,0)=0 WHERE s.sess=0 AND s.efir_id IN (" + ph + ') GROUP BY 1';
+    const [A1, R1, T1] = await env.DB.batch([mode === 'none' ? env.DB.prepare(Q).bind(I.ev.id, ...all) : env.DB.prepare(Q).bind(...all), env.DB.prepare("SELECT COALESCE(src_code,'') c, COUNT(*) n FROM ev_reg WHERE ev_id=? AND COALESCE(test,0)=0 GROUP BY 1").bind(I.ev.id), env.DB.prepare('SELECT code, title FROM ev_src WHERE ev_id=?').bind(I.ev.id)]);
+    const RG = {}; for (const x of R1.results || []) RG[x.c] = x.n | 0; const T = {}; for (const x of T1.results || []) T[x.code] = x.title;
+    const top = (A1.results || []).filter(x => x.n > 0).sort((a, b2) => b2.n - a.n || (RG[b2.c] || 0) - (RG[a.c] || 0))[0];
+    if (top) { const w = mode === 'form' ? plrS(top.n, 'анкета', 'анкеты', 'анкет') : mode === 'sell' ? plrS(top.n, 'заявка', 'заявки', 'заявок') : plrS(top.n, 'пришедший', 'пришедших', 'пришедших');
+      best = 'Лучший источник: ' + th(top.c ? (T[top.c] || top.c) : 'Основная ссылка') + ' (' + ef6Num(top.n) + NB + w + ' за ' + (I.type === 'mar' ? 'марафон' : 'вебинар') + ')' } }
+  const text = head + '\n\n' + L.join('\n') + (best ? '\n\n' + best : ''), SITE6 = 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&h=';
+  const btns = I ? [[{ text: 'Подробные итоги', url: SITE6 + encodeURIComponent('#host/ev/' + I.ev.id + '/stats/' + I.n) }]].concat(mode === 'none' ? [] : [[{ text: 'Заявки этого эфира', url: SITE6 + encodeURIComponent('#host/leads?ev=' + I.ev.id) }]]) : null;
+  return { text, btns, came, leads: ef6One(ld).n | 0 } }
+/* 06.11 (Роман): вместо уведомления о каждой заявке — одна сводка после «Завершить эфир». 07.11 Э5: выключается в 5.5 (kv efir_report=0); Э6: и галочкой «Сводка» на шаге 6 (sale.report=0) */
+async function efReport(env, e) { const id = e.id;
   if ((await kvGet(env, 'efir_report').catch(() => null)) === 0) { await logIt(env, 'efir-report-off', 0, String(id)); return }
-  for (const x of await efRepTo(env)) { try { await tgSend(env, x.chat, t) } catch (e2) {} } await logIt(env, 'efir-report', 0, id + ' ' + viewers + ' ' + (L.u || 0)) }
+  await ef2Ensure(env); const I = await efEvInfo(env, e).catch(() => null); if (I && ev3Sale(I.ev).report === 0) { await logIt(env, 'efir-report-off', 0, id + ' sale'); return }
+  const r = await ef6Report(env, e, I); let n = 0;
+  for (const x of await efRepTo(env)) { try { const j = await tgSend(env, x.chat, r.text, r.btns); if (j && j.ok) n++ } catch (e2) {} } await logIt(env, 'efir-report', 0, id + ' ' + r.came + ' ' + r.leads + ' → ' + n) }
