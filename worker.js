@@ -4050,7 +4050,8 @@ const EF2_COLS = {
   efir_msg: ['title TEXT', 'note TEXT'],
   efir_pollv: ['opts TEXT'],
   bot_state: ['phone TEXT', 'test INTEGER DEFAULT 0'],
-  ev_form: ['ip TEXT'] }; /* 07.11 Э3: хеш IP анкеты гостя (защита от накрутки §3.4), стирается через 2 дня */ /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
+  ev_form: ['ip TEXT'],
+  ev_bc: ['fail INTEGER DEFAULT 0', 'by_uid INTEGER', 'upd INTEGER'] }; /* 07.11 Э4: разовые 2.9 — неудачные отправки, кто создал */ /* 07.11 Э3: хеш IP анкеты гостя (защита от накрутки §3.4), стирается через 2 дня */ /* 07.11 Э1: телефон между шагами «номер» → «почта» и пометка тестовой регистрации */
 let EF2_OK = false;
 async function ef2Ensure(env) { await evEnsure(env); if (EF2_OK) return;
   await env.DB.batch(EF2_SCHEMA.map(s => env.DB.prepare(s)));
@@ -4071,9 +4072,14 @@ const evFunnelDef = () => [
   { id: 'b2', on: 'before', min: 60, text: '⏰ Через час, в {время}, — эфир «{эфир_тема}». Приходи, будет полезно!', btns: [{ t: 'Страница эфира', u: '{эфир}' }] },
   { id: 's0', on: 'start', min: 0, text: '🔴 Начинаем! Эфир «{эфир_тема}» уже идёт — заходи.', btns: [{ t: '▶ Открыть эфир', u: '{эфир}' }] }];
 function evSteps(ev) { const f = efJ(ev && ev.funnel, null); return (Array.isArray(f) ? f : evFunnelDef()).filter(s => s && EV_TRIG.includes(s.on)) }
-function evClean(steps) { return (Array.isArray(steps) ? steps : []).slice(0, 30).map((s, i) => ({ id: /^[a-z0-9]{1,12}$/.test(String(s.id || '')) ? String(s.id) : 'x' + Date.now().toString(36).slice(-5) + i, on: EV_TRIG.includes(s.on) ? s.on : 'reg',
-  min: Math.max(0, Math.min(60 * 24 * 60, +s.min | 0)), who: ['all', 'came', 'miss'].includes(s.who) ? s.who : 'all', text: bStr(String(s.text || ''), 3500), img: /^https:\/\/[^\s"'<>]+$/.test(s.img || '') ? bStr(s.img, 400) : null,
-  btns: (Array.isArray(s.btns) ? s.btns : []).map(b => ({ t: bStr(b && b.t, 40), u: bStr(b && b.u, 500) })).filter(b => b.t && (/^https:\/\//.test(b.u) || /^\{(эфир|мероприятие)\}$/.test(b.u))).slice(0, 5) })).filter(s => s.text.trim()) }
+/* 07.11 Э4 (§6.4 2.5, 2.5а, §10): у шага ещё title (заголовок в ленте), off (выключен), off_mode/off0 (выключен режимом «Без продаж», прежнее вкл/выкл), std (из готового набора, не правили),
+   who у «после марафона» — nolead | noform | formopen; id шагов не меняются (ev_sent) */
+const EV_WHO = ['all', 'came', 'miss', 'nolead', 'noform', 'formopen'];
+function evClean(steps) { return (Array.isArray(steps) ? steps : []).slice(0, 30).map((s, i) => { const on = EV_TRIG.includes(s.on) ? s.on : 'reg', o = { id: /^[a-z0-9]{1,12}$/.test(String(s.id || '')) ? String(s.id) : 'x' + Date.now().toString(36).slice(-5) + i, on,
+  min: Math.max(0, Math.min(60 * 24 * 60, +s.min | 0)), who: (on === 'days' ? EV_WHO : ['all', 'came', 'miss']).includes(s.who) ? s.who : 'all', text: bStr(String(s.text || ''), 3500), img: /^https:\/\/[^\s"'<>]+$/.test(s.img || '') ? bStr(s.img, 400) : null,
+  btns: (Array.isArray(s.btns) ? s.btns : []).map(b => ({ t: bStr(b && b.t, 40), u: bStr(b && b.u, 500) })).filter(b => b.t && (/^https:\/\//.test(b.u) || /^\{(эфир|мероприятие)\}$/.test(b.u))).slice(0, 5) };
+  if (bStr(s.title, 60)) o.title = bStr(s.title, 60); if (s.off) o.off = 1; if (s.off_mode) { o.off_mode = 1; o.off0 = s.off0 ? 1 : 0 } if (s.std) o.std = 1; return o }).filter(s => s.text.trim()) }
+const evOn = ev => evSteps(ev).filter(s => !s.off); /* включённые шаги — их и шлёт бот */
 async function evGet(env, id) { return +id ? env.DB.prepare('SELECT * FROM efir_event WHERE id=? AND del=0').bind(+id).first() : null }
 async function evEfirs(env, id) { return qAll(env.DB.prepare("SELECT * FROM efir WHERE del=0 AND kind='open' AND status NOT IN ('draft','cancel') AND CAST(json_extract(cfg, '$.ev') AS INTEGER)=? ORDER BY start").bind(+id)) }
 const evLink = id => 'https://oduvanovschool.pro/efir?ev=' + id;
@@ -4092,14 +4098,14 @@ function evNext(E, now) { return E.find(e => e.status === 'live') || E.find(e =>
 async function evRender(env, ev, E, e, s, R) { const now = msNow(), nm = firstName(R.name) || 'привет';
   const sch = E.map(x => '• ' + efWhen(x.start) + ' — ' + x.title).join('\n') || '';
   const txt = String(s.text || '').replace(/\{имя\}/g, nm).replace(/\{мероприятие\}/g, ev.title || '').replace(/\{эфир_тема\}/g, e ? e.title : ev.title || '').replace(/\{время\}/g, e && e.start ? efHM(e.start) + NB + 'МСК' : '').replace(/\{дата\}/g, e && e.start ? efWhen(e.start) : '').replace(/\{расписание\}/g, sch);
-  const kb = []; for (const b of s.btns || []) { let u = b.u; if (u === '{эфир}') u = e ? await efLink(env, e, R.k) : evLink(ev.id); else if (u === '{мероприятие}') u = evLink(ev.id); if (/^https:\/\//.test(u)) kb.push([{ text: b.t, url: u }]) }
+  const kb = []; for (const b of s.btns || []) { let u = b.u; if (u === '{эфир}') u = e ? await efLink(env, e, R.k) : evLink(ev.id); else if (u === '{мероприятие}') { const n0 = evNext(E, now); u = n0 ? await efLink(env, n0, R.k) : evLink(ev.id) } /* 07.11 Э4 (§6.4 2.5а): «Страница марафона» — личная ссылка в комнату ближайшего или идущего дня */ if (/^https:\/\//.test(u)) kb.push([{ text: b.t, url: u }]) }
   return { text: th(txt), kb: kb.length ? kb : undefined } }
 async function evSend(env, chat, m, img) { if (img) { const cap = m.text.length <= 1000; const j = await tg(env, 'sendPhoto', { chat_id: chat, photo: img, ...(cap ? { caption: m.text, parse_mode: 'HTML', ...(m.kb ? { reply_markup: { inline_keyboard: m.kb } } : {}) } : {}) }); if (cap || !(j && j.ok)) return cap ? j : tgSend(env, chat, m.text, m.kb) }
   return tgSend(env, chat, m.text, m.kb) }
 /* раз в минуту: какие шаги «созрели». Окна узкие — не перебираем всех зарегистрированных без нужды (D1) */
 async function evTick(env, only) { await evEnsure(env); const now = msNow(), out = { sent: 0, fail: 0 }, LIM = only ? 10 : 30;
   const EVS = only ? [only.ev] : await qAll(env.DB.prepare('SELECT * FROM efir_event WHERE del=0 AND created>?').bind(now - 180 * 864e5));
-  for (const ev of EVS) { if (out.sent + out.fail >= LIM) break; const steps = evSteps(ev); if (!steps.length) continue; const E = await evEfirs(env, ev.id);
+  for (const ev of EVS) { if (out.sent + out.fail >= LIM) break; const steps = evOn(ev); if (!steps.length) continue; const E = await evEfirs(env, ev.id);
     const jobs = []; for (const s of steps) { const m = (s.min | 0) * 6e4;
       if (s.on === 'reg') jobs.push({ s, e: null, sql: 'r.at<=? AND r.at>?', b: [now - m, now - m - 6 * 36e5] });
       else if (s.on === 'before') for (const e of E) { const due = (e.start || 0) - m; if (e.status === 'plan' && due <= now && now < due + 20 * 6e4 && e.start > now) jobs.push({ s, e }) }
@@ -4108,12 +4114,17 @@ async function evTick(env, only) { await evEnsure(env); const now = msNow(), out
       else if (s.on === 'days') { if (!E.length || E.some(e => !['done', 'rec'].includes(e.status))) continue; const last = Math.max(...E.map(e => e.at_end || e.start || 0)), due = last + m; if (due <= now && now < due + 6 * 36e5) jobs.push({ s, e: null }) } }
     for (const J of jobs) { if (out.sent + out.fail >= LIM) break; const eid = J.e ? J.e.id : 0, ids = J.e ? [J.e.id] : E.map(x => x.id);
       const came = ids.length ? '(SELECT COUNT(*) FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids.join(',') + '))' : '0';
-      const who = J.s.on === 'after' || J.s.on === 'days' ? (J.s.who === 'came' ? ' AND ' + came + '>0' : J.s.who === 'miss' ? ' AND ' + came + '=0' : '') : '';
+      const idl = ids.length ? ids.join(',') : '0', who = J.s.on === 'after' || J.s.on === 'days' ? (J.s.who === 'came' ? ' AND ' + came + '>0' : J.s.who === 'miss' ? ' AND ' + came + '=0'
+        /* 07.11 Э4: фильтры дожима по режиму продаж (§6.4 2.5а) */
+        : J.s.on === 'days' && J.s.who === 'nolead' ? ' AND NOT EXISTS (SELECT 1 FROM efir_lead l WHERE l.k=r.k AND l.efir_id IN (' + idl + '))'
+        : J.s.on === 'days' && J.s.who === 'noform' ? ' AND NOT EXISTS (SELECT 1 FROM ev_form f WHERE f.ev_id=r.ev_id AND f.k=r.k)'
+        : J.s.on === 'days' && J.s.who === 'formopen' ? " AND EXISTS (SELECT 1 FROM efir_ev z2 WHERE z2.kind='fopen' AND z2.data=r.k AND z2.efir_id IN (" + idl + ')) AND NOT EXISTS (SELECT 1 FROM ev_form f WHERE f.ev_id=r.ev_id AND f.k=r.k)' : '') : '';
       const R = await qAll(env.DB.prepare('SELECT r.*, s.tg_chat FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=?' + (only ? ' AND r.k=?' : '') + (J.sql ? ' AND ' + J.sql : '') + who + ' AND NOT EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=r.ev_id AND x.step=? AND x.efir_id=? AND x.k=r.k) LIMIT ?')
         .bind(ev.id, ...(only ? [only.k] : []), ...(J.b || []), J.s.id, eid, LIM - out.sent - out.fail));
       for (const r of R) { const chat = r.chat || r.tg_chat || (r.k[0] === 't' ? r.k.slice(1) : null);
         const ins = await env.DB.prepare('INSERT OR IGNORE INTO ev_sent (ev_id, step, efir_id, k, ok, at) VALUES (?,?,?,?,?,?)').bind(ev.id, J.s.id, eid, r.k, chat ? 1 : 0, now).run(); if (!ins.meta || !ins.meta.changes || !chat) continue;
         const e = J.e || evNext(E, now), m = await evRender(env, ev, E, e, J.s, r), j = await evSend(env, chat, m, J.s.img).catch(() => null); if (j && j.ok) out.sent++; else out.fail++ } } }
+  if (!only && out.sent + out.fail < LIM) await ev4BcTick(env, out, LIM); /* 07.11 Э4: разовые 2.9 — старой очередью до Paid (§0.1.8, §3.7.6) */
   if (out.sent || out.fail) await logIt(env, 'ev-tick', 0, JSON.stringify(out)); return out }
 /* ===== 07.11 «Эфиры 2.0», этап Э1 (docs/plan/efiry-tz.md v6 §4): регистрация через бота с телефоном, почтой и метками.
    /start v<id>[_<код>] (EV_START_RE), /start e<id> эфира мероприятия → evStart. Мероприятие без настроек `reg` (все старые) — как раньше: одно сообщение, без телефона и почты.
@@ -4168,7 +4179,7 @@ async function evStart(env, chat, id, from, code) { await ef2Ensure(env); if (fr
   const name = [from && from.first_name, from && from.last_name].filter(Boolean).join(' '), E = await evEfirs(env, ev.id), R = evRegCfg(ev, E);
   if (!R) { /* старое мероприятие (без настроек регистрации) — ровно как до Э1; добавились только метка и test в ev_reg */
     const nm = efShort(name), x = await evRegister(env, ev, W, { chat, name: name || nm, src: 'bot', src_code: src, test });
-    const steps = evSteps(ev), now = msNow(), e = evNext(x.E, now);
+    const steps = evOn(ev), now = msNow(), e = evNext(x.E, now);
     if (!x.fresh || !steps.some(s => s.on === 'reg' && !(s.min | 0))) { /* уже записан или нет приветствия в воронке — короткое подтверждение со ссылкой */
       return tgSend(env, chat, '✅ <b>' + nbt(e && e.status === 'live' ? 'Эфир уже идёт!' : 'Ты записан') + '</b>\n«' + th(ev.title) + '»' + (e && e.status !== 'live' && e.start ? '\n' + efWhen(e.start) : ''), e ? [[{ text: e.status === 'live' ? '▶ Открыть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined) }
     return evTick(env, { ev, k: W.k }) }
@@ -4186,7 +4197,7 @@ async function evStart(env, chat, id, from, code) { await ef2Ensure(env); if (fr
 /* §4.7: записан — ev_reg, bot_state удаляется, шаг `reg` воронки (как раньше); затем GetCourse (§4.8) — ошибка регистрации не мешает */
 async function evRegDone(env, ev, W, x) { await evStateDel(env, x.chat);
   const r = await evRegister(env, ev, W, { chat: x.chat, name: x.name || efShort(''), src: 'bot', src_code: x.src_code, test: x.test, phone: x.phone || null, email: x.email || null });
-  const steps = evSteps(ev), e = evNext(r.E, msNow()); let j;
+  const steps = evOn(ev), e = evNext(r.E, msNow()); let j;
   if (!r.fresh) j = await evAlready(env, x.chat, ev, r.E, W);
   else if (steps.some(s => s.on === 'reg' && !(s.min | 0))) j = await evTick(env, { ev, k: W.k });
   else j = await tgSend(env, x.chat, '✅ <b>' + nbt(e && e.status === 'live' ? 'Эфир уже идёт!' : 'Ты записан') + '</b>\n«' + th(ev.title) + '»' + (e && e.status !== 'live' && e.start ? '\n' + efWhen(e.start) : ''), e ? [[{ text: e.status === 'live' ? '▶ Смотреть эфир' : 'Страница эфира', url: await efLink(env, e, W.k) }]] : undefined);
@@ -4299,7 +4310,9 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
         efirs: E.map(e => ({ id: e.id, title: e.title, start: e.start, status: e.status })) }) }
     return json(req, { ok: true, events: out, def: evFunnelDef() }) }
   if (path === '/efir/host/event/save' && req.method === 'POST') { const title = bStr(o.title, 140); if (!title) return json(req, { ok: false, err: 'Напиши название мероприятия' }, 400);
-    const of = o.offer && bStr(o.offer.title, 200) ? { title: bStr(o.offer.title, 200), price: Math.max(0, +o.offer.price | 0), code: bStr(o.offer.code, 60) || null } : null, fn = o.funnel != null ? JSON.stringify(evClean(o.funnel)) : null;
+    const of = o.offer && bStr(o.offer.title, 200) ? { title: bStr(o.offer.title, 200), price: Math.max(0, +o.offer.price | 0), code: bStr(o.offer.code, 60) || null } : null;
+    let fn = o.funnel != null ? evClean(o.funnel) : null; if (fn && +o.id) { const old0 = await evGet(env, o.id), OS = old0 ? evSteps(old0) : []; fn = fn.map(x => { const y = OS.find(z => z.id === x.id); if (!y) return x; for (const k of ['title', 'off', 'off_mode', 'off0']) if (y[k] != null && x[k] == null) x[k] = y[k]; if (EV_WHO.indexOf(y.who) > 2 && x.who === 'all') x.who = y.who; return x }) } /* 07.11 Э4: старый пульт не знает title/off/фильтров дожима — сохраняем их по id шага */
+    fn = fn ? JSON.stringify(fn) : null;
     const cover = /^https:\/\/[^\s"'<>]+$/.test(o.cover || '') ? bStr(o.cover, 400) : null;
     if (+o.id) { const old = await evGet(env, o.id); if (!old) return json(req, { ok: false, err: 'Мероприятие не найдено' }, 404);
       await env.DB.prepare('UPDATE efir_event SET title=?, about=?, cover=?, offer=?, funnel=COALESCE(?, funnel), upd=? WHERE id=?').bind(title, bStr(o.about, 1500), cover, of ? JSON.stringify(of) : null, fn, now, old.id).run(); return json(req, { ok: true, id: old.id }) }
@@ -4330,11 +4343,13 @@ async function evHostApi(env, req, path, u, o, W) { await ef2Ensure(env); const 
   if (path === '/efir/host/event/regs') { const E = await evEfirs(env, ev.id), ids = E.map(x => x.id);
     const R = await qAll(env.DB.prepare('SELECT r.k, r.uid, r.name, r.src, r.src_code, r.test, r.at, (r.chat IS NOT NULL OR s.tg_chat IS NOT NULL) tg' + (ids.length ? ', (SELECT COUNT(DISTINCT efir_id) FROM efir_seen z WHERE z.k=r.k AND z.efir_id IN (' + ids.join(',') + ')) came' : ', 0 came') + ' FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=? ORDER BY r.at DESC LIMIT 500').bind(ev.id));
     return json(req, { ok: true, regs: R.map(r => ({ name: r.name || (r.uid ? 'Ученик ' + r.uid : 'Гость'), src: r.src, code: r.src_code || '', test: r.test ? 1 : 0, at: r.at, tg: !!r.tg, came: r.came | 0, student: !!r.uid })), efirs: E.length }) }
+  /* 07.11 Э4: материалы (2.4), шаг 5 — сколько уже отправлено (ev_sent), разовые 2.9 (v:2: число получателей, «Прислать себе», отправить, запланировать, изменить, отменить, журнал) */
+  if (path === '/efir/host/event/mat') return json(req, req.method === 'POST' ? await ev4MatPost(env, ev, o, W) : await ev4Mats(env, ev));
+  if (path === '/efir/host/event/sent') return json(req, await ev4Sent(env, ev));
+  if (path === '/efir/host/event/bc' && req.method === 'GET') return json(req, await ev4BcGet(env, ev));
+  if (path === '/efir/host/event/bc' && req.method === 'POST' && +o.v === 2) return json(req, await ev4BcPost(env, ev, o, W, new URL(req.url).origin));
   if (path === '/efir/host/event/bc' && req.method === 'POST') { if (!String(o.text || '').trim()) return json(req, { ok: false, err: 'Напиши текст сообщения' }, 400); return json(req, await evBroadcast(env, ev, o)) }
-  if (path === '/efir/host/event/test' && req.method === 'POST') { const s = evClean([o.step || {}])[0]; if (!s) return json(req, { ok: false, err: 'Пустой шаг' }, 400);
-    const me = await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(W.uid).first().catch(() => null), chat = (me && me.tg_chat) || ((await env.DB.prepare('SELECT chat FROM tg_admin LIMIT 1').first()) || {}).chat; if (!chat) return json(req, { ok: false, err: 'Не нашёл твой Telegram' }, 400);
-    const E = await evEfirs(env, ev.id), e = s.on === 'reg' || s.on === 'days' ? evNext(E, now) : (E.find(x => x.status !== 'done') || E[0]), j = await evSend(env, chat, await evRender(env, ev, E, e, s, { k: 'u' + W.uid, name: 'Роман' }), s.img);
-    return json(req, j && j.ok ? { ok: true } : { ok: false, err: 'Telegram не принял сообщение: ' + ((j && j.description) || 'ошибка') }) }
+  if (path === '/efir/host/event/test' && req.method === 'POST') return json(req, await ev4Self(env, ev, o, W, new URL(req.url).origin)); /* 07.11 Э4: «Прислать себе» — только в свой Telegram (без «первого админа»), all:1 — все включённые шаги */
   return json(req, { ok: false, err: 'path' }, 404) }
 
 /* ===== 07.11 «Эфиры 2.0», этап Э2 (docs/plan/efiry-tz.md v6 §2.1, §2.4, §3.2, §6.4 1.1–2.8б, §10): списки, «Создать» и мастер мероприятия (шаги 1, 2, 3, 7, 8).
@@ -4430,20 +4445,20 @@ async function ev2Get(env, ev) { const now = msNow(), D = await ev2Days(env, ev.
     fmt: ev.fmt === 'room' ? 'room' : 'obs', dur: +ev.dur || (D[0] && D[0].dur) || 90, named: ev.named ? 1 : 0, upd: ev.upd || 0, steps,
     reg: { phone: R.phone, email: R.email, skip_email: R.skip_email, greet: R.greet, ask_email: R.ask_email, gc_group: R.gc_group, saved: raw.greet && raw.greet.text ? 1 : 0 },
     sale: ev3Pub(S3), prod: await ev3Prod(env, S3, ev), live: D.some(e => e.status === 'live') ? 1 : 0, lead_title: await ev3LeadTitle(env, ev, D), report_to: await ev3ReportTo(env), access: ev2Acc(ev), rec: ev2Rec(ev), saved7: ev.access || ev.rec ? 1 : 0,
-    bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0 },
+    bot: 'https://t.me/' + BOT(env) + '?start=v' + ev.id, regs: (n && n.n) | 0, funnel: evSteps(ev), cf_plan: (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 'paid' : 'free' },
     days: D.map(e => Object.assign(ev2DayPub(e, now), { seen: ((seen.find(x => x.efir_id === e.id) || {}).n) | 0 })),
     hosts: [{ id: 'admin', name: 'Роман Одуванов' }].concat(CURATORS.map(c => ({ id: c.id, name: c.full }))), privacy: await evPrivacy(env) } }
 /* новый черновик (§3.2 event/new): метки «Основная» и «Сайт», у марафона 2 дня, у вебинара 1 эфир; дни — в статусе draft без даты */
 async function ev2New(env, type, W) { const now = msNow(), t = type === 'mar' ? 'mar' : 'web';
   const r = await env.DB.prepare("INSERT INTO efir_event (title, about, cover, offer, funnel, created, upd, reg, type, status, host, fmt, dur, short, named) VALUES ('', '', NULL, NULL, ?, ?, ?, ?, ?, 'draft', 'admin', 'obs', 90, '', 0) RETURNING id")
-    .bind(JSON.stringify(evFunnelDef()), now, now, JSON.stringify(EV_REG_NEW), t).first();
+    .bind(JSON.stringify(ev4SetNew(t)), now, now, JSON.stringify(EV_REG_NEW), t).first(); /* 07.11 Э4: готовый набор шага 5 (std) */
   const q = [env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, '', 'Основная', ?)").bind(r.id, now), env.DB.prepare("INSERT OR IGNORE INTO ev_src (ev_id, code, title, at) VALUES (?, 'site', 'Сайт', ?)").bind(r.id, now)];
   for (let i = 0; i < (t === 'mar' ? 2 : 1); i++) q.push(env.DB.prepare("INSERT INTO efir (title, about, host_cid, host_uid, host_name, start, dur, kind, tariff, status, cfg, chapters, created, upd) VALUES ('', '', 'admin', ?, 'Роман Одуванов', NULL, 90, 'open', 'open', 'draft', ?, '[]', ?, ?)").bind(efAdminUid(env), JSON.stringify({ ev: r.id, ord: i }), now, now));
   await env.DB.batch(q); const ev = await evGet(env, r.id); await ev2SaveSteps(env, ev); await logIt(env, 'ev-new2', W.uid, r.id + ' ' + t); return { ok: true, id: r.id } }
 /* шаги 1, 3, 7: изменения полей (автосохранение 800 мс). upd — защита от правки в двух вкладках */
 async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null && +o.upd && (ev.upd || 0) > +o.upd) return { ok: false, conflict: 1, err: 'Изменено в другой вкладке — обнови' };
   const set = [], b = [], D = await ev2Days(env, ev.id), st = ev2Status(ev), dq = []; let prod3 = null;
-  const put = (c, v) => { set.push(c + '=?'); b.push(v); ev[c] = v };
+  const put = (c, v) => { const i = set.indexOf(c + '=?'); if (i >= 0) b[i] = v; else { set.push(c + '=?'); b.push(v) } ev[c] = v };
   if ('title' in o) { const t = bStr(o.title, 140); put('title', t) }
   if ('short' in o) put('short', bStr(o.short, 24));
   if ('about' in o) put('about', bStr(o.about, 1500));
@@ -4457,7 +4472,10 @@ async function ev2Save(env, ev, o, W) { const now = msNow(); if (o.upd != null &
       g = R.greet || {}, a = R.ask_email || {};
     c.greet = { text: bStr(g.text, 1500) || undefined, btn: bStr(g.btn, 40) || undefined }; c.ask_email = { text: bStr(a.text, 1000) || undefined, err: bStr(a.err, 500) || undefined };
     if (old.gc_group) c.gc_group = old.gc_group; put('reg', JSON.stringify(c)) }
+  if ('funnel' in o && Array.isArray(o.funnel)) { const F = evClean(o.funnel); if (!F.length) return { ok: false, err: 'Нужно хотя бы одно сообщение с текстом' }; put('funnel', JSON.stringify(F)) } /* 07.11 Э4: шаг 5 */
+  const mode0 = (ev2Sale(ev) || {}).mode || null;
   if ('sale' in o && o.sale && typeof o.sale === 'object') { const r = await ev3SaleSave(env, ev, o.sale, D, W); if (r.err) return { ok: false, err: r.err }; put('sale', r.json); if (r.offer !== undefined) put('offer', r.offer); if (r.prod) prod3 = r.prod } /* 07.11 Э3: шаг 6 */
+  if ('sale' in o) { const mode1 = (ev2Sale(ev) || {}).mode || null, fm = mode1 !== mode0 ? ev4FunMode(evSteps(ev), mode0, mode1, ev2Type(ev, D)) : null; if (fm) put('funnel', JSON.stringify(fm)) } /* 07.11 Э4: дожим по режиму (§6.4 2.5) */
   if ('access' in o && o.access) { const A = ev2Acc({ access: JSON.stringify(o.access) }); put('access', JSON.stringify(A)) }
   if ('rec' in o && o.rec) { const R = ev2Rec({ rec: JSON.stringify(o.rec) }); if (![1, 3, 7, 0, -1].includes(R.days) && R.days !== ev2Rec(ev).days) R.days = 1; put('rec', JSON.stringify(R)) }
   if (!set.length) return { ok: false, err: 'Нечего сохранять' };
@@ -4529,7 +4547,7 @@ async function ev2List(env, type) { const now = msNow(), t = type === 'mar' ? 'm
   const EVS = await qAll(env.DB.prepare("SELECT * FROM efir_event WHERE del=0 AND COALESCE(type,'')<>'auto' ORDER BY id DESC LIMIT 200")), ids = EVS.map(e => +e.id);
   const DA = ids.length ? await qAll(env.DB.prepare("SELECT id, title, start, dur, status, cfg, host_cid, host_name, at_live, at_end, CAST(json_extract(cfg, '$.ev') AS INTEGER) ev FROM efir WHERE del=0 AND kind='open' AND status<>'cancel' AND CAST(json_extract(cfg, '$.ev') AS INTEGER) IN (" + ids.join(',') + ') ORDER BY COALESCE(json_extract(cfg, \'$.ord\'), 999), COALESCE(start, 0), id')) : [];
   const byEv = {}; for (const d of DA) (byEv[d.ev] = byEv[d.ev] || []).push(d);
-  const mine = EVS.filter(ev => ev2Type(ev, byEv[ev.id]) === t), EF = t === 'web' ? await qAll(env.DB.prepare("SELECT id, title, start, dur, status, cfg, tariff, host_cid, host_name, at_live, at_end FROM efir WHERE del=0 AND kind='live' AND COALESCE(host_cid,'admin')='admin' AND status<>'cancel' AND json_extract(cfg, '$.ev') IS NULL ORDER BY start DESC LIMIT 200")) : [];
+  const mine = EVS.filter(ev => ev2Type(ev, byEv[ev.id]) === t), EF = t === 'web' ? await qAll(env.DB.prepare("SELECT id, kind, title, start, dur, status, cfg, tariff, host_cid, host_name, at_live, at_end FROM efir WHERE del=0 AND status<>'cancel' AND COALESCE(host_cid,'admin') IN ('admin','') AND ((kind='live' AND json_extract(cfg, '$.ev') IS NULL) OR (kind='open' AND status<>'draft' AND (json_extract(cfg, '$.ev') IS NULL OR NOT EXISTS (SELECT 1 FROM efir_event v WHERE v.del=0 AND v.id=CAST(json_extract(efir.cfg, '$.ev') AS INTEGER))))) ORDER BY start DESC LIMIT 200")) : []; /* 07.11 Э4 (долг Э2, §6.4 1.1, §10): эфиры Романа для учеников и открытые эфиры без мероприятия */
   const evIds = mine.map(e => +e.id), dayIds = [].concat(...mine.map(e => (byEv[e.id] || []).map(d => +d.id))), efIds = EF.map(e => +e.id), allEf = dayIds.concat(efIds);
   const Q = []; if (evIds.length) Q.push(env.DB.prepare('SELECT ev_id, COUNT(*) n FROM ev_reg WHERE COALESCE(test,0)=0 AND ev_id IN (' + evIds.join(',') + ') GROUP BY ev_id'),
     env.DB.prepare('SELECT ev_id, COUNT(*) n FROM ev_form WHERE COALESCE(test,0)=0 AND ev_id IN (' + evIds.join(',') + ') GROUP BY ev_id'));
@@ -4556,11 +4574,120 @@ async function ev2List(env, type) { const now = msNow(), t = type === 'mar' ? 'm
       live: live ? { efir_id: live.id, at_live: live.at_live || live.start, online: ON[live.id] | 0, leads: (LD[live.id] || []).reduce((s, x) => s + x.n, 0), sig: sig(efJ(live.cfg, {})) } : null }) }
   for (const e of EF) { const c = efJ(e.cfg, {}), acc = c.access || null;
     items.push({ k: 'efir', id: e.id, efir_id: e.id, status: e.status === 'draft' ? 'draft' : ['done', 'rec'].includes(e.status) ? 'done' : 'reg', day_status: e.status, title: e.title || '', short: c.short || '', host_name: ev2HostShort(e.host_cid || 'admin'), fmt: c.room ? 'room' : 'obs',
-      access: { who: 'stream', streams: acc && acc.streams ? acc.streams : [], all: e.tariff === 'all' ? 1 : 0 }, regs: null, came: (SN[e.id] || new Set()).size, leads: (LD[e.id] || []).reduce((s, x) => s + x.n, 0), mode: null, steps: null, ready: null, start: e.start || null,
+      access: e.kind === 'open' || e.tariff === 'open' ? { who: 'open', streams: [] } : { who: 'stream', streams: acc && acc.streams ? acc.streams : [], all: e.tariff === 'all' ? 1 : 0 }, kind: e.kind, regs: null, came: (SN[e.id] || new Set()).size, leads: (LD[e.id] || []).reduce((s, x) => s + x.n, 0), mode: null, steps: null, ready: null, start: e.start || null,
       link: 'https://oduvanovroman.getcourse.ru/teach/control/stream?fs=efir&e=' + e.id, regn: ER[e.id] | 0,
       days: [{ id: e.id, title: e.title || '', short: c.short || '', start: e.start || null, status: e.status }],
       live: e.status === 'live' ? { efir_id: e.id, at_live: e.at_live || e.start, online: ON[e.id] | 0, leads: (LD[e.id] || []).reduce((s, x) => s + x.n, 0), sig: sig(c) } : null }) }
   return { ok: true, now, type: t, items, rec_ok: ((hasRec && hasRec.n) | 0) > 0 ? 1 : 0 } }
+/* ===== 07.11 «Эфиры 2.0», этап Э4 (docs/plan/efiry-tz.md v6 §2.2 ev_mat / ev_bc, §3.2, §3.7.6, §6.4 2.4–2.5а, 2.9, §10): материалы, бот (шаг 5), после запуска — разовые сообщения.
+   Материалы — ev_mat (kind lead | banner | poll, data JSON, days JSON — id дней, [] = все дни); показывает их пульт Э5 (ev_mat_log). Шаги бота — efir_event.funnel (evClean), id не меняются.
+   Разовые — ev_bc; до Paid их отправляет evTick старой очередью (до 30 сообщений за тик вместе с шагами воронки), учёт — ev_sent со step 'bc<id>' (повторов нет). ===== */
+const EV4_HIDE = { lead: [0, 5, 10, 15, 30], banner: [0, 5, 15] }, EV4_SEG = ['all', 'came_day', 'miss_day', 'never', 'leads', 'forms'];
+const ev4Url = u => /^https:\/\/[^\s"'<>]{4,500}$/.test(String(u || '')) ? String(u) : '';
+const ev4Img = (u, origin) => { u = String(u || ''); if (/^\/efir\/cover\?id=\d{1,9}$/.test(u)) return origin ? origin + u : u; return ev4Url(u) || null };
+function ev4MatData(kind, d) { d = d && typeof d === 'object' ? d : {}; const sh = bStr(d.short, 24) || undefined;
+  if (kind === 'lead') return { title: bStr(d.title, 140), short: sh, sub: bStr(d.sub, 200), btn: bStr(d.btn, 40), hide: EV4_HIDE.lead.includes(+d.hide) ? +d.hide : 15, tg: d.tg === 0 ? 0 : 1 };
+  if (kind === 'banner') return { title: bStr(d.title, 140), short: sh, sub: bStr(d.sub, 200), btn: bStr(d.btn, 40) || 'Открыть', url: ev4Url(d.url), ulab: bStr(d.ulab, 80) || undefined, hide: EV4_HIDE.banner.includes(+d.hide) ? +d.hide : 0, img: ev4Img(d.img) || undefined };
+  return { q: bStr(d.q, 200), short: sh, opts: (Array.isArray(d.opts) ? d.opts : []).map(x => bStr(x, 80)).filter(Boolean).slice(0, 6), show_res: d.show_res === 0 ? 0 : 1, multi: d.multi ? 1 : 0 } }
+function ev4MatErr(kind, d) { if (kind === 'lead') return !d.title ? 'Напиши заголовок блока' : !d.btn ? 'Напиши текст кнопки' : '';
+  if (kind === 'banner') return !d.title ? 'Напиши заголовок' : !d.url ? 'Вставь ссылку — она начинается с https://' : '';
+  return !d.q ? 'Напиши вопрос' : d.opts.length < 2 ? 'Нужно хотя бы 2 варианта' : '' }
+/* список материалов; shown — сейчас показан в идущем эфире (его нельзя удалить: «сначала убери в пульте») */
+async function ev4Mats(env, ev) { const L = await qAll(env.DB.prepare('SELECT id, kind, data, days, ord FROM ev_mat WHERE ev_id=? AND del=0 ORDER BY ord, id').bind(ev.id)), ids = L.map(m => +m.id);
+  const on = ids.length ? await qAll(env.DB.prepare("SELECT l.mat_id FROM ev_mat_log l JOIN efir e ON e.id=l.efir_id WHERE l.at_off IS NULL AND e.status='live' AND l.mat_id IN (" + ids.join(',') + ')')) : [];
+  return { ok: true, mats: L.map(m => ({ id: m.id, kind: m.kind, data: efJ(m.data, {}), days: efJ(m.days, []) || [], ord: m.ord | 0, shown: on.some(x => +x.mat_id === +m.id) ? 1 : 0 })) } }
+/* POST /efir/host/event/mat {ev, act: save|del|dup|ord, id?, kind, data, days[]}; правка действует со следующего показа (пульт берёт данные при показе) */
+async function ev4MatPost(env, ev, o, W) { const now = msNow(), act = String(o.act || 'save'); let id = +o.id || 0;
+  const one = id ? await env.DB.prepare('SELECT * FROM ev_mat WHERE id=? AND ev_id=? AND del=0').bind(id, ev.id).first() : null; if (id && !one) return { ok: false, err: 'Материал не найден — обнови страницу' };
+  const mx = async () => (((await env.DB.prepare('SELECT MAX(ord) m FROM ev_mat WHERE ev_id=? AND del=0').bind(ev.id).first()) || {}).m | 0) + 1;
+  if (act === 'del') { if (!one) return { ok: false, err: 'Материал не найден' }; const M = await ev4Mats(env, ev); if ((M.mats.find(m => m.id === id) || {}).shown) return { ok: false, err: 'Материал сейчас показан — сначала убери в пульте' };
+    await env.DB.prepare('UPDATE ev_mat SET del=1, at=? WHERE id=?').bind(now, id).run() }
+  else if (act === 'dup') { if (!one) return { ok: false, err: 'Материал не найден' }; const d = efJ(one.data, {}); if (d.title) d.title = bStr(d.title + ' (копия)', 140); else if (d.q) d.q = bStr(d.q + ' (копия)', 200);
+    id = (await env.DB.prepare('INSERT INTO ev_mat (ev_id, kind, data, days, ord, del, at) VALUES (?,?,?,?,?,0,?) RETURNING id').bind(ev.id, one.kind, JSON.stringify(d), one.days || '[]', await mx(), now).first()).id }
+  else if (act === 'ord') { const L = (Array.isArray(o.ids) ? o.ids : []).map(Number).filter(Boolean).slice(0, 60); if (L.length) await env.DB.batch(L.map((x, i) => env.DB.prepare('UPDATE ev_mat SET ord=? WHERE id=? AND ev_id=?').bind(i + 1, x, ev.id))) }
+  else { const kind = one ? one.kind : String(o.kind || ''); if (!['lead', 'banner', 'poll'].includes(kind)) return { ok: false, err: 'Неизвестный материал' };
+    if (kind === 'lead' && (ev2Sale(ev) || {}).mode === 'none' && !one) return { ok: false, err: 'Продаж нет — кнопка заявки не покажется. Включи продажи на шаге 6' };
+    const d = ev4MatData(kind, o.data), er = ev4MatErr(kind, d); if (er) return { ok: false, err: er };
+    const D = (await ev2Days(env, ev.id)).filter(e => !efJ(e.cfg, {}).hide), want = Array.isArray(o.days) ? o.days.map(Number) : null, dd = want ? want.filter(x => D.some(e => +e.id === x)) : [];
+    if (want && !dd.length && D.length) return { ok: false, err: 'Отметь хотя бы один день' };
+    const days = !want || dd.length >= D.length ? [] : dd;
+    if (one) await env.DB.prepare('UPDATE ev_mat SET data=?, days=?, at=? WHERE id=?').bind(JSON.stringify(d), JSON.stringify(days), now, id).run();
+    else id = (await env.DB.prepare('INSERT INTO ev_mat (ev_id, kind, data, days, ord, del, at) VALUES (?,?,?,?,?,0,?) RETURNING id').bind(ev.id, kind, JSON.stringify(d), JSON.stringify(days), await mx(), now).first()).id }
+  await logIt(env, 'ev-mat', W.uid || 0, ev.id + ' ' + act + ' ' + (id || ''));
+  const steps = await ev2SaveSteps(env, ev); return Object.assign(await ev4Mats(env, ev), { id, steps }) }
+/* шаг 5: сколько уже отправлено по каждому шагу и дню (ev_sent, ok=1) — для «Уже отправлено…» в 2.5а */
+async function ev4Sent(env, ev) { const L = await qAll(env.DB.prepare("SELECT step, efir_id, COUNT(*) n FROM ev_sent WHERE ev_id=? AND ok=1 AND step NOT LIKE 'bc%' GROUP BY step, efir_id").bind(ev.id)); return { ok: true, sent: L.map(x => ({ step: x.step, efir_id: x.efir_id | 0, n: x.n | 0 })) } }
+/* готовый набор шага 5 для нового мероприятия (std — «готовый набор включён», пока шаг не правили) и дожим по режиму продаж (§6.4 2.5; тексты — §12.1) */
+function ev4Days(mode, t) { const mar = t !== 'web', nm = mar ? 'марафона' : 'вебинара', pg = { t: mar ? 'Страница марафона' : 'Страница вебинара', u: '{мероприятие}' };
+  if (mode === 'form') return [
+    { id: 'd1', on: 'days', min: 1440, who: 'noform', title: 'Остались вопросы?', text: '{имя}, остались вопросы после ' + nm + '? Заполни короткую анкету — менеджер напишет и ответит лично.', btns: [{ t: 'Заполнить анкету', u: '{мероприятие}' }], std: 1 },
+    { id: 'd2', on: 'days', min: 180, who: 'formopen', title: 'Ты не дозаполнил анкету', text: '{имя}, ты начал заполнять анкету, но не отправил. Это займёт минуту — менеджер ответит лично.', btns: [{ t: 'Дозаполнить анкету', u: '{мероприятие}' }], std: 1 }];
+  return [{ id: 'd1', on: 'days', min: 1440, who: 'nolead', title: 'Места заканчиваются', text: '{имя}, места на поток заканчиваются. Если остались вопросы — оставь заявку на странице ' + nm + ', менеджер свяжется и всё расскажет.', btns: [pg], std: 1 },
+    { id: 'd2', on: 'days', min: 4320, who: 'nolead', title: 'Последний шанс', off: 1, text: '{имя}, сегодня последний день, когда можно попасть на поток на условиях ' + nm + '.', btns: [pg], std: 1 }] }
+function ev4SetNew(t) { const T = { r0: 'Приветствие и расписание', b1: 'Завтра эфир', b2: 'Через час', s0: 'Начинаем' };
+  return evFunnelDef().map(s => Object.assign(s, { title: T[s.id], std: 1 })).concat([
+    { id: 'a1', on: 'after', min: 60, who: 'came', title: 'Спасибо, что был', text: '{имя}, спасибо, что был на эфире «{эфир_тема}»! Запись уже доступна — пересмотри, если что-то пропустил.', btns: [{ t: 'Смотреть запись', u: '{эфир}' }], std: 1 },
+    { id: 'a2', on: 'after', min: 60, who: 'miss', title: 'Ты пропустил', text: '{имя}, эфир «{эфир_тема}» уже прошёл — запись доступна, посмотри, пока она открыта.', btns: [{ t: 'Смотреть запись', u: '{эфир}' }], std: 1 }], ev4Days('sell', t)) }
+/* смена режима продаж (§6.4 2.5): «Без продаж» — все шаги «после марафона» выключаются (off_mode, прежнее вкл/выкл — off0), возврат — восстанавливается;
+   готовый дожим (std, не правили) меняется на набор режима «Анкеты» / «Продаём»; id шагов (d1, d2) те же */
+function ev4FunMode(F0, from, to, t) { let ch = 0; const F = F0.map(s => Object.assign({}, s));
+  for (const s of F) { if (s.on !== 'days') continue;
+    if (to === 'none' && !s.off_mode) { s.off0 = s.off ? 1 : 0; s.off = 1; s.off_mode = 1; ch = 1 }
+    else if (to !== 'none' && s.off_mode) { if (s.off0) s.off = 1; else delete s.off; delete s.off_mode; delete s.off0; ch = 1 } }
+  const DY = F.filter(s => s.on === 'days'), want = to === 'form' ? 'noform' : 'nolead';
+  if ((to === 'sell' || to === 'form') && DY.length && DY.every(s => s.std) && !DY.some(s => s.who === want)) return F.filter(s => s.on !== 'days').concat(ev4Days(to, t));
+  return ch ? F : null }
+/* «Прислать себе» — только в свой Telegram (ученик-аккаунт админа или строка tg_admin админа); all:1 — все включённые шаги цепочки по порядку */
+async function ev4Chat(env, W) { const me = W.uid ? await env.DB.prepare('SELECT tg_chat FROM student WHERE uid=?').bind(W.uid).first().catch(() => null) : null; if (me && me.tg_chat) return String(me.tg_chat);
+  if (W.uid && +W.uid === efAdminUid(env)) { const A = await qAll(env.DB.prepare('SELECT chat, name FROM tg_admin')).catch(() => []), r = A.find(x => /^роман/i.test(String(x.name || '').trim())); if (r) return String(r.chat) }
+  return null }
+async function ev4Self(env, ev, o, W, origin) { const chat = await ev4Chat(env, W); if (!chat) return { ok: false, err: 'Не нашёл твой Telegram — открой бота школы и нажми «Старт»' };
+  const E = await evEfirs(env, ev.id), now = msNow(), L = o.all ? evOn(ev) : [Object.assign({}, o.step || {}, { img: ev4Img((o.step || {}).img, origin) })], steps = evClean(L).slice(0, 12);
+  if (!steps.length) return { ok: false, err: 'Пустое сообщение — напиши текст' }; let n = 0, err = '';
+  for (const s of steps) { const e = +o.efir ? E.find(x => x.id === +o.efir) : s.on === 'reg' || s.on === 'days' ? evNext(E, now) : (E.find(x => !['done', 'rec'].includes(x.status)) || E[E.length - 1]);
+    const j = await evSend(env, chat, await evRender(env, ev, E, e || null, s, { k: 'u' + (W.uid || 0), name: W.name || 'Роман' }), s.img).catch(() => null); if (j && j.ok) n++; else err = (j && j.description) || 'ошибка' }
+  await logIt(env, 'ev-self', W.uid || 0, ev.id + ' ' + n + '/' + steps.length);
+  return n ? { ok: true, n } : { ok: false, err: 'Telegram не принял сообщение: ' + err } }
+/* сегменты разовых (2.9): кому — все записавшиеся (не тест, есть Telegram) / был на дне / не пришёл на день / не был ни разу / оставил заявку / заполнил анкету */
+function ev4Seg(E, who) { const idl = E.length ? E.map(e => +e.id).join(',') : '0', f = +who.efir_id || 0, seen = x => 'EXISTS (SELECT 1 FROM efir_seen z WHERE z.k=r.k AND z.sess=0 AND z.efir_id' + x + ')';
+  const w = who.seg === 'came_day' ? ' AND ' + seen('=' + f) : who.seg === 'miss_day' ? ' AND NOT ' + seen('=' + f) : who.seg === 'never' ? ' AND NOT ' + seen(' IN (' + idl + ')')
+    : who.seg === 'leads' ? ' AND EXISTS (SELECT 1 FROM efir_lead l WHERE l.k=r.k AND l.efir_id IN (' + idl + '))' : who.seg === 'forms' ? ' AND EXISTS (SELECT 1 FROM ev_form fm WHERE fm.ev_id=r.ev_id AND fm.k=r.k AND COALESCE(fm.test,0)=0)' : '';
+  return ' FROM ev_reg r LEFT JOIN student s ON s.uid=r.uid WHERE r.ev_id=? AND COALESCE(r.test,0)=0 AND COALESCE(r.chat, s.tg_chat, CASE WHEN substr(r.k,1,1)=\'t\' THEN substr(r.k,2) END) IS NOT NULL' + w }
+const ev4BcPub = b => ({ id: b.id, who: efJ(b.who, {}), text: b.text || '', img: b.img || null, btns: efJ(b.btns, []) || [], at_plan: b.at_plan || null, at_sent: b.at_sent || null, n: b.n | 0, ok: b.ok | 0, fail: b.fail | 0, st: b.st || 'plan' });
+async function ev4BcGet(env, ev) { await ef2Ensure(env); const E = await evEfirs(env, ev.id), seg = s => env.DB.prepare('SELECT COUNT(*) n' + ev4Seg(E, s)).bind(ev.id);
+  const Q = [seg({ seg: 'all' }), seg({ seg: 'never' }), seg({ seg: 'leads' }), seg({ seg: 'forms' })].concat(E.map(e => seg({ seg: 'came_day', efir_id: e.id }))), R = await env.DB.batch(Q), n = i => ((((R[i] || {}).results || [])[0] || {}).n) | 0;
+  const L = await qAll(env.DB.prepare("SELECT * FROM ev_bc WHERE ev_id=? AND st<>'del' ORDER BY COALESCE(at_sent, at_plan) DESC, id DESC LIMIT 50").bind(ev.id));
+  return { ok: true, now: msNow(), plan: (await kvGet(env, 'cf_plan').catch(() => null)) === 'paid' ? 'paid' : 'free', mode: (ev2Sale(ev) || {}).mode || null,
+    counts: { all: n(0), never: n(1), leads: n(2), forms: n(3), days: E.map((e, i) => ({ id: e.id, came: n(4 + i), miss: Math.max(0, n(0) - n(4 + i)) })) }, list: L.map(ev4BcPub) } }
+/* POST /efir/host/event/bc {v:2, act: self|send|plan|edit|cancel, id?, who:{seg, efir_id}, text, img, btns, at} */
+async function ev4BcPost(env, ev, o, W, origin) { await ef2Ensure(env); const now = msNow(), act = String(o.act || ''), E = await evEfirs(env, ev.id);
+  const who = { seg: EV4_SEG.includes((o.who || {}).seg) ? o.who.seg : 'all' }; if (who.seg === 'came_day' || who.seg === 'miss_day') { const f = +(o.who || {}).efir_id || 0; if (!E.some(e => e.id === f)) return { ok: false, err: 'Выбери день' }; who.efir_id = f }
+  const text = bStr(String(o.text || ''), 3500), img = ev4Img(o.img, origin), btns = evClean([{ on: 'reg', text: 'x', btns: o.btns }])[0].btns;
+  if (act === 'self') return ev4Self(env, ev, { step: { on: 'reg', text, btns, img }, efir: who.efir_id }, W, origin);
+  if (act === 'cancel' || act === 'edit') { const b = await env.DB.prepare('SELECT * FROM ev_bc WHERE id=? AND ev_id=?').bind(+o.id || 0, ev.id).first(); if (!b) return { ok: false, err: 'Рассылка не найдена' };
+    if (b.st !== 'plan' || (b.at_plan || 0) <= now) return { ok: false, err: 'Рассылка уже отправляется — изменить нельзя' };
+    if (act === 'cancel') { await env.DB.prepare("UPDATE ev_bc SET st='cancel', upd=? WHERE id=? AND st='plan'").bind(now, b.id).run(); await logIt(env, 'ev-bc2', W.uid || 0, ev.id + ' cancel ' + b.id); return ev4BcGet(env, ev) } }
+  if (act !== 'send' && act !== 'plan' && act !== 'edit') return { ok: false, err: 'Неизвестное действие' };
+  if (!text.trim()) return { ok: false, err: 'Напиши текст сообщения' };
+  const at = act === 'send' ? now : +o.at || 0; if (act !== 'send' && (at < now + 6e4 || at > now + 60 * 864e5)) return { ok: false, err: 'Выбери время в будущем — не раньше чем через минуту' };
+  const c = await env.DB.prepare('SELECT COUNT(*) n' + ev4Seg(E, who)).bind(ev.id).first(), n = (c && c.n) | 0; if (!n) return { ok: false, err: 'В этом сегменте пока никого нет — некому отправлять' };
+  if (act === 'edit') await env.DB.prepare("UPDATE ev_bc SET who=?, text=?, img=?, btns=?, at_plan=?, n=?, upd=? WHERE id=? AND st='plan'").bind(JSON.stringify(who), text, img, JSON.stringify(btns), at, n, now, +o.id).run();
+  else await env.DB.prepare("INSERT INTO ev_bc (ev_id, who, text, img, btns, at_plan, at_sent, n, ok, st, fail, by_uid, upd) VALUES (?,?,?,?,?,?,NULL,?,0,'plan',0,?,?)").bind(ev.id, JSON.stringify(who), text, img, JSON.stringify(btns), at, n, W.uid || null, now).run();
+  await logIt(env, 'ev-bc2', W.uid || 0, ev.id + ' ' + act + ' ' + who.seg + (who.efir_id ? ':' + who.efir_id : '') + ' ' + n);
+  return ev4BcGet(env, ev) }
+/* отправка разовых старой очередью (Free, §3.7.6): созревшие ev_bc → по 30 за тик вместе с шагами воронки; n — получателей на старте, ok / fail — итог; «дошло N%» = ok / n */
+async function ev4BcTick(env, out, LIM) { await ef2Ensure(env); const now = msNow(); let BC = [];
+  try { BC = await qAll(env.DB.prepare("SELECT * FROM ev_bc WHERE st IN ('plan','run') AND COALESCE(at_plan,0)<=? ORDER BY at_plan, id LIMIT 3").bind(now)) } catch (e) { return }
+  for (const b of BC) { if (out.sent + out.fail >= LIM) break; const ev = await evGet(env, b.ev_id); if (!ev) { await env.DB.prepare("UPDATE ev_bc SET st='cancel' WHERE id=?").bind(b.id).run(); continue }
+    const who = efJ(b.who, {}), E = await evEfirs(env, ev.id), W = ev4Seg(E, who);
+    if (b.st === 'plan') { const c = await env.DB.prepare('SELECT COUNT(*) n' + W).bind(ev.id).first(); await env.DB.prepare("UPDATE ev_bc SET st='run', n=? WHERE id=? AND st='plan'").bind((c && c.n) | 0, b.id).run() }
+    const rem = LIM - out.sent - out.fail, R = await qAll(env.DB.prepare('SELECT r.*, s.tg_chat' + W + ' AND NOT EXISTS (SELECT 1 FROM ev_sent x WHERE x.ev_id=r.ev_id AND x.step=? AND x.efir_id=0 AND x.k=r.k) ORDER BY r.at LIMIT ?').bind(ev.id, 'bc' + b.id, rem));
+    const s = { text: b.text, btns: efJ(b.btns, []) || [] }, e0 = who.efir_id ? E.find(x => x.id === +who.efir_id) : null; let ok = 0, fail = 0;
+    for (const r of R) { const chat = r.chat || r.tg_chat || (r.k[0] === 't' ? r.k.slice(1) : null), ins = await env.DB.prepare('INSERT OR IGNORE INTO ev_sent (ev_id, step, efir_id, k, ok, at) VALUES (?,?,0,?,1,?)').bind(ev.id, 'bc' + b.id, r.k, now).run();
+      if (!ins.meta || !ins.meta.changes) continue; const j = chat ? await evSend(env, chat, await evRender(env, ev, E, e0 || evNext(E, now), s, r), b.img).catch(() => null) : null; if (j && j.ok) ok++; else fail++ }
+    out.sent += ok; out.fail += fail; const done = R.length < rem ? 1 : 0;
+    await env.DB.prepare("UPDATE ev_bc SET ok=COALESCE(ok,0)+?, fail=COALESCE(fail,0)+?, st=CASE WHEN ?=1 THEN 'sent' ELSE st END, at_sent=CASE WHEN ?=1 THEN ? ELSE at_sent END WHERE id=?").bind(ok, fail, done, done, now, b.id).run();
+    if (done) await logIt(env, 'ev-bc2', 0, ev.id + ' sent ' + b.id) } }
 /* потоки и тарифы для «Ученики потока» (2.7): уникальные значения из рейтинга (data.json) */
 async function ev2Streams(env) { let D = null; try { D = await loadData(env) } catch (e) {} const S = new Set(), T = new Set();
   for (const r of (D && D.rows) || []) { if (r.stream) S.add(String(r.stream)); if (r.tar) T.add(String(r.tar)) } if (D && D.stream) S.add(String(D.stream));
