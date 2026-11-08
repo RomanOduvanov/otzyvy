@@ -4333,14 +4333,15 @@ async function efirScenApi(env, req, path) { const u = new URL(req.url); await e
   if (!W || !W.s) return deny(req);
   if (path === '/efir/mod') { /* все идущие эфиры и автовебинары, вопросы зрителей «ждут ответа», заявки сейчас (куратор — только свои эфиры, без заявок) */
     const L = (await qAll(W.adm ? env.DB.prepare("SELECT * FROM efir WHERE del=0 AND (status='live' OR kind='auto')") : env.DB.prepare("SELECT * FROM efir WHERE del=0 AND status='live' AND host_cid=?").bind(W.cid))).map(e => ({ e, S: efState(e, now) })).filter(x => x.S.st === 'live');
-    const ids = L.map(x => x.e.id), live = []; let wait = [], leads = [];
-    if (ids.length) { const ph = ids.map(() => '?').join(','), [vr, mr, lr] = await env.DB.batch([env.DB.prepare('SELECT efir_id, sess, COUNT(*) n FROM efir_seen WHERE last>? AND efir_id IN (' + ph + ') GROUP BY efir_id, sess').bind(now - 9e4, ...ids),
+    const ids = L.map(x => x.e.id), live = []; let wait = [], leads = [], chat = [];
+    if (ids.length) { const ph = ids.map(() => '?').join(','), [vr, mr, lr, cr] = await env.DB.batch([env.DB.prepare('SELECT efir_id, sess, COUNT(*) n FROM efir_seen WHERE last>? AND efir_id IN (' + ph + ') GROUP BY efir_id, sess').bind(now - 9e4, ...ids),
         env.DB.prepare("SELECT * FROM efir_msg WHERE efir_id IN (" + ph + ") AND role='stu' AND kind IN ('msg','q') AND ans=0 AND del=0 AND at>? AND (vis='mod' OR kind='q') ORDER BY id LIMIT 80").bind(...ids, now - 3 * 36e5),
-        env.DB.prepare('SELECT * FROM efir_lead WHERE efir_id IN (' + ph + ') AND at>? ORDER BY id DESC LIMIT 30').bind(...ids, now - 6 * 36e5)]);
+        env.DB.prepare('SELECT * FROM efir_lead WHERE efir_id IN (' + ph + ') AND at>? ORDER BY id DESC LIMIT 30').bind(...ids, now - 6 * 36e5),
+        env.DB.prepare("SELECT * FROM efir_msg WHERE efir_id IN (" + ph + ") AND sess=0 AND del=0 AND kind='msg' ORDER BY id DESC LIMIT 80").bind(...ids)]); /* 08.11: весь чат идущих эфиров — во «Модерации» куратор видел только скрытые сообщения */
       for (const x of L) { const v = (vr.results || []).filter(y => y.efir_id === x.e.id); live.push({ id: x.e.id, title: x.e.title, kind: x.e.kind, sess: x.S.sess, viewers: v.reduce((s, y) => s + y.n, 0), sessions: v.length }) }
       wait = (mr.results || []).map(m => Object.assign(efMsgPub(m), { efir_id: m.efir_id, sess: m.sess, title: (L.find(x => x.e.id === m.efir_id) || {}).e.title, wait: now - m.at }));
-      if (W.adm) leads = lr.results || [] }
-    return json(req, { ok: true, now, live, wait, leads }) }
+      if (W.adm) leads = lr.results || []; chat = (cr.results || []).filter(m => { const x = L.find(y => y.e.id === m.efir_id); return x && x.e.kind !== 'auto' }).reverse().map(m => Object.assign(efMsgPub(m), { efir_id: m.efir_id, title: (L.find(x => x.e.id === m.efir_id) || {}).e.title })) }
+    return json(req, { ok: true, now, live, wait, leads, chat }) }
   if (!W.adm) return json(req, { ok: false, err: 'Сценарии правит Роман' }, 403);
   if (path === '/efir/scen' && req.method === 'GET') { const s = await efScen(env, +u.searchParams.get('id')); if (!s) return json(req, { ok: false, err: 'Сценарий не найден' }, 404); return json(req, { ok: true, scen: s }) }
   if (path === '/efir/scen' && req.method === 'POST') { const old = await env.DB.prepare('SELECT * FROM efir_scen WHERE id=?').bind(+o.id).first(); if (!old) return json(req, { ok: false, err: 'Сценарий не найден' }, 404);
