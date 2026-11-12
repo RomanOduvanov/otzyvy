@@ -393,7 +393,7 @@ var st=document.createElement('style');st.textContent='body,button,input,textare
 (function(){
 /* 01.11 (Роман: «в апке не изменилось») — Telegram держит старую копию приложения в кэше. При запуске сверяем версию с сервером:
    если вышла новая — один раз перезагружаемся на неё (адрес с ?v=, хеш Telegram с данными входа сохраняем). APPV меняется при каждой выкладке. */
-var APPV='202611081513';(function(){try{var k='maV',done=sessionStorage.getItem(k);fetch('app.html?vc='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){var m=t.match(/var APPV='(\d{12})'/);if(!m||m[1]<=APPV||done===m[1])return;sessionStorage.setItem(k,m[1]);var q=location.search.replace(/([?&])v=\d+&?/,'$1').replace(/[?&]$/,'');location.replace(location.pathname+(q?q+'&':'?')+'v='+m[1]+location.hash)}).catch(function(){})}catch(e){}})();
+var APPV='202611120849';(function(){try{var k='maV',done=sessionStorage.getItem(k);fetch('app.html?vc='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){var m=t.match(/var APPV='(\d{12})'/);if(!m||m[1]<=APPV||done===m[1])return;sessionStorage.setItem(k,m[1]);var q=location.search.replace(/([?&])v=\d+&?/,'$1').replace(/[?&]$/,'');location.replace(location.pathname+(q?q+'&':'?')+'v='+m[1]+location.hash)}).catch(function(){})}catch(e){}})();
 var API='https://oduvanov-api.romanoduvanov52.workers.dev', GC='https://oduvanovroman.getcourse.ru', TGW=window.Telegram&&Telegram.WebApp, T=null, HOME=null, TOP=null, IMG=null, BUSY=false, CUR='learn';
 var MCOV={935917160:'ma/m01.jpg',935917165:'ma/m02.jpg',935917169:'ma/m03.jpg',935917170:'ma/m04.jpg'}, RIMG={'Новичок':'r1','Джуниор':'r2','Фрилансер':'r3','Арт-директор':'r4','Владелец студии':'r5','Дизайнер-миллионер':'r6'};
 var MON=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],MS=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'],WD=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
@@ -508,7 +508,7 @@ function lIdx(j){var c=j&&j.course;if(!c)return;c.modules=c.modules||[];c.module
 function lGet(force){if(LQ&&!force)return LQ;var key=lKey();
   LQ=new Promise(function(res){var ctl=window.AbortController?new AbortController():null,to=setTimeout(function(){if(ctl)ctl.abort()},10000),
     fin=function(st,j){clearTimeout(to);ldOff();LST=st;LRN=j||null;lIdx(LRN);res()},
-    has=function(j){return !!(j.course||(j.other||[]).length)},
+    has=function(j){return !!(j.course||(j.other||[]).length||j.gc)},
     go=function(){return _f(API+'/ma/learn',{headers:{Authorization:'Bearer '+tok()},signal:ctl&&ctl.signal,cache:'no-store'})};
     ldOn('nav');
     go().then(function(r){if(r.status===401&&VW){vaGone();throw new Error('view-ended')}if(r.status===401&&T){T=null;try{sessionStorage.removeItem('maT')}catch(e){}return auth().then(go)}return r})
@@ -609,6 +609,7 @@ function rLearn(){var v=$('v-learn');lBand('OduvanovSchool','мини-прило
     else{var cx=null;if(L.cur){var cm=mFind(L.cur.module);if(cm&&mAcc(cm)&&mOpen(cm))cx=mCur(cm)}h+=pSoon();if(cx)h+=lNext(cx)}
     var xm=c.modules.filter(function(m){return mAcc(m)&&mX2(m)})[0];if(xm&&L.acc!=='dead')h+=lX2(xm);
     h+='<div class="h2">'+esc(cShort(c))+' <button data-l="all">Все курсы&nbsp;›</button></div><div class="lmods">'+lStrip(c)+'</div>'}
+  else if(L.gc&&!(L.other||[]).length)h+='<div class="card"><span class="cap2">Мои курсы</span><b style="font-size:17px;font-weight:500;line-height:1.25">Твои уроки&nbsp;— в&nbsp;кабинете школы</b><span class="mut">Там все курсы, которые тебе открыты, и&nbsp;прогресс по&nbsp;ним.</span><button class="btn" data-l="gcs">Открыть мои курсы</button></div>';
   else h+='<div class="h2">Мои курсы <button data-l="all">Все курсы&nbsp;›</button></div>'+lOther(L.other||[]);
   v.className='v L';v.innerHTML=h;lStaffHs(v);efLive(v)}
 /* ---- L2: «Все курсы» ---- */
@@ -769,7 +770,7 @@ function lTick(){var el=$('lCd');if(!el){clearInterval(LTM);LTM=0;return}var s=M
 function lRoute(h){var a=String(h).split('/');switch(a[1]){case 'all':return lAll(a[2]||'main');case 'm':return lModGo(+a[2],+a[3]||0);case 'up':return lUpGo(a[2]==='prem'?'prem':'amz',+a[3]||0);case 't':return lTrain(+a[2]);case 'na':return lNa(+a[2]);case 'exp':return lExp();
   case 'renew':return a[2]==='t'?pRenew('t',+a[3]):pRenew('c');case 'buy':return pUp2();case 'amz':var am=LRN.course&&LRN.course.modules.filter(function(m){return m.premium})[0];return am?lModGo(am.id):null}}
 function lRestore(h){lGet().then(function(){if(LST!=='ok'||CUR!=='learn')return;var st=[];try{st=JSON.parse(sessionStorage.getItem('maLS')||'[]')||[]}catch(e){}st=st.filter(function(x){return x&&/^learn\//.test(x)});if(st[st.length-1]!==h)st=[h];st.forEach(lRoute)})}
-var LACT={retry:lRetry,care:function(){ext(CARE)},all:function(){lAll('main')},seg:function(b){lAll(b.getAttribute('data-id'),true)},mod:function(b){lModGo(+b.getAttribute('data-id'))},
+var LACT={retry:lRetry,care:function(){ext(CARE)},gcs:function(b){b.classList.add('busy');openGC('/teach/control/stream')},all:function(){lAll('main')},seg:function(b){lAll(b.getAttribute('data-id'),true)},mod:function(b){lModGo(+b.getAttribute('data-id'))},
   part:function(b){lMod(+b.getAttribute('data-id'),+b.getAttribute('data-p'),true)},les:function(b){lLes(+b.getAttribute('data-id'),b.tagName==='LI'?b:null)},
   up:function(b){lUpGo(b.getAttribute('data-id'),+b.getAttribute('data-m')||0)},pay:function(b){lPay(b.getAttribute('data-id'),b)},tr:function(b){lTrain(+b.getAttribute('data-id'))},
   trl:function(b){if(navigator.onLine===false){lToast('Урок откроется, когда появится интернет');return}b.classList.add('busy');openGC('/pl/teach/control/lesson/view?id='+b.getAttribute('data-id'))},
