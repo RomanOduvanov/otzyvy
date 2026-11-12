@@ -61,26 +61,30 @@ window.__gm = {done: false, step: 'start', err: []};
   G.pairs = pq.length; G.pdone = 0; const t0 = Date.now(); console.log('passed: пар ученик×подтренинг', pq.length);
   const LID = /lesson\/view(?:\/id\/|\?id=)(\d+)/, DONE_CLS = /accomplished|answered|has_answer|viewed|watched|passed|complete/i, DONE_TASK = /accomplished|answered|has_answer|passed|complete/i, DONE_TXT = /просмотрено|пройден|выполнен|ответ отправлен|принят|засчитан/i;
   const TASK = new Set(subs.flatMap(s => s.lessons.filter(l => l.kind !== 'lesson').map(l => l.id)));
-  function parsePassed(d) {
+  /* 12.11: «просмотрено» — запрос статуса видео GetCourse (VideoWatched), а не span в строке (он теперь есть у всех уроков) */
+  async function watchedOf(h) { const m = h.match(/new VideoWatched\('([^']+)',\s*'[^']*',\s*'([^']+)'\)/); if (!m) return new Set();
+    const r = await fetch(m[1], {method: 'POST', body: new URLSearchParams({json: m[2]})}); if (!r.ok) throw 'vw ' + r.status; return new Set(((await r.json()) || []).map(x => +x.gc_file_id)); }
+  function parsePassed(d, W) {
     const rows = [...d.querySelectorAll('td.item-main-td')]; if (!rows.length) throw 'empty';
     const ids = [];
     for (const td of rows) {
       const tr = td.closest('tr') || td, a = td.querySelector('.link.title, [href*="/lesson/view"], [data-href*="/lesson/view"], [onclick*="/lesson/view"]');
       const m = String(a && (a.getAttribute('href') || a.getAttribute('data-href') || a.getAttribute('onclick')) || td.innerHTML).match(LID); if (!m) continue;
-      const lab = tr.querySelector('.user-state-label'), sc = [...tr.querySelectorAll('[class*="user-state-"]')].map(x => x.className).join(' ');
+      const li = td.closest('li'), vf = li ? (li.getAttribute('data-vh-files') || '').split(',').filter(Boolean).map(Number) : [];
+      const lab = tr.querySelector('.user-state-label'), sc = [...tr.querySelectorAll('[class*="user-state-"]')].map(x => x.className).join(' ') + (li ? ' ' + li.className : '');
       for (const k of (sc.match(/user-state-[\w-]+/g) || []).concat(lab ? ['label:' + lab.textContent.replace(/\s+/g, ' ').trim()] : [])) G.seen[k] = (G.seen[k] || 0) + 1;
       if (isStop(tr)) stops.add(+m[1]);
       // ДЗ и анкета пройдены только с ответом (accomplished/answered), «просмотрено» для них не считается — как в layout.js
       const cls = (sc + ' ' + (lab ? lab.className : '')).split(/\s+/).filter(c => /^user-state-/.test(c) && !/not|need|blocked/.test(c)), task = TASK.has(+m[1]);
       const ok = task ? cls.some(c => DONE_TASK.test(c)) || (lab && /ответ отправлен|принят|выполнен|засчитан/i.test(lab.textContent))
-        : !!tr.querySelector('span.lesson-list__video-watched') || cls.some(c => DONE_CLS.test(c)) || (lab && DONE_TXT.test(lab.textContent));
+        : (vf.length > 0 && !!W && vf.every(n => W.has(n))) || cls.some(c => DONE_CLS.test(c)) || (lab && DONE_TXT.test(lab.textContent));
       if (ok) ids.push(+m[1]);
     }
     return ids;
   }
   async function pw() { while (pq.length) { const [uid, sid] = pq.shift();
     for (let a = 0; a <= 2; a++) { try {
-      const ids = parsePassed(dp(await get(`/teach/control/stat/userTraining/id/${uid}/trainingId/${sid}`)));
+      const h = await get(`/teach/control/stat/userTraining/id/${uid}/trainingId/${sid}`), ids = parsePassed(dp(h), await watchedOf(h));
       if (ids.length) (passed[uid] = passed[uid] || []).push(...ids); break;
     } catch (e) { if (a === 2) G.err.push('passed ' + uid + '/' + sid); else await sleep(1000 * (a + 1)); } }
     G.pdone++; if (G.pdone % 50 === 0) { const el = (Date.now() - t0) / 1000; G.eta = Math.round(el / G.pdone * (G.pairs - G.pdone)) + ' с'; console.log('passed', G.pdone + '/' + G.pairs, 'осталось ~' + G.eta); } } }
