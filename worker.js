@@ -359,7 +359,7 @@ const payKey = async env => (await sha('pay:' + env.ADMIN_KEY)).slice(0, 24);
 async function tg(env, method, body) {
   if (!env.TG_TOKEN) return { ok: false, description: 'no TG_TOKEN' };
   const r = await fetch('https://api.telegram.org/bot' + env.TG_TOKEN + '/' + method, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({ ok: false })); if (!j.ok) await logIt(env, 'tg-err', 0, method + ' ' + (j.description || r.status)); return j;
+  const j = await r.json().catch(() => ({ ok: false })); if (!j.ok && !/message is not modified/.test(j.description || '')) await logIt(env, 'tg-err', 0, method + ' ' + (j.description || r.status)); return j;
 }
 const tgSend = (env, chat, text, buttons) => tg(env, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML', disable_web_page_preview: true, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) });
 const th = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -1799,6 +1799,8 @@ async function maApi(env, req, path) {
   /* «Учёба в приложении» (CONTRACT.md, этап 1): курс → модули → части → уроки со статусом ученика; только его данные (VW — просматриваемого) */
   if (path === '/ma/learn') { let D = null; try { D = await loadData(env) } catch (e) {}
     const r = D && Array.isArray(D.modules) && D.modules.length ? await rowFor(D, uid) : null; let lv = [];
+    /* 12.11 (rimmabara1978, поток 3.0): кого нет в потоке 2.0 — курс 2.0 не показываем (иначе «Продолжить урок» ведёт в чужой урок → #403), приложение ведёт в «Мои курсы» кабинета */
+    if (D && D.modules && D.modules.length && (D.rows || []).length > 50 && D.rows[0].uid != null && !r && !isStaffUid(env, uid)) return json(req, { ok: true, course: null, other: [], gc: 1, cur: null }, 200, { 'Cache-Control': 'no-store' });
     try { lv = ((await env.DB.prepare('SELECT lesson FROM lv WHERE uid=?').bind(uid).all()).results || []).map(x => +x.lesson) } catch (e) {} /* таблицы ещё нет — до первого маяка */
     return json(req, D && D.modules && D.modules.length ? learnOf(D, r || {}, Date.now(), lv) : { ok: true, course: null, reason: 'nodata' }, 200, { 'Cache-Control': 'no-store' }) }
   if (path === '/ma/top') { const D = await loadData(env), rows = (D.rows || []).slice().sort((a, b) => (a.place || 1e9) - (b.place || 1e9)); const me = await rowFor(D, uid); const mp = me && me.place || null;
